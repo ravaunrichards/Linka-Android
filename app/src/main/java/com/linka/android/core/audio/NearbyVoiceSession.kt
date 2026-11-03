@@ -88,7 +88,6 @@ class NearbyVoiceSession(
         val job = SupervisorJob()
         callJob = job
         callScope = CoroutineScope(job + Dispatchers.IO)
-        drainPendingIncomingStreams()
 
         val setupError = try {
             prepareAudioDevices()
@@ -101,6 +100,7 @@ class NearbyVoiceSession(
             fail(setupError)
             return
         }
+        drainPendingIncomingStreams()
 
         nearbyLink.openOutgoingStream(peerEndpointId) { writer, error ->
             if (error != null || writer == null) {
@@ -274,7 +274,7 @@ class NearbyVoiceSession(
             }
 
             val worker = callScope
-            if (started.get() && worker != null && incoming.endpointId == endpointId) {
+            if (started.get() && worker != null && incoming.endpointId == endpointId && player != null) {
                 worker.launch { receiveAudio(incoming) }
             } else {
                 // Both peers open their outgoing stream after accepting. The

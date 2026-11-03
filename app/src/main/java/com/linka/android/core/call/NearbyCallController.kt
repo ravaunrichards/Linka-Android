@@ -1,5 +1,8 @@
 package com.linka.android.core.call
 
+import android.content.Context
+import com.linka.android.core.audio.NearbyVoiceSession
+import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.nearby.NearbyDirectLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,17 +21,20 @@ data class NearbyCallUiState(
 )
 
 /**
- * Coordinates call-control messages over an already paired Nearby endpoint.
+ * Coordinates call control and a two-way nearby voice session.
  *
- * This is signaling only. It deliberately does not open the microphone or
- * claim that audio is flowing. Media capture, encoding, jitter handling and
- * two-way playback are a separate implementation milestone.
+ * Call media starts only after the call is accepted. The Android microphone
+ * permission must be granted before a user can start or accept a call.
  */
 class NearbyCallController(
+    context: Context,
     private val localDeviceId: String,
     private val nearbyLink: NearbyDirectLink
 ) {
     private val machine = CallStateMachine()
+    private val voiceSession = NearbyVoiceSession(context.applicationContext, nearbyLink)
+    val voiceState: StateFlow<VoiceSessionState> = voiceSession.state
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(NearbyCallUiState())
     val state: StateFlow<NearbyCallUiState> = _state.asStateFlow()
@@ -52,6 +58,7 @@ class NearbyCallController(
                         CallPhase.ACTIVE
                     )
                 ) {
+                    voiceSession.stop("Nearby connection lost")
                     _state.value = NearbyCallUiState(
                         call = machine.connectionLost(),
                         status = "Nearby connection lost",
@@ -88,8 +95,9 @@ class NearbyCallController(
             publishError(error.message ?: "Unable to accept call")
             return
         }
-        _state.value = NearbyCallUiState(active, "Call accepted — voice media is not connected yet")
+        _state.value = NearbyCallUiState(active, "Call accepted; starting voice media")
         send(CallControlType.ACCEPT, active.callId!!, active.peerDeviceId!!)
+        voiceSession.start(active.peerDeviceId)
     }
 
     fun rejectIncomingCall() {
@@ -104,6 +112,7 @@ class NearbyCallController(
         val call = machine.snapshot
         if (call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) return
         val ended = machine.end("local_hangup")
+        voiceSession.stop("Call ended")
         _state.value = NearbyCallUiState(ended, "Call ended")
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
     }
@@ -140,7 +149,8 @@ class NearbyCallController(
             CallControlType.ACCEPT -> {
                 if (message.callId != call.callId || call.phase != CallPhase.OUTGOING_RINGING) return
                 val active = machine.outgoingAccepted(System.currentTimeMillis())
-                _state.value = NearbyCallUiState(active, "Call accepted — voice media is not connected yet")
+                _state.value = NearbyCallUiState(active, "Call accepted; starting voice media")
+                voiceSession.start(active.peerDeviceId!!)
             }
 
             CallControlType.REJECT -> {
@@ -156,6 +166,7 @@ class NearbyCallController(
                     call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)
                 ) return
                 val ended = machine.end("remote_ended")
+                voiceSession.stop("The other phone ended the call")
                 _state.value = NearbyCallUiState(ended, "The other phone ended the call")
             }
 
@@ -191,6 +202,7 @@ class NearbyCallController(
     }
 
     fun close() {
+        voiceSession.close()
         scope.cancel()
     }
 }

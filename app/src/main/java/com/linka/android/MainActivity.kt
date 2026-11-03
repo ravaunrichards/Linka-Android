@@ -86,9 +86,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        identity = LocalDeviceIdentity.load(this)
-        nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
-        callController = NearbyCallController(this, identity.deviceId, nearbyLink)
+        val runtime = application as LinkaApplication
+        identity = runtime.identity
+        nearbyLink = runtime.nearbyLink
+        callController = runtime.callController
 
         setContent {
             LinkaApp(
@@ -175,8 +176,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (::callController.isInitialized) callController.close()
-        if (::nearbyLink.isInitialized) nearbyLink.close()
         super.onDestroy()
     }
 }

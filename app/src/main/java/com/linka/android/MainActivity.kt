@@ -18,8 +18,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,17 +30,29 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.identity.LinkaQrIdentity
+import com.linka.android.core.identity.LinkaQrBitmap
+import com.linka.android.core.identity.TrustedDeviceStore
+import com.linka.android.core.identity.VerifiedQrIdentity
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.linka.android.core.call.CallPhase
 import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.call.NearbyCallUiState
@@ -50,6 +65,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var identity: LocalDeviceIdentity
     private lateinit var nearbyLink: NearbyDirectLink
     private lateinit var callController: NearbyCallController
+    private lateinit var trustedDevices: TrustedDeviceStore
     private var actionAfterPermissions: (() -> Unit)? = null
     private var actionAfterMicrophonePermission: (() -> Unit)? = null
 
@@ -90,18 +106,39 @@ class MainActivity : ComponentActivity() {
         identity = runtime.identity
         nearbyLink = runtime.nearbyLink
         callController = runtime.callController
+        trustedDevices = runtime.trustedDevices
 
         setContent {
             LinkaApp(
                 identity = identity,
                 nearbyLink = nearbyLink,
                 callController = callController,
+                trustedDevices = trustedDevices,
                 onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
                 onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } },
                 onStartCall = { withMicrophonePermission { callController.startOutgoingCall() } },
-                onAcceptCall = { withMicrophonePermission { callController.acceptIncomingCall() } }
+                onAcceptCall = { withMicrophonePermission { callController.acceptIncomingCall() } },
+                onScanQr = { callback -> scanLinkaQr(callback) }
             )
         }
+    }
+
+    private fun scanLinkaQr(onResult: (String?) -> Unit) {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        GmsBarcodeScanning.getClient(this, options).startScan()
+            .addOnSuccessListener { barcode -> onResult(barcode.rawValue) }
+            .addOnCanceledListener { onResult(null) }
+            .addOnFailureListener { error ->
+                Toast.makeText(
+                    this,
+                    error.localizedMessage ?: "LINKA QR scanner failed",
+                    Toast.LENGTH_LONG
+                ).show()
+                onResult(null)
+            }
     }
 
     private fun withNearbyPermissions(action: () -> Unit) {
@@ -186,6 +223,8 @@ private fun LinkaApp(
     identity: LocalDeviceIdentity,
     nearbyLink: NearbyDirectLink,
     callController: NearbyCallController,
+    trustedDevices: TrustedDeviceStore,
+    onScanQr: (onResult: (String?) -> Unit) -> Unit,
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
     onStartCall: () -> Unit,
@@ -216,6 +255,7 @@ private fun LinkaApp(
                 )
 
                 IdentityCard(identity)
+                IdentityQrControls(identity, trustedDevices, onScanQr)
 
                 Text("Offline nearby", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
@@ -439,5 +479,169 @@ private fun CallControlsCard(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun IdentityQrControls(
+    identity: LocalDeviceIdentity,
+    trustedDevices: TrustedDeviceStore,
+    onScanQr: (onResult: (String?) -> Unit) -> Unit
+) {
+    var showQr by remember { mutableStateOf(false) }
+    var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var pendingIdentity by remember { mutableStateOf<VerifiedQrIdentity?>(null) }
+    var status by remember { mutableStateOf("QR identity exchange is ready") }
+    val savedDevices = remember { mutableStateOf(trustedDevices.list()) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Trusted devices", fontWeight = FontWeight.Bold)
+            Text(
+                "Exchange a signed, expiring public identity QR in person. QR codes never contain private keys or call secrets.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    runCatching {
+                        qrBitmap = LinkaQrBitmap.create(LinkaQrIdentity.create(identity))
+                        showQr = true
+                        status = "Your signed identity QR expires after two minutes"
+                    }.onFailure {
+                        status = it.localizedMessage ?: "Could not create identity QR"
+                    }
+                }) {
+                    Text("Show my QR")
+                }
+                OutlinedButton(onClick = {
+                    onScanQr { rawValue ->
+                        if (rawValue.isNullOrBlank()) {
+                            status = "QR scan canceled"
+                        } else {
+                            runCatching { LinkaQrIdentity.verify(rawValue) }
+                                .onSuccess { verified ->
+                                    if (verified.deviceId == identity.deviceId) {
+                                        status = "That QR belongs to this phone"
+                                    } else {
+                                        pendingIdentity = verified
+                                    }
+                                }
+                                .onFailure {
+                                    status = it.localizedMessage ?: "QR identity verification failed"
+                                }
+                        }
+                    }
+                }) {
+                    Text("Scan QR")
+                }
+            }
+            Text(status, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Saved trusted phones: ${savedDevices.value.size}",
+                style = MaterialTheme.typography.labelMedium
+            )
+            savedDevices.value.take(4).forEach { device ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(device.displayName, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            device.fingerprint.take(24) + "…",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    TextButton(onClick = {
+                        trustedDevices.revoke(device.deviceId)
+                        savedDevices.value = trustedDevices.list()
+                        status = "Revoked ${device.displayName}"
+                    }) {
+                        Text("Revoke")
+                    }
+                }
+            }
+            if (savedDevices.value.size > 4) {
+                Text(
+                    "And ${savedDevices.value.size - 4} more trusted devices",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+    }
+
+    if (showQr && qrBitmap != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showQr = false
+                qrBitmap = null
+            },
+            title = { Text("Your LINKA identity QR") },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Image(
+                        bitmap = qrBitmap!!.asImageBitmap(),
+                        contentDescription = "Signed LINKA device identity QR",
+                        modifier = Modifier.size(240.dp)
+                    )
+                    Text("Device ID: ${identity.shortId}")
+                    Text(
+                        "This public identity code expires in two minutes. Generate a fresh one before scanning.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "Fingerprint: ${identity.publicKeyFingerprint.chunked(4).joinToString(" ")}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showQr = false
+                    qrBitmap = null
+                }) { Text("Close") }
+            }
+        )
+    }
+
+    pendingIdentity?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { pendingIdentity = null },
+            title = { Text("Trust this LINKA device?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Device: ${candidate.deviceId}")
+                    Text("Verify the fingerprint with the owner of the other phone before trusting it.")
+                    Text(
+                        candidate.fingerprint.chunked(4).joinToString(" "),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    runCatching { trustedDevices.trust(candidate) }
+                        .onSuccess { saved ->
+                            savedDevices.value = trustedDevices.list()
+                            status = "Trusted ${saved.displayName}"
+                        }
+                        .onFailure {
+                            status = it.localizedMessage ?: "Could not save trusted device"
+                        }
+                    pendingIdentity = null
+                }) { Text("Trust device") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingIdentity = null }) { Text("Cancel") }
+            }
+        )
     }
 }

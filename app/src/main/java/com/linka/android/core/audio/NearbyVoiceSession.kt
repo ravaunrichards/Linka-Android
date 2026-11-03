@@ -90,7 +90,6 @@ class NearbyVoiceSession(
         callScope = CoroutineScope(job + Dispatchers.IO)
 
         val setupError = try {
-            LinkaVoiceForegroundService.start(appContext)
             prepareAudioDevices()
             null
         } catch (error: Exception) {
@@ -184,19 +183,19 @@ class NearbyVoiceSession(
         player = audioTrack
 
         if (AcousticEchoCanceler.isAvailable()) {
-            echoCanceler = AcousticEchoCanceler.create(audioRecord.audioSessionId)?.apply {
-                enabled = true
-            }
+            echoCanceler = runCatching {
+                AcousticEchoCanceler.create(audioRecord.audioSessionId)?.apply { enabled = true }
+            }.getOrNull()
         }
         if (NoiseSuppressor.isAvailable()) {
-            noiseSuppressor = NoiseSuppressor.create(audioRecord.audioSessionId)?.apply {
-                enabled = true
-            }
+            noiseSuppressor = runCatching {
+                NoiseSuppressor.create(audioRecord.audioSessionId)?.apply { enabled = true }
+            }.getOrNull()
         }
         if (AutomaticGainControl.isAvailable()) {
-            gainControl = AutomaticGainControl.create(audioRecord.audioSessionId)?.apply {
-                enabled = true
-            }
+            gainControl = runCatching {
+                AutomaticGainControl.create(audioRecord.audioSessionId)?.apply { enabled = true }
+            }.getOrNull()
         }
 
         audioTrack.play()

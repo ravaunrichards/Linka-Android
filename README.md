@@ -1,41 +1,53 @@
 # LINKA — Jamaica-first Android Calling
 
-LINKA is an Android-first calling project for Jamaica. Its long-term product combines:
-- Ordinary cellular calls through a user's Digicel or FLOW SIM (optional).
-- Free app-to-app internet voice calls.
-- SIM-free, internet-free nearby voice calls.
-- Experimental multi-hop offline mesh relaying.
+LINKA is an Android-first calling application for Jamaica. Its product direction combines optional carrier calls, internet-based app calls, SIM-free nearby voice calls, and carefully constrained offline mesh experiments.
 
-**Current repository status:** foundational Android application and offline-networking domain model. This is not yet a production calling service. Direct audio transport, device discovery, mesh forwarding, and carrier interoperability require staged implementation and physical-device verification.
+## Product modes
 
-## Product principles
-- Offline direct calls must not require a SIM, mobile data, Wi-Fi internet, airtime, or a cloud account once devices have exchanged trusted identity information.
-- Offline range is limited by compatible local radios and the environment. There is no unlimited-range offline calling.
-- Mesh relaying is opt-in and best-effort; Android hardware and OS restrictions may prevent arbitrary multi-hop topologies.
-- No relay may decrypt end-to-end voice media.
-- Cellular fallback must be clearly identified and must never be triggered without user consent.
+- **Nearby offline LINKA:** direct phone-to-phone communication using available local radios. The intended call mode must work without a SIM, airtime, mobile data, or Wi-Fi internet.
+- **Internet LINKA calls:** app-to-app voice calling over an internet connection. This is a separate mode and is not part of the offline path.
+- **Optional cellular calls:** use the Android/system dialer and the user's Digicel Jamaica or FLOW Jamaica service. Carrier charges and operator provisioning still apply.
+- **Experimental offline mesh:** opt-in forwarding between nearby devices, only after direct calling and radio topology are proven.
+
+## Current implementation status
+
+The Android app now has a persisted local device ID, an Android Keystore signing key, Nearby Connections discovery/advertising, a peer list, and a two-sided six-digit connection confirmation flow. These functions establish a nearby radio connection between compatible LINKA installations.
+
+**This is not yet a completed calling app.** The encrypted audio pipeline, call invitations and call controls, QR identity exchange, internet calling, incoming-call service, and operational multi-hop mesh still need implementation and real-device verification. The UI must not be interpreted as evidence that voice calls are working.
+
+## Important operating constraints
+
+- Nearby discovery is local-radio based. It does not provide unlimited distance or remote username lookup.
+- Both phones need compatible Android hardware, LINKA installed, required permissions, Google Play services with Nearby Connections available, and Bluetooth or Wi-Fi enabled.
+- Starting in late 2026, Nearby Connections no longer automatically enables radios for third-party apps. Users must enable Bluetooth or Wi-Fi themselves before starting discovery.
+- Nearby range depends on radios, device models, physical obstacles and interference.
+- A username is not a radio address. Offline lookup can only resolve a cached identity or a device that is currently discoverable nearby.
+- Mesh relaying must be opt-in and forward end-to-end encrypted data only.
+- LINKA must never silently fall back to a chargeable cellular call.
+- LINKA is not an emergency-calling service.
 
 ## Repository layout
-- `app/`: Android application.
-- `core/`: identity, protocol, routing and audio domain foundations.
-- `docs/`: architecture, security, testing and Jamaica deployment notes.
+
+- `app/`: Android application, UI, identity, nearby connectivity and call engine.
+- `app/src/test/`: automated unit tests.
+- `docs/`: architecture, security, Jamaica compatibility and test plans.
 - `.github/workflows/`: Android CI.
 
 ## Build
-Open this project in Android Studio (Hedgehog or newer) with JDK 17 and Android SDK 35 installed, or run:
+
+Open the project in Android Studio with JDK 17 and Android SDK 35 installed, or run:
 
 ```bash
 gradle :app:assembleDebug
 gradle :app:testDebugUnitTest
 ```
 
-The Android Gradle Plugin downloads through Gradle when network access is available.
-
-## Current implementation boundary
-The first milestone establishes a buildable Android shell, local device identity, typed call/mesh models and routing primitives. It does **not** claim that real offline voice calls or mesh relaying are already operational. Those require transport adapters, audio pipeline integration, permission flows, cryptographic review, and multi-device testing.
+The CI workflow runs both commands on pushes and pull requests to `main`. The latest successful workflow result is the build verification authority; source commits alone do not prove the APK builds.
 
 ## Jamaica scope
-Initial carrier compatibility testing targets Digicel Jamaica and FLOW Jamaica. Carrier integration is separate from SIM-free offline calling and must be validated against specific devices, SIM plans, LTE/VoLTE provisioning and operator requirements.
+
+Initial carrier-compatibility testing targets Digicel Jamaica and FLOW Jamaica. Carrier calls are separate from SIM-free nearby communication and must be tested against real devices, SIM plans, VoLTE provisioning and operator requirements.
 
 ## License
+
 See [LICENSE](LICENSE).

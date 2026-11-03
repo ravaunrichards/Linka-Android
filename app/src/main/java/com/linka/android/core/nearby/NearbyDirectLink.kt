@@ -14,8 +14,11 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
@@ -30,6 +33,11 @@ data class PendingPairing(
     val authenticationDigits: String
 )
 
+data class NearbyBytesMessage(
+    val endpointId: String,
+    val bytes: ByteArray
+)
+
 data class NearbyLinkState(
     val isAdvertising: Boolean = false,
     val isDiscovering: Boolean = false,
@@ -41,11 +49,11 @@ data class NearbyLinkState(
 )
 
 /**
- * Radio-only direct peer discovery and authenticated connection consent.
+ * Direct peer discovery and consent pairing over Nearby Connections.
  *
- * This class does not use a server for discovery. Nearby Connections uses
- * available local radios; Bluetooth/Wi-Fi must be enabled by the user.
- * A connected transport is not itself an active voice call.
+ * The SDK supplies an encrypted direct transport. LINKA still has to bind
+ * trusted device identities to this endpoint and implement its own call
+ * lifecycle and media protections before public release.
  */
 class NearbyDirectLink(
     context: Context,
@@ -55,8 +63,14 @@ class NearbyDirectLink(
     private val _state = MutableStateFlow(NearbyLinkState())
     val state: StateFlow<NearbyLinkState> = _state.asStateFlow()
 
+    private val _incomingBytes = MutableSharedFlow<NearbyBytesMessage>(
+        extraBufferCapacity = 64
+    )
+    val incomingBytes: SharedFlow<NearbyBytesMessage> = _incomingBytes.asSharedFlow()
+
     private val strategy = Strategy.P2P_POINT_TO_POINT
     private val serviceId = "com.linka.android"
+    private val maxControlPayloadBytes = 1024
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
@@ -79,8 +93,13 @@ class NearbyDirectLink(
 
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
-            // Call-control and encrypted audio payload handling is deliberately
-            // kept out of the discovery layer and will be added by the call engine.
+            if (payload.type != Payload.Type.BYTES) {
+                payload.close()
+                return
+            }
+            val bytes = payload.asBytes() ?: return
+            if (bytes.isEmpty() || bytes.size > maxControlPayloadBytes) return
+            _incomingBytes.tryEmit(NearbyBytesMessage(endpointId, bytes.copyOf()))
         }
 
         override fun onPayloadTransferUpdate(
@@ -235,6 +254,27 @@ class NearbyDirectLink(
                 status = "Pairing rejected"
             )
         }
+    }
+
+    /**
+     * Submits a bounded binary message to the already authenticated Nearby
+     * endpoint. Success means the SDK accepted the payload for delivery; it
+     * does not claim that the remote app processed it.
+     */
+    fun sendBytes(endpointId: String, bytes: ByteArray, onResult: (String?) -> Unit = {}) {
+        if (_state.value.connectedPeer?.endpointId != endpointId) {
+            onResult("The requested LINKA peer is not connected")
+            return
+        }
+        if (bytes.isEmpty() || bytes.size > maxControlPayloadBytes) {
+            onResult("Invalid LINKA control payload size")
+            return
+        }
+        client.sendPayload(endpointId, Payload.fromBytes(bytes.copyOf()))
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { exception ->
+                onResult(exception.localizedMessage ?: "Nearby payload send failed")
+            }
     }
 
     fun disconnect() {

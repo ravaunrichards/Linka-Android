@@ -1,8 +1,15 @@
 package com.linka.android
 
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,93 +18,320 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.nearby.NearbyDirectLink
+import com.linka.android.core.nearby.NearbyLinkState
+import com.linka.android.core.nearby.NearbyPeer
 
 class MainActivity : ComponentActivity() {
+    private lateinit var identity: LocalDeviceIdentity
+    private lateinit var nearbyLink: NearbyDirectLink
+    private var actionAfterPermissions: (() -> Unit)? = null
+
+    private val nearbyPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            val granted = results.values.all { it }
+            val action = actionAfterPermissions
+            actionAfterPermissions = null
+            if (granted) {
+                action?.invoke()
+            } else {
+                Toast.makeText(
+                    this,
+                    "LINKA needs nearby-device permissions to discover and connect phones.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { LinkaApp() }
+        identity = LocalDeviceIdentity.load(this)
+        nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
+
+        setContent {
+            LinkaApp(
+                identity = identity,
+                nearbyLink = nearbyLink,
+                onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
+                onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } }
+            )
+        }
+    }
+
+    private fun withNearbyPermissions(action: () -> Unit) {
+        val required = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            } else {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
+        }.distinct()
+
+        val missing = required.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isEmpty()) {
+            action()
+        } else {
+            actionAfterPermissions = action
+            nearbyPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun radiosReady(): Boolean {
+        val bluetoothEnabled = runCatching {
+            getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
+        }.getOrDefault(false)
+        val wifiEnabled = runCatching {
+            getSystemService(WifiManager::class.java)?.isWifiEnabled == true
+        }.getOrDefault(false)
+        return bluetoothEnabled || wifiEnabled
+    }
+
+    private fun startDiscoveryWhenReady() {
+        if (radiosReady()) {
+            nearbyLink.startDiscovery()
+        } else {
+            Toast.makeText(
+                this,
+                "Turn on Bluetooth or Wi-Fi in Android Quick Settings, then try again.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun startAdvertisingWhenReady() {
+        if (radiosReady()) {
+            nearbyLink.startAdvertising()
+        } else {
+            Toast.makeText(
+                this,
+                "Turn on Bluetooth or Wi-Fi in Android Quick Settings, then try again.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    override fun onDestroy() {
+        if (::nearbyLink.isInitialized) nearbyLink.close()
+        super.onDestroy()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LinkaApp() {
-    val identity = remember { LocalDeviceIdentity.create() }
-    var number by remember { mutableStateOf("") }
-    var mode by remember { mutableStateOf("Offline nearby") }
-    val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#")
+private fun LinkaApp(
+    identity: LocalDeviceIdentity,
+    nearbyLink: NearbyDirectLink,
+    onStartDiscovery: () -> Unit,
+    onStartAdvertising: () -> Unit
+) {
+    val linkState by nearbyLink.state.collectAsState()
 
     MaterialTheme {
-        Scaffold(topBar = { TopAppBar(title = { Text("LINKA", fontWeight = FontWeight.Bold) }) }) { padding ->
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("LINKA", fontWeight = FontWeight.Bold) }
+                )
+            }
+        ) { padding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Talk. Connect. Anywhere.", style = MaterialTheme.typography.titleMedium)
-                Card(
+                Text(
+                    "Talk. Connect. Anywhere.",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                IdentityCard(identity)
+
+                Text("Offline nearby", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "Find another compatible LINKA phone using nearby radios. No SIM, airtime, mobile data, or Wi-Fi internet is used for this local discovery connection.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Your offline device ID", style = MaterialTheme.typography.labelMedium)
-                        Text(identity.shortId, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Username and QR pairing will be added in the identity milestone.", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                Text(number.ifEmpty { "Enter a number or LINKA ID" }, style = MaterialTheme.typography.headlineSmall)
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(keys) { key ->
-                        OutlinedButton(
-                            onClick = { number += key },
-                            modifier = Modifier.height(56.dp)
-                        ) { Text(key, style = MaterialTheme.typography.titleLarge) }
+                    Button(
+                        onClick = onStartDiscovery,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Find phones")
+                    }
+                    OutlinedButton(
+                        onClick = onStartAdvertising,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Be discoverable")
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { number = number.dropLast(1) }) { Text("Delete") }
-                    Button(onClick = { mode = "Call engine not connected yet" }) { Text("Call") }
+
+                Text(linkState.status, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                linkState.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Calling status", fontWeight = FontWeight.SemiBold)
-                        Text(mode, style = MaterialTheme.typography.bodyMedium)
-                        Text("Offline voice transport is not enabled in this foundation build.", style = MaterialTheme.typography.bodySmall)
+
+                PendingPairingCard(linkState, nearbyLink)
+
+                ConnectedDeviceCard(linkState, nearbyLink)
+
+                Text("Nearby devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (linkState.peers.isEmpty()) {
+                    Text(
+                        "No phones found yet. Both phones must have LINKA open, nearby permissions granted, and Bluetooth or Wi-Fi enabled.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f, fill = true),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(linkState.peers, key = { it.endpointId }) { peer ->
+                            PeerCard(peer = peer, onConnect = { nearbyLink.requestConnection(peer) })
+                        }
                     }
                 }
-                Spacer(Modifier.size(2.dp))
-                Text("Jamaica-first • Digicel & FLOW compatibility planned", style = MaterialTheme.typography.labelSmall)
+
+                Spacer(Modifier.height(2.dp))
+                OutlinedButton(
+                    onClick = { nearbyLink.stopDiscoveryAndAdvertising() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Stop nearby discovery")
+                }
+
+                Text(
+                    "Nearby connection only — voice calls and multi-hop mesh are not enabled yet.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun IdentityCard(identity: LocalDeviceIdentity) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text("Your LINKA device ID", style = MaterialTheme.typography.labelMedium)
+            Text(
+                identity.shortId,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Saved on this phone. Identity key fingerprint: ${identity.publicKeyFingerprint.take(20)}…",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeerCard(peer: NearbyPeer, onConnect: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(peer.displayName, fontWeight = FontWeight.SemiBold)
+                Text("Nearby LINKA endpoint", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(onClick = onConnect) { Text("Connect") }
+        }
+    }
+}
+
+@Composable
+private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
+    val pending = state.pendingPairing ?: return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Confirm this phone", fontWeight = FontWeight.Bold)
+            Text(pending.peerName)
+            Text(
+                pending.authenticationDigits,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Only accept when the same six-digit code appears on the other phone. Reject unexpected requests.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { nearbyLink.acceptPairing() }) { Text("I confirm") }
+                OutlinedButton(onClick = { nearbyLink.rejectPairing() }) { Text("Reject") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
+    val peer = state.connectedPeer ?: return
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Nearby device connected", fontWeight = FontWeight.Bold)
+            Text(peer.displayName)
+            Text(
+                "The radio connection is established. LINKA does not yet have the encrypted voice-call engine connected to this link.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedButton(onClick = { nearbyLink.disconnect() }) { Text("Disconnect") }
         }
     }
 }

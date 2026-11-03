@@ -1,6 +1,7 @@
 package com.linka.android.core.call
 
 import android.content.Context
+import com.linka.android.core.audio.LinkaVoiceForegroundService
 import com.linka.android.core.audio.NearbyVoiceSession
 import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.nearby.NearbyDirectLink
@@ -8,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,16 +25,17 @@ data class NearbyCallUiState(
 /**
  * Coordinates call control and a two-way nearby voice session.
  *
- * Call media starts only after the call is accepted. The Android microphone
- * permission must be granted before a user can start or accept a call.
+ * The microphone foreground service is started from explicit, visible user
+ * actions (place or accept) before an ongoing call can be backgrounded.
  */
 class NearbyCallController(
     context: Context,
     private val localDeviceId: String,
     private val nearbyLink: NearbyDirectLink
 ) {
+    private val appContext = context.applicationContext
     private val machine = CallStateMachine()
-    private val voiceSession = NearbyVoiceSession(context.applicationContext, nearbyLink)
+    private val voiceSession = NearbyVoiceSession(appContext, nearbyLink)
     val voiceState: StateFlow<VoiceSessionState> = voiceSession.state
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -59,6 +62,7 @@ class NearbyCallController(
                     )
                 ) {
                     voiceSession.stop("Nearby connection lost")
+                    LinkaVoiceForegroundService.stop(appContext)
                     _state.value = NearbyCallUiState(
                         call = machine.connectionLost(),
                         status = "Nearby connection lost",
@@ -79,8 +83,30 @@ class NearbyCallController(
         } catch (error: IllegalArgumentException) {
             return publishError(error.message ?: "Invalid call details")
         }
+
+        try {
+            LinkaVoiceForegroundService.start(appContext)
+        } catch (error: Exception) {
+            machine.end("foreground_service_unavailable")
+            return publishError(
+                error.localizedMessage ?: "Android could not start the call foreground service"
+            )
+        }
+
         _state.value = NearbyCallUiState(next, "Calling ${peer.displayName}…")
         send(CallControlType.INVITE, next.callId!!, peer.endpointId)
+        scope.launch {
+            delay(CALL_RING_TIMEOUT_MS)
+            if (machine.snapshot.callId == next.callId &&
+                machine.snapshot.phase == CallPhase.OUTGOING_RINGING
+            ) {
+                val timedOut = machine.end("no_answer")
+                _state.value = NearbyCallUiState(timedOut, "No answer")
+                send(CallControlType.END, timedOut.callId!!, timedOut.peerDeviceId!!)
+                voiceSession.stop("No answer")
+                LinkaVoiceForegroundService.stop(appContext)
+            }
+        }
     }
 
     fun acceptIncomingCall() {
@@ -89,9 +115,20 @@ class NearbyCallController(
             publishError("There is no incoming call to accept")
             return
         }
+
+        try {
+            LinkaVoiceForegroundService.start(appContext)
+        } catch (error: Exception) {
+            publishError(
+                error.localizedMessage ?: "Android could not start the call foreground service"
+            )
+            return
+        }
+
         val active = try {
             machine.acceptIncoming(System.currentTimeMillis())
         } catch (error: IllegalStateException) {
+            LinkaVoiceForegroundService.stop(appContext)
             publishError(error.message ?: "Unable to accept call")
             return
         }
@@ -113,6 +150,7 @@ class NearbyCallController(
         if (call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) return
         val ended = machine.end("local_hangup")
         voiceSession.stop("Call ended")
+        LinkaVoiceForegroundService.stop(appContext)
         _state.value = NearbyCallUiState(ended, "Call ended")
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
     }
@@ -138,12 +176,24 @@ class NearbyCallController(
         when (message.type) {
             CallControlType.INVITE -> {
                 if (call.phase !in setOf(CallPhase.IDLE, CallPhase.ENDED, CallPhase.FAILED)) {
-                    send(CallControlType.BUSY, message.callId, endpointId)
+                    if (message.callId != call.callId) {
+                        send(CallControlType.BUSY, message.callId, endpointId)
+                    }
                     return
                 }
                 val incoming = machine.receiveInvite(message.callId, endpointId)
                 val name = nearbyLink.state.value.connectedPeer?.displayName ?: "Nearby LINKA phone"
                 _state.value = NearbyCallUiState(incoming, "Incoming call from $name")
+                scope.launch {
+                    delay(CALL_RING_TIMEOUT_MS)
+                    if (machine.snapshot.callId == incoming.callId &&
+                        machine.snapshot.phase == CallPhase.INCOMING_RINGING
+                    ) {
+                        val expired = machine.rejectOrDecline("no_answer")
+                        _state.value = NearbyCallUiState(expired, "Incoming call timed out")
+                        send(CallControlType.REJECT, expired.callId!!, expired.peerDeviceId!!)
+                    }
+                }
             }
 
             CallControlType.ACCEPT -> {
@@ -158,6 +208,8 @@ class NearbyCallController(
                     call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING)
                 ) return
                 val ended = machine.rejectOrDecline("remote_rejected")
+                voiceSession.stop("The other phone rejected the call")
+                LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone rejected the call")
             }
 
@@ -167,12 +219,15 @@ class NearbyCallController(
                 ) return
                 val ended = machine.end("remote_ended")
                 voiceSession.stop("The other phone ended the call")
+                LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone ended the call")
             }
 
             CallControlType.BUSY -> {
                 if (message.callId != call.callId || call.phase != CallPhase.OUTGOING_RINGING) return
                 val ended = machine.rejectOrDecline("peer_busy")
+                voiceSession.stop("The other phone is busy")
+                LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone is busy")
             }
         }
@@ -203,6 +258,11 @@ class NearbyCallController(
 
     fun close() {
         voiceSession.close()
+        LinkaVoiceForegroundService.stop(appContext)
         scope.cancel()
+    }
+
+    companion object {
+        private const val CALL_RING_TIMEOUT_MS = 45_000L
     }
 }

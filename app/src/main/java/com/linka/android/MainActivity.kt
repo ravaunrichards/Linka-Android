@@ -41,6 +41,7 @@ import com.linka.android.core.identity.LocalDeviceIdentity
 import com.linka.android.core.call.CallPhase
 import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.call.NearbyCallUiState
+import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyLinkState
 import com.linka.android.core.nearby.NearbyPeer
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var nearbyLink: NearbyDirectLink
     private lateinit var callController: NearbyCallController
     private var actionAfterPermissions: (() -> Unit)? = null
+    private var actionAfterMicrophonePermission: (() -> Unit)? = null
 
     private val nearbyPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
@@ -67,11 +69,26 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    private val microphonePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val action = actionAfterMicrophonePermission
+            actionAfterMicrophonePermission = null
+            if (granted) {
+                action?.invoke()
+            } else {
+                Toast.makeText(
+                    this,
+                    "LINKA needs microphone access to place or answer a voice call.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         identity = LocalDeviceIdentity.load(this)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
-        callController = NearbyCallController(identity.deviceId, nearbyLink)
+        callController = NearbyCallController(this, identity.deviceId, nearbyLink)
 
         setContent {
             LinkaApp(
@@ -79,7 +96,9 @@ class MainActivity : ComponentActivity() {
                 nearbyLink = nearbyLink,
                 callController = callController,
                 onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
-                onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } }
+                onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } },
+                onStartCall = { withMicrophonePermission { callController.startOutgoingCall() } },
+                onAcceptCall = { withMicrophonePermission { callController.acceptIncomingCall() } }
             )
         }
     }
@@ -107,6 +126,17 @@ class MainActivity : ComponentActivity() {
         } else {
             actionAfterPermissions = action
             nearbyPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun withMicrophonePermission(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
+        } else {
+            actionAfterMicrophonePermission = action
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -158,10 +188,13 @@ private fun LinkaApp(
     nearbyLink: NearbyDirectLink,
     callController: NearbyCallController,
     onStartDiscovery: () -> Unit,
-    onStartAdvertising: () -> Unit
+    onStartAdvertising: () -> Unit,
+    onStartCall: () -> Unit,
+    onAcceptCall: () -> Unit
 ) {
     val linkState by nearbyLink.state.collectAsState()
     val callState by callController.state.collectAsState()
+    val voiceState by callController.voiceState.collectAsState()
 
     MaterialTheme {
         Scaffold(
@@ -216,7 +249,7 @@ private fun LinkaApp(
 
                 PendingPairingCard(linkState, nearbyLink)
                 ConnectedDeviceCard(linkState, nearbyLink)
-                CallControlsCard(callState, callController, linkState.connectedPeer != null)
+                CallControlsCard(callState, voiceState, callController, linkState.connectedPeer != null, onStartCall, onAcceptCall)
 
                 Text("Nearby devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (linkState.peers.isEmpty()) {
@@ -244,7 +277,7 @@ private fun LinkaApp(
                 }
 
                 Text(
-                    "Nearby connection only — voice calls and multi-hop mesh are not enabled yet.",
+                    "Nearby direct voice is implemented in code and awaiting two-phone validation. Multi-hop mesh is not implemented.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -337,7 +370,7 @@ private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirect
             Text("Nearby device connected", fontWeight = FontWeight.Bold)
             Text(peer.displayName)
             Text(
-                "The radio connection is established. LINKA does not yet have the encrypted voice-call engine connected to this link.",
+                "The nearby radio connection is established. A direct voice stream can start after the other phone accepts a call; physical-device testing is still required.",
                 style = MaterialTheme.typography.bodySmall
             )
             OutlinedButton(onClick = { nearbyLink.disconnect() }) { Text("Disconnect") }
@@ -349,8 +382,11 @@ private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirect
 @Composable
 private fun CallControlsCard(
     state: NearbyCallUiState,
+    voiceState: VoiceSessionState,
     controller: NearbyCallController,
-    peerConnected: Boolean
+    peerConnected: Boolean,
+    onStartCall: () -> Unit,
+    onAcceptCall: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -363,16 +399,20 @@ private fun CallControlsCard(
             Text("LINKA call controls", fontWeight = FontWeight.Bold)
             Text(state.status, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "Call signaling test: ringing, accept, reject and hang up work over the nearby link. Live microphone audio is not connected yet.",
+                "Direct voice uses the microphone and speaker over a Nearby stream. Both phones must grant microphone access and keep the app available during this initial test.",
                 style = MaterialTheme.typography.bodySmall
             )
+            Text(voiceState.status, style = MaterialTheme.typography.bodySmall)
+            voiceState.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             state.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
             when (state.call.phase) {
                 CallPhase.IDLE -> {
-                    Button(onClick = { controller.startOutgoingCall() }, enabled = peerConnected) {
+                    Button(onClick = onStartCall, enabled = peerConnected) {
                         Text("Start call")
                     }
                 }
@@ -383,18 +423,18 @@ private fun CallControlsCard(
                 CallPhase.INCOMING_RINGING -> {
                     Text("Incoming nearby call")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { controller.acceptIncomingCall() }) { Text("Accept") }
+                        Button(onClick = onAcceptCall) { Text("Accept") }
                         OutlinedButton(onClick = { controller.rejectIncomingCall() }) { Text("Decline") }
                     }
                 }
                 CallPhase.ACTIVE -> {
-                    Text("Both phones accepted. Audio media is not active.")
+                    Text(if (voiceState.isRunning) "Voice stream is running." else "Call accepted; voice stream status: ${voiceState.status}.")
                     OutlinedButton(onClick = { controller.endCall() }) { Text("End call") }
                 }
                 CallPhase.ENDED, CallPhase.FAILED -> {
                     OutlinedButton(onClick = { controller.reset() }) { Text("Clear call") }
                     Button(
-                        onClick = { controller.startOutgoingCall() },
+                        onClick = onStartCall,
                         enabled = peerConnected
                     ) { Text("Call again") }
                 }

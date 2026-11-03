@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.call.CallPhase
+import com.linka.android.core.call.NearbyCallController
+import com.linka.android.core.call.NearbyCallUiState
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyLinkState
 import com.linka.android.core.nearby.NearbyPeer
@@ -45,6 +48,7 @@ import com.linka.android.core.nearby.NearbyPeer
 class MainActivity : ComponentActivity() {
     private lateinit var identity: LocalDeviceIdentity
     private lateinit var nearbyLink: NearbyDirectLink
+    private lateinit var callController: NearbyCallController
     private var actionAfterPermissions: (() -> Unit)? = null
 
     private val nearbyPermissionLauncher =
@@ -67,11 +71,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         identity = LocalDeviceIdentity.load(this)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
+        callController = NearbyCallController(identity.deviceId, nearbyLink)
 
         setContent {
             LinkaApp(
                 identity = identity,
                 nearbyLink = nearbyLink,
+                callController = callController,
                 onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
                 onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } }
             )
@@ -139,6 +145,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::callController.isInitialized) callController.close()
         if (::nearbyLink.isInitialized) nearbyLink.close()
         super.onDestroy()
     }
@@ -149,10 +156,12 @@ class MainActivity : ComponentActivity() {
 private fun LinkaApp(
     identity: LocalDeviceIdentity,
     nearbyLink: NearbyDirectLink,
+    callController: NearbyCallController,
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit
 ) {
     val linkState by nearbyLink.state.collectAsState()
+    val callState by callController.state.collectAsState()
 
     MaterialTheme {
         Scaffold(
@@ -207,6 +216,7 @@ private fun LinkaApp(
 
                 PendingPairingCard(linkState, nearbyLink)
                 ConnectedDeviceCard(linkState, nearbyLink)
+                CallControlsCard(callState, callController, linkState.connectedPeer != null)
 
                 Text("Nearby devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (linkState.peers.isEmpty()) {
@@ -331,6 +341,64 @@ private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirect
                 style = MaterialTheme.typography.bodySmall
             )
             OutlinedButton(onClick = { nearbyLink.disconnect() }) { Text("Disconnect") }
+        }
+    }
+}
+
+
+@Composable
+private fun CallControlsCard(
+    state: NearbyCallUiState,
+    controller: NearbyCallController,
+    peerConnected: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("LINKA call controls", fontWeight = FontWeight.Bold)
+            Text(state.status, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Call signaling test: ringing, accept, reject and hang up work over the nearby link. Live microphone audio is not connected yet.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            state.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            when (state.call.phase) {
+                CallPhase.IDLE -> {
+                    Button(onClick = { controller.startOutgoingCall() }, enabled = peerConnected) {
+                        Text("Start call")
+                    }
+                }
+                CallPhase.OUTGOING_RINGING -> {
+                    Text("Waiting for the other phone to accept…")
+                    OutlinedButton(onClick = { controller.endCall() }) { Text("Cancel call") }
+                }
+                CallPhase.INCOMING_RINGING -> {
+                    Text("Incoming nearby call")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { controller.acceptIncomingCall() }) { Text("Accept") }
+                        OutlinedButton(onClick = { controller.rejectIncomingCall() }) { Text("Decline") }
+                    }
+                }
+                CallPhase.ACTIVE -> {
+                    Text("Both phones accepted. Audio media is not active.")
+                    OutlinedButton(onClick = { controller.endCall() }) { Text("End call") }
+                }
+                CallPhase.ENDED, CallPhase.FAILED -> {
+                    OutlinedButton(onClick = { controller.reset() }) { Text("Clear call") }
+                    Button(
+                        onClick = { controller.startOutgoingCall() },
+                        enabled = peerConnected
+                    ) { Text("Call again") }
+                }
+            }
         }
     }
 }

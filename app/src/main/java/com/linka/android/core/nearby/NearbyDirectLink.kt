@@ -21,6 +21,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.io.Closeable
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 
 data class NearbyPeer(
     val endpointId: String,
@@ -38,6 +43,33 @@ data class NearbyBytesMessage(
     val bytes: ByteArray
 )
 
+class NearbyIncomingStream internal constructor(
+    val endpointId: String,
+    val input: InputStream,
+    private val payload: Payload
+) : Closeable {
+    override fun close() {
+        runCatching { input.close() }
+        runCatching { payload.close() }
+    }
+}
+
+class NearbyOutgoingStream internal constructor(
+    private val input: PipedInputStream,
+    private val output: PipedOutputStream
+) : Closeable {
+    @Synchronized
+    fun write(bytes: ByteArray) {
+        output.write(bytes)
+        output.flush()
+    }
+
+    override fun close() {
+        runCatching { output.close() }
+        runCatching { input.close() }
+    }
+}
+
 data class NearbyLinkState(
     val isAdvertising: Boolean = false,
     val isDiscovering: Boolean = false,
@@ -49,11 +81,12 @@ data class NearbyLinkState(
 )
 
 /**
- * Direct peer discovery and consent pairing over Nearby Connections.
+ * Direct peer discovery, consent pairing, control messages and full-duplex
+ * byte-stream transport over Nearby Connections.
  *
- * The SDK supplies an encrypted direct transport. LINKA still has to bind
- * trusted device identities to this endpoint and implement its own call
- * lifecycle and media protections before public release.
+ * Google Nearby Connections encrypts its direct transport. This class does
+ * not claim application-level identity binding, relay-safe E2E media keys or
+ * completed voice calls; those remain explicit release requirements.
  */
 class NearbyDirectLink(
     context: Context,
@@ -68,9 +101,15 @@ class NearbyDirectLink(
     )
     val incomingBytes: SharedFlow<NearbyBytesMessage> = _incomingBytes.asSharedFlow()
 
+    private val _incomingStreams = MutableSharedFlow<NearbyIncomingStream>(
+        extraBufferCapacity = 4
+    )
+    val incomingStreams: SharedFlow<NearbyIncomingStream> = _incomingStreams.asSharedFlow()
+
     private val strategy = Strategy.P2P_POINT_TO_POINT
     private val serviceId = "com.linka.android"
     private val maxControlPayloadBytes = 1024
+    private val streamPipeBufferBytes = 64 * 1024
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
@@ -93,13 +132,30 @@ class NearbyDirectLink(
 
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
-            if (payload.type != Payload.Type.BYTES) {
-                payload.close()
-                return
+            when (payload.type) {
+                Payload.Type.BYTES -> {
+                    val bytes = payload.asBytes() ?: return
+                    if (bytes.isNotEmpty() && bytes.size <= maxControlPayloadBytes) {
+                        _incomingBytes.tryEmit(NearbyBytesMessage(endpointId, bytes.copyOf()))
+                    }
+                }
+
+                Payload.Type.STREAM -> {
+                    val stream = payload.asStream()
+                    if (stream == null) {
+                        payload.close()
+                        return
+                    }
+                    val incoming = NearbyIncomingStream(
+                        endpointId = endpointId,
+                        input = stream.asInputStream(),
+                        payload = payload
+                    )
+                    if (!_incomingStreams.tryEmit(incoming)) incoming.close()
+                }
+
+                else -> payload.close()
             }
-            val bytes = payload.asBytes() ?: return
-            if (bytes.isEmpty() || bytes.size > maxControlPayloadBytes) return
-            _incomingBytes.tryEmit(NearbyBytesMessage(endpointId, bytes.copyOf()))
         }
 
         override fun onPayloadTransferUpdate(
@@ -256,11 +312,6 @@ class NearbyDirectLink(
         }
     }
 
-    /**
-     * Submits a bounded binary message to the already authenticated Nearby
-     * endpoint. Success means the SDK accepted the payload for delivery; it
-     * does not claim that the remote app processed it.
-     */
     fun sendBytes(endpointId: String, bytes: ByteArray, onResult: (String?) -> Unit = {}) {
         if (_state.value.connectedPeer?.endpointId != endpointId) {
             onResult("The requested LINKA peer is not connected")
@@ -275,6 +326,34 @@ class NearbyDirectLink(
             .addOnFailureListener { exception ->
                 onResult(exception.localizedMessage ?: "Nearby payload send failed")
             }
+    }
+
+    /**
+     * Opens one continuous outbound stream to the active peer. The returned
+     * writer must be used from a worker thread and closed when the call ends.
+     */
+    fun openOutgoingStream(
+        endpointId: String,
+        onReady: (NearbyOutgoingStream?, String?) -> Unit
+    ) {
+        if (_state.value.connectedPeer?.endpointId != endpointId) {
+            onReady(null, "The requested LINKA peer is not connected")
+            return
+        }
+
+        try {
+            val pipeInput = PipedInputStream(streamPipeBufferBytes)
+            val pipeOutput = PipedOutputStream(pipeInput)
+            val writer = NearbyOutgoingStream(pipeInput, pipeOutput)
+            client.sendPayload(endpointId, Payload.fromStream(pipeInput))
+                .addOnSuccessListener { onReady(writer, null) }
+                .addOnFailureListener { exception ->
+                    writer.close()
+                    onReady(null, exception.localizedMessage ?: "Could not open nearby stream")
+                }
+        } catch (exception: Exception) {
+            onReady(null, exception.localizedMessage ?: "Could not create nearby stream")
+        }
     }
 
     fun disconnect() {

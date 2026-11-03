@@ -90,6 +90,7 @@ class NearbyVoiceSession(
         callScope = CoroutineScope(job + Dispatchers.IO)
 
         val setupError = try {
+            LinkaVoiceForegroundService.start(appContext)
             prepareAudioDevices()
             null
         } catch (error: Exception) {
@@ -400,6 +401,7 @@ class NearbyVoiceSession(
         }
         focusRequest = null
         previousAudioMode?.let { audioManager.mode = it }
+        LinkaVoiceForegroundService.stop(appContext)
         previousAudioMode = null
         endpointId = null
         _state.value = VoiceSessionState(status = reason)

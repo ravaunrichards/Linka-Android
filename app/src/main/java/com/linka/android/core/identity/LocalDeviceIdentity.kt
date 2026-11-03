@@ -22,10 +22,37 @@ data class LocalDeviceIdentity(
     val publicKeyFingerprint: String,
     val publicKeyBase64: String
 ) {
+    /** Sign a short identity statement without exporting the Keystore private key. */
+    fun sign(data: ByteArray): ByteArray {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+            ?: error("LINKA identity signing key is unavailable")
+        return java.security.Signature.getInstance("SHA256withECDSA").run {
+            initSign(entry.privateKey)
+            update(data)
+            sign()
+        }
+    }
+
     companion object {
         private const val PREFERENCES = "linka_identity"
         private const val DEVICE_ID_KEY = "device_id"
         private const val KEY_ALIAS = "linka.identity.signing.v1"
+
+        fun verify(
+            publicKeyBase64: String,
+            data: ByteArray,
+            signatureBytes: ByteArray
+        ): Boolean = runCatching {
+            val encoded = Base64.decode(publicKeyBase64, Base64.NO_WRAP)
+            val publicKey = java.security.KeyFactory.getInstance("EC")
+                .generatePublic(java.security.spec.X509EncodedKeySpec(encoded))
+            java.security.Signature.getInstance("SHA256withECDSA").run {
+                initVerify(publicKey)
+                update(data)
+                verify(signatureBytes)
+            }
+        }.getOrDefault(false)
 
         fun load(context: Context): LocalDeviceIdentity {
             val preferences = context.applicationContext

@@ -3,6 +3,7 @@ package com.linka.android
 import android.app.Application
 import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.identity.TrustedDeviceStore
 import com.linka.android.core.nearby.NearbyDirectLink
 
 /**
@@ -11,6 +12,9 @@ import com.linka.android.core.nearby.NearbyDirectLink
  */
 class LinkaApplication : Application() {
     lateinit var identity: LocalDeviceIdentity
+        private set
+
+    lateinit var trustedDevices: TrustedDeviceStore
         private set
 
     lateinit var nearbyLink: NearbyDirectLink
@@ -22,6 +26,7 @@ class LinkaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         identity = LocalDeviceIdentity.load(this)
+        trustedDevices = TrustedDeviceStore(this, identity.deviceId)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
         callController = NearbyCallController(this, identity.deviceId, nearbyLink)
     }

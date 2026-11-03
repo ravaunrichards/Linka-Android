@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class VoiceSessionState(
@@ -60,6 +61,8 @@ class NearbyVoiceSession(
     private var endpointId: String? = null
     private var outgoingStream: NearbyOutgoingStream? = null
     private var incomingStream: NearbyIncomingStream? = null
+    private val incomingStreamLock = Any()
+    private val pendingIncomingStreams = ArrayDeque<NearbyIncomingStream>()
     private var recorder: AudioRecord? = null
     private var player: AudioTrack? = null
     private var echoCanceler: AcousticEchoCanceler? = null
@@ -72,16 +75,7 @@ class NearbyVoiceSession(
     init {
         scope.launch(Dispatchers.IO) {
             nearbyLink.incomingStreams.collect { incoming ->
-                if (incoming.endpointId != endpointId || !started.get()) {
-                    incoming.close()
-                } else {
-                    val worker = callScope
-                    if (worker == null) {
-                        incoming.close()
-                    } else {
-                        worker.launch { receiveAudio(incoming) }
-                    }
-                }
+                dispatchIncomingStream(incoming)
             }
         }
     }
@@ -94,6 +88,7 @@ class NearbyVoiceSession(
         val job = SupervisorJob()
         callJob = job
         callScope = CoroutineScope(job + Dispatchers.IO)
+        drainPendingIncomingStreams()
 
         val setupError = try {
             prepareAudioDevices()
@@ -270,6 +265,40 @@ class NearbyVoiceSession(
         }
     }
 
+    private fun dispatchIncomingStream(incoming: NearbyIncomingStream) {
+        synchronized(incomingStreamLock) {
+            val connectedEndpoint = nearbyLink.state.value.connectedPeer?.endpointId
+            if (incoming.endpointId != connectedEndpoint) {
+                incoming.close()
+                return
+            }
+
+            val worker = callScope
+            if (started.get() && worker != null && incoming.endpointId == endpointId) {
+                worker.launch { receiveAudio(incoming) }
+            } else {
+                // Both peers open their outgoing stream after accepting. The
+                // remote stream can therefore arrive just before this side
+                // processes ACCEPT and starts its own session.
+                pendingIncomingStreams.addLast(incoming)
+            }
+        }
+    }
+
+    private fun drainPendingIncomingStreams() {
+        synchronized(incomingStreamLock) {
+            val worker = callScope ?: return
+            while (pendingIncomingStreams.isNotEmpty()) {
+                val incoming = pendingIncomingStreams.removeFirst()
+                if (incoming.endpointId == endpointId) {
+                    worker.launch { receiveAudio(incoming) }
+                } else {
+                    incoming.close()
+                }
+            }
+        }
+    }
+
     private fun receiveAudio(incoming: NearbyIncomingStream) {
         incomingStream = incoming
         val audioTrack = player
@@ -338,8 +367,13 @@ class NearbyVoiceSession(
         if (!started.getAndSet(false)) return
         outgoingStream?.close()
         outgoingStream = null
-        incomingStream?.close()
-        incomingStream = null
+        synchronized(incomingStreamLock) {
+            while (pendingIncomingStreams.isNotEmpty()) {
+                pendingIncomingStreams.removeFirst().close()
+            }
+            incomingStream?.close()
+            incomingStream = null
+        }
         runCatching { recorder?.stop() }
         runCatching { player?.pause() }
         runCatching { player?.flush() }

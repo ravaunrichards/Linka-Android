@@ -206,7 +206,6 @@ private fun LinkaApp(
                 }
 
                 PendingPairingCard(linkState, nearbyLink)
-
                 ConnectedDeviceCard(linkState, nearbyLink)
 
                 Text("Nearby devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -306,7 +305,7 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Only accept when the same six-digit code appears on the other phone. Reject unexpected requests.",
+                "Compare the four-digit code with the other phone. Accept only when both codes match; reject unexpected requests.",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

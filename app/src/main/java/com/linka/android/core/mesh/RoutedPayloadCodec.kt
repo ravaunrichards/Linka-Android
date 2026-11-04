@@ -21,7 +21,7 @@ object RoutedPayloadCodec {
     const val MAX_PAYLOAD_BYTES = 700
     private const val MAGIC = 0x4C4E5250 // "LNRP"
     private const val VERSION = 1
-    private const val HEADER_BYTES = 7
+    private const val HEADER_BYTES = 8
 
     data class Payload(val type: RoutedPayloadType, val bytes: ByteArray)
 
@@ -33,7 +33,7 @@ object RoutedPayloadCodec {
             .putInt(MAGIC)
             .put(VERSION.toByte())
             .put(type.wireValue.toByte())
-            .put(bytes.size.toByte())
+            .putShort(bytes.size.toShort())
             .put(bytes)
             .array()
     }
@@ -48,7 +48,7 @@ object RoutedPayloadCodec {
             "Routed LINKA payload version is unsupported"
         }
         val type = RoutedPayloadType.fromWire(input.get().toInt() and 0xFF)
-        val length = input.get().toInt() and 0xFF
+        val length = input.short.toInt() and 0xFFFF
         require(length > 0 && length == input.remaining()) {
             "Routed LINKA payload length is invalid"
         }

@@ -239,7 +239,9 @@ class MeshPacketRouter(
             return listOf(MeshRouterAction.Dropped("Duplicate route request suppressed"))
         }
         seenRequests[packet.requestId] = packet.expiresAtEpochMs
-        if (packet.hopCount >= MAX_HOPS || packet.hopLimit <= 0) {
+        if (packet.destinationDeviceId != localDeviceId &&
+            (packet.hopCount >= MAX_HOPS || packet.hopLimit <= 1)
+        ) {
             return listOf(MeshRouterAction.Dropped("Route request exceeded the maximum hop count"))
         }
         reversePaths[packet.requestId] = ReversePath(
@@ -411,9 +413,6 @@ class MeshPacketRouter(
     }
 
     private fun prune(nowEpochMs: Long) {
-        neighbors.keys.toList().forEach { endpoint ->
-            if (neighbors[endpoint] == null) unregisterNeighbor(endpoint)
-        }
         routes.entries.removeAll { it.value.expiresAtEpochMs <= nowEpochMs }
         reversePaths.entries.removeAll { it.value.expiresAt <= nowEpochMs }
         seenRequests.entries.removeAll { it.value <= nowEpochMs }
@@ -540,6 +539,9 @@ object MeshPacketCodec {
         require(packet.requestId.length <= MAX_ID_BYTES)
         require(packet.hopLimit in 0..MeshPacketRouter.MAX_HOPS)
         require(packet.hopCount in 0..MeshPacketRouter.MAX_HOPS)
+        require(packet.hopLimit + packet.hopCount == MeshPacketRouter.MAX_HOPS) {
+            "Mesh hop budget was altered or exceeded"
+        }
         require(packet.expiresAtEpochMs > 0)
         require(packet.payload.size <= MAX_PAYLOAD_BYTES)
         if (requireSignature) {

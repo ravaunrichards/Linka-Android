@@ -203,20 +203,14 @@ class NearbyCallController(
     fun startOutgoingCall() {
         val peer = nearbyLink.state.value.connectedPeer
             ?: return publishError("Connect to a nearby LINKA phone first")
-        if (peerSecurity.session(peer.endpointId) == null) {
-            return publishError("Secure pairing is not complete. Scan this phone's LINKA identity QR on the other phone and retry after verification.")
-        }
+        val securePeer = peerSecurity.session(peer.endpointId)
+            ?: return publishError("Secure pairing is not complete. Scan this phone's LINKA identity QR on the other phone and retry after verification.")
         val next = try {
             machine.beginOutgoing(UUID.randomUUID().toString(), peer.endpointId)
         } catch (error: IllegalStateException) {
             return publishError(error.message ?: "A call is already in progress")
         } catch (error: IllegalArgumentException) {
             return publishError(error.message ?: "Invalid call details")
-        }
-
-        val securePeer = peerSecurity.session(peer.endpointId) ?: run {
-            publishError("Secure peer identity verification was lost")
-            return
         }
 
         try {

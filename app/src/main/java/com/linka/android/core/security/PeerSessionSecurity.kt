@@ -131,7 +131,8 @@ class PeerSessionSecurity internal constructor(
                         // A previously authenticated peer may have restarted its
                         // ephemeral exchange after a trust update or reconnect.
                         // The new hello is already signature-checked above.
-                        secureSessions.remove(endpointId)
+                        secureSessions.remove(endpointId)?.destroy()
+                        exchange.rootKey?.fill(0)
                         exchange = createExchange()
                         exchanges[endpointId] = exchange
                         responses += exchange.localPacket
@@ -178,8 +179,8 @@ class PeerSessionSecurity internal constructor(
                 }
             }
         } catch (error: Exception) {
-            exchanges.remove(endpointId)
-            secureSessions.remove(endpointId)
+            exchanges.remove(endpointId)?.rootKey?.fill(0)
+            secureSessions.remove(endpointId)?.destroy()
             Result(
                 responses = emptyList(),
                 isAuthenticated = false,
@@ -583,8 +584,10 @@ private class SecurePayloadChannel(
 ) {
     private val sendSequence = AtomicLong(0)
     private var lastReceivedSequence = -1L
+    @Volatile private var destroyed = false
 
     fun encrypt(plaintext: ByteArray): ByteArray {
+        check(!destroyed) { "Secure payload channel has been destroyed" }
         require(plaintext.isNotEmpty() && plaintext.size <= MAX_PLAINTEXT_BYTES)
         val sequence = sendSequence.getAndIncrement()
         check(sequence >= 0) { "Secure sequence space exhausted" }
@@ -599,6 +602,7 @@ private class SecurePayloadChannel(
 
     @Synchronized
     fun decrypt(packet: ByteArray): ByteArray {
+        check(!destroyed) { "Secure payload channel has been destroyed" }
         require(packet.size in (8 + TAG_BYTES + 1)..(8 + TAG_BYTES + MAX_PLAINTEXT_BYTES)) {
             "Encrypted LINKA packet size is invalid"
         }
@@ -618,7 +622,10 @@ private class SecurePayloadChannel(
     }
 
     @Synchronized
+    @Synchronized
     fun destroy() {
+        if (destroyed) return
+        destroyed = true
         sendKey.fill(0)
         receiveKey.fill(0)
         lastReceivedSequence = Long.MAX_VALUE

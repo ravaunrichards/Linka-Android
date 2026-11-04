@@ -370,7 +370,7 @@ class MeshPacketRouterTest {
             "relay-caller",
             nowEpochMs = now
         ).single() as MeshRouterAction.Dropped
-        assertTrue(lifetimeResult.reason.contains("lifetime"))
+        assertTrue(lifetimeResult.reason.contains("expiry"))
 
         val malformedId = packet.copy(packetId = "not-a-uuid")
         assertThrows(IllegalArgumentException::class.java) {

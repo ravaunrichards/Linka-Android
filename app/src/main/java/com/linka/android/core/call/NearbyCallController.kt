@@ -44,7 +44,7 @@ data class NearbyCallUiState(
 class NearbyCallController(
     context: Context,
     private val localIdentity: LocalDeviceIdentity,
-    trustedDevices: TrustedDeviceStore,
+    private val trustedDevices: TrustedDeviceStore,
     private val relayConsent: RelayConsentStore,
     private val nearbyLink: NearbyDirectLink
 ) {

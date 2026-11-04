@@ -19,6 +19,15 @@
 
 The code includes a direct-call media path, but physical two-phone operation with mobile data and Wi-Fi internet disabled remains a release verification requirement. A successful Gradle build does not validate radio discovery, microphone permissions, two-way audio, acoustic quality, battery use or Android background behavior.
 
+## Android phone hub integrations
+
+The Compose navigation provides a Phone hub with an on-screen keypad and explicit handoffs to Android system applications:
+- Carrier dialing uses `Intent.ACTION_DIAL`; Android's dialer presents the number for user review and confirmation. LINKA does not use `ACTION_CALL` or request the `CALL_PHONE` permission.
+- SMS composition uses `Intent.ACTION_SENDTO` with an `smsto:` URI and relies on the user's installed messaging app.
+- Contacts and recent-call history open the Android contacts and phone applications through their system content URIs.
+
+These handoffs are not an in-app telephony or messaging implementation. Carrier service, SIM provisioning, SMS capability and operator charges remain the user's responsibility. In-app SMS, video calling and internet-based calling are not implemented in this build. The offline Nearby/mesh voice path remains separate and never silently falls back to carrier service.
+
 ## Radio topology and distance
 
 - Nearby Connections P2P_POINT_TO_POINT is one-to-one and prioritizes highest throughput. It cannot keep multiple peer links open at once.

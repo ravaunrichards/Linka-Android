@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Wifi
@@ -100,6 +101,7 @@ private val LinkaColors = lightColorScheme(
 
 private enum class LinkaDestination(val label: String) {
     HOME("Home"),
+    PHONE("Phone"),
     NEARBY("Nearby"),
     IDENTITY("My ID"),
     SETTINGS("Settings")
@@ -304,7 +306,7 @@ private fun LinkaApp(
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text("LINKA", fontWeight = FontWeight.Bold)
                             Text(
-                                "Nearby calling",
+                                "Private nearby communications",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -343,6 +345,8 @@ private fun LinkaApp(
                                 when (item) {
                                     LinkaDestination.HOME ->
                                         Icon(Icons.Outlined.Home, contentDescription = null)
+                                    LinkaDestination.PHONE ->
+                                        Icon(Icons.Outlined.Phone, contentDescription = null)
                                     LinkaDestination.NEARBY ->
                                         Icon(Icons.Outlined.Wifi, contentDescription = null)
                                     LinkaDestination.IDENTITY ->
@@ -377,6 +381,10 @@ private fun LinkaApp(
                     onOpenIdentity = { destination = LinkaDestination.IDENTITY },
                     onStartCall = onStartCall,
                     onAcceptCall = onAcceptCall
+                )
+
+                LinkaDestination.PHONE -> PhoneHubScreen(
+                    modifier = Modifier.padding(contentPadding)
                 )
 
                 LinkaDestination.NEARBY -> NearbyScreen(

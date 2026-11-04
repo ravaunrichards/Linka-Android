@@ -21,6 +21,18 @@ The current unit suite exercises:
 
 Automated tests establish deterministic source-level behavior. They do not exercise Android radios, microphones, real acoustic conditions or device-specific background restrictions.
 
+## Android phone hub handoff checks
+
+On a physical Android phone with the relevant system apps installed:
+1. Open the Phone destination and enter a valid number using the keypad and text field.
+2. Tap Open dialer. Confirm Android's system dialer opens with the selected number prefilled and that LINKA does not place the call itself.
+3. Return to LINKA and tap Message. Confirm the installed SMS app opens a message addressed to the selected number.
+4. Open Recent calls and Contacts. Confirm Android routes each action to the corresponding system app.
+5. Repeat with no SIM, no default SMS app, and restricted system-app availability. Confirm the app reports that a handler is unavailable instead of crashing.
+6. Verify the Nearby destination still performs discovery, pairing and LINKA voice call controls independently of the carrier dialer.
+
+The handoff checks do not establish that a carrier call or SMS succeeds. Those outcomes depend on the user's operator, SIM/account state, radio coverage and installed Android apps.
+
 ## Two-phone direct offline test
 Use two supported Android phones:
 1. Record manufacturer/model, Android version, security patch and Google Play services version.

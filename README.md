@@ -46,6 +46,12 @@ A successful build and unit suite validate the source and protocol components. T
 - LINKA must never silently fall back to a chargeable carrier call.
 - LINKA is not an emergency-calling service.
 
+## Android phone tools
+
+The Android navigation now includes a Phone hub with an on-screen keypad and shortcuts to the device's recent-call history and contacts. The hub hands carrier dialing to Android with `ACTION_DIAL`, so the user reviews and confirms the number in the system dialer. SMS composition is handed to the installed Android messaging app with `ACTION_SENDTO`.
+
+These are system-app integrations, not an in-app carrier stack: call charges and SMS availability depend on the user's SIM, mobile operator and installed apps. LINKA does not request permission to place carrier calls automatically. In-app SMS, video calling and internet-based calling are not implemented in this build. SIM-free LINKA voice remains the separate nearby/mesh feature described above.
+
 ## Browser companion
 The static responsive browser companion is under `web/`. It documents LINKA and its current Android capabilities. A normal webpage cannot access Android Nearby Connections or Android Keystore and is not an offline calling client.
 

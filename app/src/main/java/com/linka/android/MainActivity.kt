@@ -175,6 +175,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Keep nearby discovery and advertising active whenever LINKA returns
+        // to the foreground and the user has already granted the required access.
+        if (::nearbyLink.isInitialized && hasNearbyPermissions() && radiosReady()) {
+            nearbyLink.startNetwork()
+        }
+    }
+
     private fun scanLinkaQr(onResult: (String?) -> Unit) {
         val options = GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -193,29 +202,34 @@ class MainActivity : ComponentActivity() {
             }
     }
 
+    private fun requiredNearbyPermissions(): List<String> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            add(Manifest.permission.BLUETOOTH_SCAN)
+            add(Manifest.permission.BLUETOOTH_CONNECT)
+            add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        }
+
+        // Nearby Connections requires location permission on Android 8–12.
+        // LINKA does not derive or store physical location from these radios.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+    }.distinct()
+
+    private fun hasNearbyPermissions(): Boolean =
+        requiredNearbyPermissions().all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+
     private fun withNearbyPermissions(action: () -> Unit) {
-        val required = buildList {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                add(Manifest.permission.BLUETOOTH_SCAN)
-                add(Manifest.permission.BLUETOOTH_CONNECT)
-                add(Manifest.permission.BLUETOOTH_ADVERTISE)
-            }
-
-            // Nearby Connections requires location permission on Android 8–12.
-            // LINKA does not derive or store physical location from these radios.
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    add(Manifest.permission.ACCESS_FINE_LOCATION)
-                }
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.NEARBY_WIFI_DEVICES)
-            }
-        }.distinct()
-
-        val missing = required.filter {
+        val missing = requiredNearbyPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
@@ -248,25 +262,17 @@ class MainActivity : ComponentActivity() {
         return bluetoothEnabled || wifiEnabled
     }
 
-    private fun startDiscoveryWhenReady() {
-        if (radiosReady()) {
-            nearbyLink.startDiscovery()
-        } else {
-            Toast.makeText(
-                this,
-                "Turn on Bluetooth or Wi-Fi in Android Quick Settings, then try again.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
+    private fun startDiscoveryWhenReady() = activateNetworkWhenReady()
 
-    private fun startAdvertisingWhenReady() {
+    private fun startAdvertisingWhenReady() = activateNetworkWhenReady()
+
+    private fun activateNetworkWhenReady() {
         if (radiosReady()) {
-            nearbyLink.startAdvertising()
+            nearbyLink.startNetwork()
         } else {
             Toast.makeText(
                 this,
-                "Turn on Bluetooth or Wi-Fi in Android Quick Settings, then try again.",
+                "Turn on Bluetooth or Wi-Fi in Android Quick Settings, then activate the LINKA network again.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -527,7 +533,7 @@ private fun LinkaHomeScreen(
                     onClick = onStartAdvertising,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Be discoverable")
+                    Text("Restart network")
                 }
             }
         }
@@ -620,7 +626,7 @@ private fun NearbyScreen(
                 OutlinedButton(
                     onClick = onStartAdvertising,
                     modifier = Modifier.weight(1f)
-                ) { Text("Be discoverable") }
+                ) { Text("Restart network") }
             }
         }
 
@@ -705,6 +711,8 @@ private fun NearbyScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        val routeHops = callController.routeHopCount(device.deviceId)
+                        val routeSecure = callController.isRoutedPeerAuthenticated(device.deviceId)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(device.displayName, fontWeight = FontWeight.SemiBold)
                             Text(
@@ -712,12 +720,22 @@ private fun NearbyScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Text(
+                                when {
+                                    routeSecure -> "ACTIVE ROUTE • End-to-end verified • ${routeHops ?: 1} hop(s)"
+                                    routeHops != null -> "Route found • securing destination • $routeHops hop(s)"
+                                    else -> "No active route • waiting for consenting relay links"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (routeSecure) MaterialTheme.colorScheme.secondary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedButton(onClick = {
                                 callController.discoverMeshRoute(device.deviceId)
                             }) { Text("Find route") }
-                            if (callController.isRoutedPeerAuthenticated(device.deviceId)) {
+                            if (routeSecure) {
                                 Button(onClick = {
                                     onStartRoutedCall(device.deviceId)
                                 }) { Text("Call") }
@@ -926,6 +944,21 @@ private fun ConnectionStatusCard(state: NearbyLinkState) {
                     state.status,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    when {
+                        state.isAdvertising && state.isDiscovering ->
+                            "Network active: discoverable and scanning for nearby LINKA phones"
+                        state.isAdvertising -> "Discoverable, but not scanning for neighbours"
+                        state.isDiscovering -> "Scanning, but this phone is not discoverable"
+                        else -> "Network inactive"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.isAdvertising && state.isDiscovering) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
                 if (state.connectedPeers.isNotEmpty()) {
                     Text(

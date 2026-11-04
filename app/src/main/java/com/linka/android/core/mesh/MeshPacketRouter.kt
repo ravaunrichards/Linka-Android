@@ -203,8 +203,10 @@ class MeshPacketRouter(
             payload = encryptedPayload.copyOf(),
             signature = ByteArray(0)
         )
-        val packet = sign(unsigned)
-        return listOf(MeshRouterAction.SendTo(route.nextHopEndpointId, MeshPacketCodec.encode(packet)))
+        // The OPAQUE_DATA body is already end-to-end authenticated by the
+        // caller/recipient handshake and AES-GCM. Avoid a Keystore ECDSA
+        // operation for every 20 ms voice frame.
+        return listOf(MeshRouterAction.SendTo(route.nextHopEndpointId, MeshPacketCodec.encode(unsigned)))
     }
 
     @Synchronized
@@ -231,7 +233,9 @@ class MeshPacketRouter(
         if (packet.sourceDeviceId == localDeviceId) {
             return listOf(MeshRouterAction.Dropped("Looped packet from local device"))
         }
-        if (!verifyOrigin(packet.sourceDeviceId, MeshPacketCodec.signingBytes(packet), packet.signature)) {
+        if (packet.type != MeshPacketType.OPAQUE_DATA &&
+            !verifyOrigin(packet.sourceDeviceId, MeshPacketCodec.signingBytes(packet), packet.signature)
+        ) {
             return listOf(MeshRouterAction.Dropped("Mesh packet origin signature is invalid or untrusted"))
         }
 
@@ -523,7 +527,7 @@ object MeshPacketCodec {
             writeString(output, packet.destinationDeviceId, MAX_ID_BYTES, allowEmpty = false)
             output.writeShort(packet.payload.size)
             output.write(packet.payload)
-            writeBytes(output, packet.signature, SIGNATURE_MAX_BYTES)
+            writeSignature(output, packet.type, packet.signature)
         }
         return bytes.toByteArray().also {
             require(it.size <= MAX_PACKET_BYTES) { "Mesh packet exceeds transport limit" }
@@ -548,7 +552,7 @@ object MeshPacketCodec {
             "Mesh payload length is invalid"
         }
         val payload = ByteArray(payloadLength).also(input::readFully)
-        val signature = readBytes(input, SIGNATURE_MAX_BYTES)
+        val signature = readSignature(input, type)
         require(input.available() == 0) { "Mesh packet contains trailing bytes" }
 
         val packet = MeshPacket(
@@ -590,8 +594,15 @@ object MeshPacketCodec {
         require(packet.expiresAtEpochMs > 0)
         require(packet.payload.size <= MAX_PAYLOAD_BYTES)
         if (requireSignature) {
-            require(packet.signature.size in SIGNATURE_MIN_BYTES..SIGNATURE_MAX_BYTES) {
-                "Mesh packet signature length is invalid"
+            when (packet.type) {
+                MeshPacketType.ROUTE_REQUEST, MeshPacketType.ROUTE_REPLY ->
+                    require(packet.signature.size in SIGNATURE_MIN_BYTES..SIGNATURE_MAX_BYTES) {
+                        "Route-control packet signature length is invalid"
+                    }
+                MeshPacketType.OPAQUE_DATA ->
+                    require(packet.signature.isEmpty()) {
+                        "Opaque data uses end-to-end AEAD and must not carry a per-frame origin signature"
+                    }
             }
         }
         when (packet.type) {
@@ -615,6 +626,31 @@ object MeshPacketCodec {
         val bytes = ByteArray(length)
         if (length > 0) input.readFully(bytes)
         return String(bytes, StandardCharsets.UTF_8)
+    }
+
+    private fun writeSignature(
+        output: DataOutputStream,
+        type: MeshPacketType,
+        signature: ByteArray
+    ) {
+        if (type == MeshPacketType.OPAQUE_DATA) {
+            require(signature.isEmpty())
+            output.writeByte(0)
+        } else {
+            writeBytes(output, signature, SIGNATURE_MAX_BYTES)
+        }
+    }
+
+    private fun readSignature(input: DataInputStream, type: MeshPacketType): ByteArray {
+        val length = input.readUnsignedByte()
+        if (type == MeshPacketType.OPAQUE_DATA) {
+            require(length == 0) { "Opaque data packet must not carry an origin signature" }
+            return ByteArray(0)
+        }
+        require(length in SIGNATURE_MIN_BYTES..SIGNATURE_MAX_BYTES) {
+            "Route-control packet signature length is invalid"
+        }
+        return ByteArray(length).also(input::readFully)
     }
 
     private fun writeBytes(output: DataOutputStream, value: ByteArray, maxBytes: Int) {

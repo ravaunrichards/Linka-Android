@@ -42,20 +42,25 @@ class PeerSessionSecurityTest {
         return TestIdentity(UUID.randomUUID().toString(), generator.generateKeyPair())
     }
 
-    private fun session(local: TestIdentity, trusted: TestIdentity?): PeerSessionSecurity =
+    private fun session(
+        local: TestIdentity,
+        trusted: TestIdentity?,
+        relayOptIn: Boolean = false
+    ): PeerSessionSecurity =
         PeerSessionSecurity(
             localDeviceId = local.deviceId,
             localPublicKeyBase64 = local.publicKeyBase64,
             signIdentity = local::sign,
-            trustedIdentity = { id -> trusted?.takeIf { it.deviceId == id }?.trusted() }
+            trustedIdentity = { id -> trusted?.takeIf { it.deviceId == id }?.trusted() },
+            localRelayOptIn = { relayOptIn }
         )
 
     @Test
     fun twoQrTrustedPeersCompleteMutualIdentityHandshakeAndShareSecureSession() {
         val alice = newIdentity()
         val bob = newIdentity()
-        val aliceSession = session(alice, bob)
-        val bobSession = session(bob, alice)
+        val aliceSession = session(alice, bob, relayOptIn = true)
+        val bobSession = session(bob, alice, relayOptIn = false)
 
         val aliceHello = aliceSession.begin("endpoint-b")!!
         val bobHello = bobSession.begin("endpoint-a")!!
@@ -71,6 +76,8 @@ class PeerSessionSecurityTest {
         val bobComplete = bobSession.handle("endpoint-a", aliceReply.responses.single())
         assertTrue(aliceComplete.isAuthenticated)
         assertTrue(bobComplete.isAuthenticated)
+        assertEquals(false, aliceComplete.remoteRelayOptIn)
+        assertEquals(true, bobComplete.remoteRelayOptIn)
         assertNotNull(aliceSession.session("endpoint-b"))
         assertNotNull(bobSession.session("endpoint-a"))
 

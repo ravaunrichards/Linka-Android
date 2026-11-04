@@ -527,7 +527,7 @@ private fun LinkaHomeScreen(
                 ) {
                     Icon(Icons.Outlined.Wifi, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Find phones")
+                    Text("Activate LINKA network")
                 }
                 OutlinedButton(
                     onClick = onStartAdvertising,
@@ -622,7 +622,7 @@ private fun NearbyScreen(
                 Button(
                     onClick = onStartDiscovery,
                     modifier = Modifier.weight(1f)
-                ) { Text("Find phones") }
+                ) { Text("Activate LINKA network") }
                 OutlinedButton(
                     onClick = onStartAdvertising,
                     modifier = Modifier.weight(1f)

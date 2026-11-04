@@ -165,6 +165,9 @@ class MainActivity : ComponentActivity() {
                 onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } },
                 onStartCall = { withMicrophonePermission { callController.startOutgoingCall() } },
                 onAcceptCall = { withMicrophonePermission { callController.acceptIncomingCall() } },
+                onStartRoutedCall = { deviceId ->
+                    withMicrophonePermission { callController.startRoutedCall(deviceId) }
+                },
                 onScanQr = { callback -> scanLinkaQr(callback) }
             )
         }
@@ -284,7 +287,8 @@ private fun LinkaApp(
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
     onStartCall: () -> Unit,
-    onAcceptCall: () -> Unit
+    onAcceptCall: () -> Unit,
+    onStartRoutedCall: (String) -> Unit
 ) {
     val linkState by nearbyLink.state.collectAsState()
     val callState by callController.state.collectAsState()
@@ -386,7 +390,8 @@ private fun LinkaApp(
                     onStartDiscovery = onStartDiscovery,
                     onStartAdvertising = onStartAdvertising,
                     onStartCall = onStartCall,
-                    onAcceptCall = onAcceptCall
+                    onAcceptCall = onAcceptCall,
+                    onStartRoutedCall = onStartRoutedCall
                 )
 
                 LinkaDestination.IDENTITY -> IdentityScreen(
@@ -578,7 +583,8 @@ private fun NearbyScreen(
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
     onStartCall: () -> Unit,
-    onAcceptCall: () -> Unit
+    onAcceptCall: () -> Unit,
+    onStartRoutedCall: (String) -> Unit
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -699,9 +705,16 @@ private fun NearbyScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        OutlinedButton(onClick = {
-                            callController.discoverMeshRoute(device.deviceId)
-                        }) { Text("Find route") }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(onClick = {
+                                callController.discoverMeshRoute(device.deviceId)
+                            }) { Text("Find route") }
+                            if (callController.isRoutedPeerAuthenticated(device.deviceId)) {
+                                Button(onClick = {
+                                    onStartRoutedCall(device.deviceId)
+                                }) { Text("Call") }
+                            }
+                        }
                     }
                 }
             }

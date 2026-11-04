@@ -18,6 +18,15 @@ class RoutedPayloadCodecTest {
     }
 
     @Test
+    fun supportsSignedHandshakePayloadsLargerThan255Bytes() {
+        val handshake = ByteArray(340) { (it * 13).toByte() }
+        val encoded = RoutedPayloadCodec.encode(RoutedPayloadType.PEER_HANDSHAKE, handshake)
+        val decoded = RoutedPayloadCodec.decode(encoded)
+        assertEquals(RoutedPayloadType.PEER_HANDSHAKE, decoded.type)
+        assertArrayEquals(handshake, decoded.bytes)
+    }
+
+    @Test
     fun rejectsEmptyAndOversizedPayloads() {
         assertThrows(IllegalArgumentException::class.java) {
             RoutedPayloadCodec.encode(RoutedPayloadType.CALL_CONTROL, ByteArray(0))

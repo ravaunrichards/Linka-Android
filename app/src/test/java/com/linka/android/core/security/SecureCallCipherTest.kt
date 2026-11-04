@@ -83,6 +83,31 @@ class SecureCallCipherTest {
         }
     }
 
+
+    @Test
+    fun preventsCallIdReuseAndOperationsAfterSessionDestruction() {
+        val peer = SecurePeerSession(
+            localDeviceId = "device-a",
+            remoteDeviceId = "device-b",
+            remoteFingerprint = "fingerprint-b",
+            remoteRelayOptIn = false,
+            rootKey = ByteArray(32) { (it + 3).toByte() }
+        )
+        val firstCall = peer.forCall("unique-call")
+        assertThrows(IllegalStateException::class.java) {
+            peer.forCall("unique-call")
+        }
+
+        peer.destroy()
+        firstCall.destroy()
+        assertThrows(IllegalStateException::class.java) {
+            peer.forCall("another-call")
+        }
+        assertThrows(IllegalStateException::class.java) {
+            peer.encryptControl(byteArrayOf(1))
+        }
+    }
+
     @Test
     fun encryptedVoicePacketHasFixedBoundedSize() {
         val alice = SecureCallCipher(keyA, keyB, "call-size")

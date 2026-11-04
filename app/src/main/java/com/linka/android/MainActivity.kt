@@ -10,8 +10,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,47 +21,86 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.linka.android.core.identity.LocalDeviceIdentity
-import com.linka.android.core.identity.LinkaQrIdentity
-import com.linka.android.core.identity.LinkaQrBitmap
-import com.linka.android.core.identity.TrustedDeviceStore
-import com.linka.android.core.identity.VerifiedQrIdentity
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.call.CallPhase
 import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.call.NearbyCallUiState
-import com.linka.android.core.audio.VoiceSessionState
+import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.identity.LinkaQrBitmap
+import com.linka.android.core.identity.LinkaQrIdentity
+import com.linka.android.core.identity.TrustedDeviceStore
+import com.linka.android.core.identity.VerifiedQrIdentity
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyLinkState
 import com.linka.android.core.nearby.NearbyPeer
+
+private val LinkaColors = lightColorScheme(
+    primary = Color(0xFF2459C4),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFDCE7FF),
+    onPrimaryContainer = Color(0xFF15346D),
+    secondary = Color(0xFF087E83),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD5F2EF),
+    onSecondaryContainer = Color(0xFF0B4141),
+    background = Color(0xFFF5F7FB),
+    onBackground = Color(0xFF17253A),
+    surface = Color.White,
+    onSurface = Color(0xFF17253A),
+    surfaceVariant = Color(0xFFEAF0F8),
+    onSurfaceVariant = Color(0xFF52627A),
+    outline = Color(0xFFD5DFEC)
+)
+
+private enum class LinkaDestination(val label: String) {
+    HOME("Home"),
+    NEARBY("Nearby"),
+    IDENTITY("My ID"),
+    SETTINGS("Settings")
+}
 
 class MainActivity : ComponentActivity() {
     private lateinit var identity: LocalDeviceIdentity
@@ -233,94 +274,650 @@ private fun LinkaApp(
     val linkState by nearbyLink.state.collectAsState()
     val callState by callController.state.collectAsState()
     val voiceState by callController.voiceState.collectAsState()
+    var destination by rememberSaveable { mutableStateOf(LinkaDestination.HOME) }
 
-    MaterialTheme {
+    MaterialTheme(colorScheme = LinkaColors) {
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
-                    title = { Text("LINKA", fontWeight = FontWeight.Bold) }
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text("LINKA", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Nearby calling",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    actions = {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(100.dp),
+                            modifier = Modifier.padding(end = 16.dp)
+                        ) {
+                            Text(
+                                "LOCAL FIRST",
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp
+                ) {
+                    LinkaDestination.entries.forEach { item ->
+                        NavigationBarItem(
+                            selected = destination == item,
+                            onClick = { destination = item },
+                            icon = {
+                                when (item) {
+                                    LinkaDestination.HOME ->
+                                        Icon(Icons.Outlined.Home, contentDescription = null)
+                                    LinkaDestination.NEARBY ->
+                                        Icon(Icons.Outlined.Wifi, contentDescription = null)
+                                    LinkaDestination.IDENTITY ->
+                                        Icon(Icons.Outlined.QrCode2, contentDescription = null)
+                                    LinkaDestination.SETTINGS ->
+                                        Icon(Icons.Outlined.Settings, contentDescription = null)
+                                }
+                            },
+                            label = { Text(item.label) },
+                            alwaysShowLabel = true
+                        )
+                    }
+                }
+            }
+        ) { contentPadding ->
+            when (destination) {
+                LinkaDestination.HOME -> LinkaHomeScreen(
+                    modifier = Modifier.padding(contentPadding),
+                    linkState = linkState,
+                    callState = callState,
+                    voiceState = voiceState,
+                    callController = callController,
+                    onStartDiscovery = {
+                        destination = LinkaDestination.NEARBY
+                        onStartDiscovery()
+                    },
+                    onStartAdvertising = {
+                        destination = LinkaDestination.NEARBY
+                        onStartAdvertising()
+                    },
+                    onOpenNearby = { destination = LinkaDestination.NEARBY },
+                    onOpenIdentity = { destination = LinkaDestination.IDENTITY },
+                    onStartCall = onStartCall,
+                    onAcceptCall = onAcceptCall
+                )
+
+                LinkaDestination.NEARBY -> NearbyScreen(
+                    modifier = Modifier.padding(contentPadding),
+                    linkState = linkState,
+                    callState = callState,
+                    voiceState = voiceState,
+                    nearbyLink = nearbyLink,
+                    callController = callController,
+                    onStartDiscovery = onStartDiscovery,
+                    onStartAdvertising = onStartAdvertising,
+                    onStartCall = onStartCall,
+                    onAcceptCall = onAcceptCall
+                )
+
+                LinkaDestination.IDENTITY -> IdentityScreen(
+                    modifier = Modifier.padding(contentPadding),
+                    identity = identity,
+                    trustedDevices = trustedDevices,
+                    onScanQr = onScanQr
+                )
+
+                LinkaDestination.SETTINGS -> SettingsScreen(
+                    modifier = Modifier.padding(contentPadding)
                 )
             }
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        }
+    }
+}
+
+@Composable
+private fun LinkaHomeScreen(
+    modifier: Modifier = Modifier,
+    linkState: NearbyLinkState,
+    callState: NearbyCallUiState,
+    voiceState: VoiceSessionState,
+    callController: NearbyCallController,
+    onStartDiscovery: () -> Unit,
+    onStartAdvertising: () -> Unit,
+    onOpenNearby: () -> Unit,
+    onOpenIdentity: () -> Unit,
+    onStartCall: () -> Unit,
+    onAcceptCall: () -> Unit
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
-                    "Talk. Connect. Anywhere.",
-                    style = MaterialTheme.typography.titleMedium
+                    "WELCOME TO LINKA",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontWeight = FontWeight.Bold
                 )
-
-                IdentityCard(identity)
-                IdentityQrControls(identity, trustedDevices, onScanQr)
-
-                Text("Offline nearby", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Find another compatible LINKA phone using nearby radios. No SIM, airtime, mobile data, or Wi-Fi internet is used for this local discovery connection.",
-                    style = MaterialTheme.typography.bodySmall
+                    "Stay connected, nearby.",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onStartDiscovery,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Find phones")
-                    }
-                    OutlinedButton(
-                        onClick = onStartAdvertising,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Be discoverable")
-                    }
-                }
-
-                Text(linkState.status, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                linkState.error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-
-                PendingPairingCard(linkState, nearbyLink)
-                ConnectedDeviceCard(linkState, nearbyLink)
-                CallControlsCard(callState, voiceState, callController, linkState.connectedPeer != null, onStartCall, onAcceptCall)
-
-                Text("Nearby devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (linkState.peers.isEmpty()) {
-                    Text(
-                        "No phones found yet. Both phones must have LINKA open, nearby permissions granted, and Bluetooth or Wi-Fi enabled.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f, fill = true),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(linkState.peers, key = { it.endpointId }) { peer ->
-                            PeerCard(peer = peer, onConnect = { nearbyLink.requestConnection(peer) })
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(2.dp))
-                OutlinedButton(
-                    onClick = { nearbyLink.stopDiscoveryAndAdvertising() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Stop nearby discovery")
-                }
-
                 Text(
-                    "Nearby direct voice is implemented in code and awaiting two-phone validation. Multi-hop mesh is not implemented.",
-                    style = MaterialTheme.typography.labelSmall,
+                    "Connect with another LINKA phone using nearby wireless radios.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "NEARBY CONNECTION",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Find a phone close to you",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Nearby discovery does not need mobile data or Wi-Fi internet. Bluetooth or Wi-Fi must be switched on.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Icon(
+                        Icons.Outlined.Wifi,
+                        contentDescription = "Nearby wireless connection",
+                        modifier = Modifier.size(42.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        item { ConnectionStatusCard(linkState) }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onStartDiscovery,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Outlined.Wifi, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Find phones")
+                }
+                OutlinedButton(
+                    onClick = onStartAdvertising,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Be discoverable")
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Outlined.QrCode2,
+                    title = "My LINKA ID",
+                    description = "Show or scan a secure QR",
+                    onClick = onOpenIdentity
+                )
+                QuickActionCard(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Outlined.Wifi,
+                    title = "Nearby devices",
+                    description = "Pair and manage a connection",
+                    onClick = onOpenNearby
+                )
+            }
+        }
+
+        if (linkState.connectedPeer != null || callState.call.phase != CallPhase.IDLE) {
+            item {
+                CallControlsCard(
+                    state = callState,
+                    voiceState = voiceState,
+                    controller = callController,
+                    peerConnected = linkState.connectedPeer != null,
+                    onStartCall = onStartCall,
+                    onAcceptCall = onAcceptCall
+                )
+            }
+        }
+
+        item { HowItWorksCard() }
+
+        item {
+            Text(
+                "LINKA is not an emergency-calling service. Nearby voice calling still requires real-device testing before it can be relied on.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun NearbyScreen(
+    modifier: Modifier = Modifier,
+    linkState: NearbyLinkState,
+    callState: NearbyCallUiState,
+    voiceState: VoiceSessionState,
+    nearbyLink: NearbyDirectLink,
+    callController: NearbyCallController,
+    onStartDiscovery: () -> Unit,
+    onStartAdvertising: () -> Unit,
+    onStartCall: () -> Unit,
+    onAcceptCall: () -> Unit
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            ScreenHeading(
+                title = "Nearby devices",
+                subtitle = "Find another LINKA phone, confirm who you are connecting to, and manage your nearby call."
+            )
+        }
+
+        item { ConnectionStatusCard(linkState) }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onStartDiscovery,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Find phones") }
+                OutlinedButton(
+                    onClick = onStartAdvertising,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Be discoverable") }
+            }
+        }
+
+        linkState.error?.let { errorMessage ->
+            item {
+                MessageCard(
+                    title = "Connection needs attention",
+                    message = errorMessage,
+                    isError = true
+                )
+            }
+        }
+
+        if (linkState.pendingPairing != null) {
+            item { PendingPairingCard(linkState, nearbyLink) }
+        }
+
+        if (linkState.connectedPeer != null) {
+            item { ConnectedDeviceCard(linkState, nearbyLink) }
+        }
+
+        item {
+            ScreenHeading(
+                title = "Phones found",
+                subtitle = if (linkState.peers.isEmpty()) {
+                    "Phones that are discoverable will appear here."
+                } else {
+                    "${linkState.peers.size} nearby device(s) found. Connect only to a phone you recognize."
+                }
+            )
+        }
+
+        if (linkState.peers.isEmpty()) {
+            item {
+                MessageCard(
+                    title = "No phones found yet",
+                    message = "Ask the other person to open LINKA and tap Be discoverable. Keep Bluetooth or Wi-Fi switched on, then tap Find phones."
+                )
+            }
+        } else {
+            items(linkState.peers, key = { it.endpointId }) { peer ->
+                PeerCard(peer = peer, onConnect = { nearbyLink.requestConnection(peer) })
+            }
+        }
+
+        item {
+            CallControlsCard(
+                state = callState,
+                voiceState = voiceState,
+                controller = callController,
+                peerConnected = linkState.connectedPeer != null,
+                onStartCall = onStartCall,
+                onAcceptCall = onAcceptCall
+            )
+        }
+
+        item {
+            OutlinedButton(
+                onClick = { nearbyLink.stopDiscoveryAndAdvertising() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Stop nearby discovery")
+            }
+        }
+
+        item {
+            Text(
+                "A nearby radio connection is not the same as a completed voice call. LINKA voice calling is still awaiting full two-phone validation.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun IdentityScreen(
+    modifier: Modifier = Modifier,
+    identity: LocalDeviceIdentity,
+    trustedDevices: TrustedDeviceStore,
+    onScanQr: (onResult: (String?) -> Unit) -> Unit
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            ScreenHeading(
+                title = "Your LINKA ID",
+                subtitle = "Use your device identity to recognize and verify another LINKA phone."
+            )
+        }
+        item { IdentityCard(identity) }
+        item { IdentityQrControls(identity, trustedDevices, onScanQr) }
+        item {
+            MessageCard(
+                title = "Keep your identity safe",
+                message = "Only trust a device after checking its fingerprint with the owner in person. Revoke a trusted device if you no longer recognize it."
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(modifier: Modifier = Modifier) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            ScreenHeading(
+                title = "Settings & help",
+                subtitle = "Clear guidance about how LINKA works on your Android phone."
+            )
+        }
+        item {
+            MessageCard(
+                title = "Bluetooth and Wi-Fi",
+                message = "Android requires you to switch Bluetooth or Wi-Fi on before nearby discovery. Open Quick Settings, enable at least one radio, then return to LINKA."
+            )
+        }
+        item {
+            MessageCard(
+                title = "Microphone access",
+                message = "LINKA asks for microphone permission when you start or answer a voice call. You can manage app permissions at any time in Android Settings."
+            )
+        }
+        item {
+            MessageCard(
+                title = "Three different call options",
+                message = "Nearby LINKA is designed for direct local connections. Internet calling is a separate mode. Optional cellular calls use your Android dialer and your mobile operator; normal carrier charges may apply."
+            )
+        }
+        item {
+            MessageCard(
+                title = "Your privacy and safety",
+                message = "Pair with people you recognize and compare the confirmation code on both phones. LINKA is not an emergency service, and nearby range depends on each phone and its surroundings."
+            )
+        }
+        item {
+            Text(
+                "LINKA for Android • Early testing build",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScreenHeading(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ConnectionStatusCard(state: NearbyLinkState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.size(46.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Wifi,
+                    contentDescription = null,
+                    modifier = Modifier.padding(11.dp),
+                    tint = MaterialTheme.colorScheme.secondary
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    "CONNECTION STATUS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    state.status,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                state.connectedPeer?.let { peer ->
+                    Text(
+                        "Connected to ${peer.displayName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickActionCard(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier,
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(25.dp)
+            )
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Get started in 3 steps", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            HowToStep(number = "1", title = "Switch on a nearby radio", detail = "Enable Bluetooth or Wi-Fi on both phones.")
+            HowToStep(number = "2", title = "Find and confirm", detail = "One phone searches; the other becomes discoverable. Compare the pairing code.")
+            HowToStep(number = "3", title = "Connect and test", detail = "Connect to the phone you verified. Voice calling still needs real-device validation.")
+        }
+    }
+}
+
+@Composable
+private fun HowToStep(number: String, title: String, detail: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(100.dp),
+            modifier = Modifier.size(28.dp)
+        ) {
+            Text(
+                number,
+                modifier = Modifier.padding(top = 5.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MessageCard(title: String, message: String, isError: Boolean = false) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isError) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(15.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -329,21 +926,28 @@ private fun LinkaApp(
 private fun IdentityCard(identity: LocalDeviceIdentity) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("Your LINKA device ID", style = MaterialTheme.typography.labelMedium)
             Text(
-                identity.shortId,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
+                "YOUR DEVICE ID",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
-                "Saved on this phone. Identity key fingerprint: ${identity.publicKeyFingerprint.take(20)}…",
-                style = MaterialTheme.typography.bodySmall
+                identity.shortId,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                "Saved on this phone. Fingerprint: ${identity.publicKeyFingerprint.take(20)}…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     }
@@ -351,17 +955,37 @@ private fun IdentityCard(identity: LocalDeviceIdentity) {
 
 @Composable
 private fun PeerCard(peer: NearbyPeer, onConnect: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(13.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(13.dp),
+                modifier = Modifier.size(42.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Wifi,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(peer.displayName, fontWeight = FontWeight.SemiBold)
-                Text("Nearby LINKA endpoint", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Nearby LINKA phone",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Button(onClick = onConnect) { Text("Connect") }
         }
@@ -373,22 +997,30 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
     val pending = state.pendingPairing ?: return
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            Text("Confirm this phone", fontWeight = FontWeight.Bold)
-            Text(pending.peerName)
+            Text(
+                "Confirm this phone",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(pending.peerName, color = MaterialTheme.colorScheme.onSecondaryContainer)
             Text(
                 pending.authenticationDigits,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Text(
-                "Compare the four-digit code with the other phone. Accept only when both codes match; reject unexpected requests.",
-                style = MaterialTheme.typography.bodySmall
+                "Compare the code with the other phone. Accept only when both codes match.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { nearbyLink.acceptPairing() }) { Text("I confirm") }
@@ -401,22 +1033,26 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
 @Composable
 private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
     val peer = state.connectedPeer ?: return
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Text("Nearby device connected", fontWeight = FontWeight.Bold)
-            Text(peer.displayName)
+            Text(peer.displayName, style = MaterialTheme.typography.titleMedium)
             Text(
-                "The nearby radio connection is established. A direct voice stream can start after the other phone accepts a call; physical-device testing is still required.",
-                style = MaterialTheme.typography.bodySmall
+                "The nearby radio connection is established. A direct voice stream still requires two-phone testing.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             OutlinedButton(onClick = { nearbyLink.disconnect() }) { Text("Disconnect") }
         }
     }
 }
-
 
 @Composable
 private fun CallControlsCard(
@@ -429,17 +1065,19 @@ private fun CallControlsCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("LINKA call controls", fontWeight = FontWeight.Bold)
+            Text("Voice call", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(state.status, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "Direct voice uses the microphone and speaker over a Nearby stream. Both phones must grant microphone access and keep the app available during this initial test.",
-                style = MaterialTheme.typography.bodySmall
+                "Connect to a nearby phone first. Both phones need microphone permission for a call.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(voiceState.status, style = MaterialTheme.typography.bodySmall)
             voiceState.error?.let {
@@ -452,7 +1090,7 @@ private fun CallControlsCard(
             when (state.call.phase) {
                 CallPhase.IDLE -> {
                     Button(onClick = onStartCall, enabled = peerConnected) {
-                        Text("Start call")
+                        Text(if (peerConnected) "Start call" else "Connect a phone to call")
                     }
                 }
                 CallPhase.OUTGOING_RINGING -> {
@@ -467,21 +1105,17 @@ private fun CallControlsCard(
                     }
                 }
                 CallPhase.ACTIVE -> {
-                    Text(if (voiceState.isRunning) "Voice stream is running." else "Call accepted; voice stream status: ${voiceState.status}.")
+                    Text(if (voiceState.isRunning) "Voice stream is running." else "Call accepted. Voice status: ${voiceState.status}.")
                     OutlinedButton(onClick = { controller.endCall() }) { Text("End call") }
                 }
                 CallPhase.ENDED, CallPhase.FAILED -> {
                     OutlinedButton(onClick = { controller.reset() }) { Text("Clear call") }
-                    Button(
-                        onClick = onStartCall,
-                        enabled = peerConnected
-                    ) { Text("Call again") }
+                    Button(onClick = onStartCall, enabled = peerConnected) { Text("Call again") }
                 }
             }
         }
     }
 }
-
 
 @Composable
 private fun IdentityQrControls(
@@ -495,15 +1129,20 @@ private fun IdentityQrControls(
     var status by remember { mutableStateOf("QR identity exchange is ready") }
     val savedDevices = remember { mutableStateOf(trustedDevices.list()) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            Text("Trusted devices", fontWeight = FontWeight.Bold)
+            Text("Trusted devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 "Exchange a signed, expiring public identity QR in person. QR codes never contain private keys or call secrets.",
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
@@ -542,7 +1181,8 @@ private fun IdentityQrControls(
             Text(status, style = MaterialTheme.typography.bodySmall)
             Text(
                 "Saved trusted phones: ${savedDevices.value.size}",
-                style = MaterialTheme.typography.labelMedium
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             savedDevices.value.take(4).forEach { device ->
                 Row(
@@ -554,7 +1194,8 @@ private fun IdentityQrControls(
                         Text(device.displayName, fontWeight = FontWeight.SemiBold)
                         Text(
                             device.fingerprint.take(24) + "…",
-                            style = MaterialTheme.typography.labelSmall
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     TextButton(onClick = {
@@ -569,7 +1210,8 @@ private fun IdentityQrControls(
             if (savedDevices.value.size > 4) {
                 Text(
                     "And ${savedDevices.value.size - 4} more trusted devices",
-                    style = MaterialTheme.typography.labelSmall
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

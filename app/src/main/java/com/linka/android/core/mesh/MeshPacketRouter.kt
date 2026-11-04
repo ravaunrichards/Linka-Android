@@ -225,6 +225,9 @@ class MeshPacketRouter(
         if (packet.expiresAtEpochMs <= nowEpochMs) {
             return listOf(MeshRouterAction.Dropped("Expired mesh packet"))
         }
+        if (packet.expiresAtEpochMs - nowEpochMs > MAX_PACKET_TTL_MS) {
+            return listOf(MeshRouterAction.Dropped("Mesh packet expiry exceeds the protocol limit"))
+        }
         if (packet.sourceDeviceId == localDeviceId) {
             return listOf(MeshRouterAction.Dropped("Looped packet from local device"))
         }
@@ -483,6 +486,7 @@ class MeshPacketRouter(
         private const val ROUTE_TTL_MS = 60_000L
         private const val DIRECT_ROUTE_TTL_MS = 24 * 60 * 60 * 1_000L
         private const val DATA_PACKET_TTL_MS = 5_000L
+        private const val MAX_PACKET_TTL_MS = 60_000L
         private const val MAX_ID_BYTES = 64
         private const val MAX_SEEN_IDS = 2_048
         private const val MAX_ROUTE_ENTRIES = 1_024
@@ -498,6 +502,7 @@ object MeshPacketCodec {
     private const val SIGNATURE_MAX_BYTES = 96
     private const val SIGNATURE_MIN_BYTES = 64
     private const val MAX_ID_BYTES = 64
+    private val UUID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
     fun isMeshPacket(bytes: ByteArray): Boolean =
         bytes.size >= 4 && ByteBuffer.wrap(bytes, 0, 4).int == MAGIC
@@ -571,10 +576,12 @@ object MeshPacketCodec {
     }
 
     private fun validatePacket(packet: MeshPacket, requireSignature: Boolean = true) {
-        require(packet.packetId.isNotBlank() && packet.packetId.length <= MAX_ID_BYTES)
-        require(packet.sourceDeviceId.isNotBlank() && packet.sourceDeviceId.length <= MAX_ID_BYTES)
-        require(packet.destinationDeviceId.isNotBlank() && packet.destinationDeviceId.length <= MAX_ID_BYTES)
-        require(packet.requestId.length <= MAX_ID_BYTES)
+        require(packet.packetId.matches(UUID_PATTERN)) { "Mesh packet ID must be a UUID" }
+        require(packet.sourceDeviceId.matches(UUID_PATTERN)) { "Mesh source device ID must be a UUID" }
+        require(packet.destinationDeviceId.matches(UUID_PATTERN)) { "Mesh destination device ID must be a UUID" }
+        require(packet.requestId.isEmpty() || packet.requestId.matches(UUID_PATTERN)) {
+            "Mesh request ID must be empty or a UUID"
+        }
         require(packet.hopLimit in 0..MeshPacketRouter.MAX_HOPS)
         require(packet.hopCount in 0..MeshPacketRouter.MAX_HOPS)
         require(packet.hopLimit + packet.hopCount == MeshPacketRouter.MAX_HOPS) {

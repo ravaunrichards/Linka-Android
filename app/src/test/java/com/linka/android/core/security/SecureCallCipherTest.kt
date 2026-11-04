@@ -33,6 +33,32 @@ class SecureCallCipherTest {
         }
     }
 
+
+    @Test
+    fun acceptsOutOfOrderFramesInsideReplayWindow() {
+        val alice = SecureCallCipher(keyA, keyB, "call-reorder")
+        val bob = SecureCallCipher(keyB, keyA, "call-reorder")
+        val frame0 = alice.encryptFrame(byteArrayOf(0))
+        val frame1 = alice.encryptFrame(byteArrayOf(1))
+        val frame2 = alice.encryptFrame(byteArrayOf(2))
+
+        assertArrayEquals(byteArrayOf(2), bob.decryptFrame(frame2))
+        assertArrayEquals(byteArrayOf(0), bob.decryptFrame(frame0))
+        assertArrayEquals(byteArrayOf(1), bob.decryptFrame(frame1))
+    }
+
+    @Test
+    fun rejectsFramesOutsideReplayWindow() {
+        val alice = SecureCallCipher(keyA, keyB, "call-window")
+        val bob = SecureCallCipher(keyB, keyA, "call-window")
+        val frames = (0 until 66).map { alice.encryptFrame(byteArrayOf(it.toByte())) }
+
+        assertArrayEquals(byteArrayOf(65), bob.decryptFrame(frames.last()))
+        assertThrows(IllegalArgumentException::class.java) {
+            bob.decryptFrame(frames.first())
+        }
+    }
+
     @Test
     fun rejectsTamperedCiphertext() {
         val alice = SecureCallCipher(keyA, keyB, "call-tamper")

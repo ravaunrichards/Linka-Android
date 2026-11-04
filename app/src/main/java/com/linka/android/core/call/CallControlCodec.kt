@@ -28,10 +28,10 @@ data class CallControlMessage(
 /**
  * Small, versioned, bounded binary envelope for control messages.
  *
- * This codec provides framing and validation only. Authentication and
- * encryption are provided by the established Nearby Connections transport
- * today; application-level identity binding and per-call media encryption
- * remain separate release requirements.
+ * This codec provides framing and validation only. The call controller
+ * authenticates the sender against the QR-trusted peer identity, then protects
+ * this envelope with directional AES-GCM keys from the peer session. Routed
+ * controls use the same end-to-end keys inside ciphertext-only mesh packets.
  */
 object CallControlCodec {
     private const val MAGIC = 0x4C4E4B41 // "LNKA"

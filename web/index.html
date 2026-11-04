@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1728">
+  <meta name="description" content="LINKA — Jamaica-first communication. View your LINKA network and offline calling roadmap.">
+  <title>LINKA — Connected, even offline</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#overview" aria-label="LINKA home"><span class="brand-mark">L</span><span>LINKA<small>JAMAICA NETWORK</small></span></a>
+      <div class="nav-label">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <a class="nav-link active" href="#overview" data-view="overview"><span>⌂</span> Overview</a>
+        <a class="nav-link" href="#nearby" data-view="nearby"><span>⌁</span> Nearby network</a>
+        <a class="nav-link" href="#identity" data-view="identity"><span>◎</span> My identity</a>
+        <a class="nav-link" href="#calls" data-view="calls"><span>◖</span> Calling</a>
+        <a class="nav-link" href="#mesh" data-view="mesh"><span>⌘</span> Mesh network</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="mode-card"><span class="mode-dot"></span><div><strong>Web companion</strong><small>Browser view only</small></div></div>
+        <a class="nav-link" href="#about" data-view="about"><span>ⓘ</span> About LINKA</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
+        <div class="breadcrumb">LINKA <span>/</span> <strong id="currentSection">Overview</strong></div>
+        <div class="top-status"><span class="status-dot"></span> Browser preview</div>
+      </header>
+
+      <section class="view active" id="overview">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="pulse"></span> BUILT FOR JAMAICA</div>
+            <h1>Stay connected.<br><em>Even offline.</em></h1>
+            <p>LINKA is being built for direct nearby communication and a longer-distance, phone-to-phone relay network — without depending on mobile data or airtime.</p>
+            <div class="hero-actions"><a class="button primary" href="#mesh" data-view="mesh">Explore the mesh network <span>→</span></a><a class="button secondary" href="#calls" data-view="calls">Calling status</a></div>
+          </div>
+          <div class="signal-art" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div>
+            <div class="signal-center">L</div><div class="node node-a">A</div><div class="node node-b">B</div><div class="node node-c">C</div><div class="node node-d">D</div>
+            <div class="signal-caption">LOCAL LINKS <span>•</span> RELAY VISION</div>
+          </div>
+        </div>
+
+        <div class="section-heading"><div><div class="eyebrow">NETWORK OVERVIEW</div><h2>Where LINKA stands</h2></div><span class="tag neutral">Development status</span></div>
+        <div class="status-grid">
+          <article class="status-card"><div class="card-top"><span class="card-icon cyan">⌁</span><span class="tag progress">Foundation added</span></div><h3>Nearby connections</h3><p>Android discovery and multiple neighbour links are in the code. Real-phone testing is still required.</p><div class="card-foot">ANDROID RADIO</div></article>
+          <article class="status-card"><div class="card-top"><span class="card-icon violet">◖</span><span class="tag warning">Testing required</span></div><h3>Direct voice calls</h3><p>A narrowband audio path exists in Android source. SIM-free two-phone calling has not been verified.</p><div class="card-foot">ANDROID AUDIO</div></article>
+          <article class="status-card"><div class="card-top"><span class="card-icon amber">⌘</span><span class="tag pending">In development</span></div><h3>Long-distance mesh</h3><p>Multi-hop routing, relay forwarding and end-to-end media encryption are not complete.</p><div class="card-foot">OFFLINE RELAY NETWORK</div></article>
+        </div>
+
+        <div class="section-heading"><div><div class="eyebrow">THE TWO PATHS</div><h2>Nearby first. Long distance through relays.</h2></div></div>
+        <div class="path-grid">
+          <article class="path-card"><div class="path-number">01</div><h3>Direct nearby calling</h3><p>Two LINKA phones discover and connect over supported local radios. No SIM, airtime, mobile data or internet should be required.</p><span class="path-state">Android implementation · validation pending</span></article>
+          <article class="path-card"><div class="path-number">02</div><h3>Long-distance offline calling</h3><p>Phones or powered relay devices pass encrypted voice packets from one neighbour to the next along a continuous live route.</p><span class="path-state">Routing and relay engine · not yet implemented</span></article>
+        </div>
+      </section>
+
+      <section class="view" id="nearby">
+        <div class="page-heading"><div class="eyebrow">LOCAL RADIO</div><h1>Nearby network</h1><p>See how direct connections are intended to work. This webpage cannot scan Android Nearby Connections devices.</p></div>
+        <div class="notice"><strong>Android required for live discovery</strong><p>Nearby device scanning, pairing codes and radio links are provided by the Android app. This browser page does not invent devices or display fake connection counts.</p></div>
+        <div class="empty-panel"><div class="empty-symbol">⌁</div><h2>No browser radio scan</h2><p>Open LINKA on a supported Android phone to discover nearby LINKA devices and confirm the same security code on both phones.</p><span class="tag neutral">No devices reported by this browser</span></div>
+        <div class="info-row"><div><strong>Multiple neighbours</strong><p>The Android branch now has a multi-peer connection foundation.</p></div><div><strong>Pairing security</strong><p>Each pending connection has its own confirmation code and accept/reject action.</p></div></div>
+      </section>
+
+      <section class="view" id="identity">
+        <div class="page-heading"><div class="eyebrow">YOUR DEVICE</div><h1>My LINKA identity</h1><p>Your LINKA identity belongs to the device and its trusted pairing process.</p></div>
+        <div class="identity-panel"><div class="identity-avatar">L</div><div><span class="tag neutral">Browser not paired</span><h2>Device identity unavailable</h2><p>This browser has not authenticated with a LINKA account or Android device. No username, QR identity or trusted-device list is fabricated here.</p></div></div>
+        <div class="notice"><strong>Identity stays under your control</strong><p>The Android implementation stores its signing key in Android Keystore. A future web sign-in and device-linking flow must be added before this page can display synced identity data.</p></div>
+      </section>
+
+      <section class="view" id="calls">
+        <div class="page-heading"><div class="eyebrow">VOICE</div><h1>Calling</h1><p>LINKA separates local offline calls from optional internet and carrier calling.</p></div>
+        <div class="call-mode-grid">
+          <article class="mode-panel"><span class="tag progress">Android path exists</span><h2>Nearby offline call</h2><p>Direct local-radio voice between two connected LINKA phones. SIM-free operation still needs physical testing.</p><ul><li>No airtime or mobile data intended</li><li>Requires compatible local radios</li><li>Two-way audio verification outstanding</li></ul></article>
+          <article class="mode-panel"><span class="tag pending">Not available yet</span><h2>Long-distance mesh call</h2><p>Live voice forwarded through a continuous chain of trusted relay devices.</p><ul><li>End-to-end media encryption required</li><li>Route discovery and repair required</li><li>Relay forwarding engine required</li></ul></article>
+        </div>
+        <div class="notice"><strong>Calling is not enabled in this browser preview</strong><p>No call button is shown as working until a browser-compatible call transport and secure signaling are implemented and tested. The webpage will not silently place a carrier call.</p></div>
+      </section>
+
+      <section class="view" id="mesh">
+        <div class="page-heading"><div class="eyebrow">OFFLINE COVERAGE</div><h1>The LINKA mesh</h1><p>Long distance is achieved through connected relays, not by pretending one phone has unlimited radio range.</p></div>
+        <div class="mesh-visual">
+          <div class="mesh-line"></div>
+          <div class="mesh-hop"><span>01</span><b>Caller</b><small>Origin phone</small></div><div class="mesh-hop"><span>02</span><b>Relay A</b><small>Forward ciphertext</small></div><div class="mesh-hop"><span>03</span><b>Relay B</b><small>Forward ciphertext</small></div><div class="mesh-hop"><span>04</span><b>Recipient</b><small>Destination phone</small></div>
+        </div>
+        <div class="notice warning-box"><strong>Illustration only — no live route exists</strong><p>The nodes above explain the target architecture. They are not connected devices, measured coverage or a working call route.</p></div>
+        <div class="section-heading"><div><div class="eyebrow">REQUIRED ENGINEERING</div><h2>What makes multi-hop calling real</h2></div></div>
+        <div class="requirement-list"><div><span>01</span><div><b>End-to-end encryption</b><p>Only caller and recipient can decrypt voice. Relays see ciphertext only.</p></div><span class="tag pending">Outstanding</span></div><div><span>02</span><div><b>Route discovery</b><p>Find and maintain a valid path across trusted nearby peers.</p></div><span class="tag pending">Outstanding</span></div><div><span>03</span><div><b>Relay forwarding</b><p>Forward bounded, authenticated packets with loop prevention and expiry.</p></div><span class="tag pending">Outstanding</span></div><div><span>04</span><div><b>Jamaica field tests</b><p>Measure range, latency, audio quality, battery and relay gaps in real locations.</p></div><span class="tag pending">Outstanding</span></div></div>
+      </section>
+
+      <section class="view" id="about">
+        <div class="page-heading"><div class="eyebrow">ABOUT THE PROJECT</div><h1>LINKA is being built for Jamaica.</h1><p>An Android-first communication network designed around SIM-free nearby communication and a future multi-hop offline relay system.</p></div>
+        <div class="notice"><strong>Important distinction</strong><p>This browser companion is a separate web interface. It does not replace the Android app's radio access and it does not provide offline mesh coverage by itself.</p></div>
+        <div class="info-row"><div><strong>No false coverage claims</strong><p>Every live route must be measured. A radio gap cannot be crossed without a relay.</p></div><div><strong>No silent carrier fallback</strong><p>Offline calling must fail clearly rather than unexpectedly using chargeable cellular service.</p></div></div>
+      </section>
+
+      <footer><span>LINKA © <span id="year"></span></span><span>Jamaica-first · Android + Web companion</span><a href="https://github.com/ravaunrichards/Linka-Android">Source repository ↗</a></footer>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

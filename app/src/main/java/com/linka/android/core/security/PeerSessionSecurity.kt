@@ -35,10 +35,32 @@ import javax.crypto.spec.SecretKeySpec
  * This implementation still requires independent cryptographic review and
  * physical-device verification before a production security claim.
  */
-class PeerSessionSecurity(
-    private val localIdentity: LocalDeviceIdentity,
-    private val trustedDevices: TrustedDeviceStore
+data class TrustedPeerIdentity(
+    val deviceId: String,
+    val publicKeyBase64: String,
+    val fingerprint: String
+)
+
+class PeerSessionSecurity internal constructor(
+    private val localDeviceId: String,
+    private val localPublicKeyBase64: String,
+    private val signIdentity: (ByteArray) -> ByteArray,
+    private val trustedIdentity: (String) -> TrustedPeerIdentity?
 ) {
+    constructor(
+        localIdentity: LocalDeviceIdentity,
+        trustedDevices: TrustedDeviceStore
+    ) : this(
+        localIdentity.deviceId,
+        localIdentity.publicKeyBase64,
+        { bytes -> localIdentity.sign(bytes) },
+        { deviceId ->
+            trustedDevices.get(deviceId)?.let {
+                TrustedPeerIdentity(it.deviceId, it.publicKeyBase64, it.fingerprint)
+            }
+        }
+    )
+
     private data class Hello(
         val deviceId: String,
         val signingPublicKey: ByteArray,
@@ -114,7 +136,7 @@ class PeerSessionSecurity(
                     val ack = createAcknowledgement(
                         exchange.rootKey!!,
                         exchange.transcriptHash!!,
-                        localIdentity.deviceId
+                        localDeviceId
                     )
                     exchange.acknowledgementSent = true
                     responses += encodeAck(ack)
@@ -164,7 +186,7 @@ class PeerSessionSecurity(
     @Synchronized
     fun session(endpointId: String): SecurePeerSession? {
         val session = secureSessions[endpointId] ?: return null
-        val currentTrust = trustedDevices.get(session.remoteDeviceId)
+        val currentTrust = trustedIdentity(session.remoteDeviceId)
         if (currentTrust == null ||
             !currentTrust.fingerprint.equals(session.remoteFingerprint, ignoreCase = true)
         ) {
@@ -191,25 +213,25 @@ class PeerSessionSecurity(
         generator.initialize(ECGenParameterSpec("secp256r1"))
         val ephemeral = generator.generateKeyPair()
         val nonce = ByteArray(NONCE_BYTES).also(java.security.SecureRandom()::nextBytes)
-        val publicKey = Base64.getDecoder().decode(localIdentity.publicKeyBase64)
+        val publicKey = Base64.getDecoder().decode(localPublicKeyBase64)
         val unsigned = Hello(
-            deviceId = localIdentity.deviceId,
+            deviceId = localDeviceId,
             signingPublicKey = publicKey,
             ephemeralPublicKey = ephemeral.public.encoded,
             nonce = nonce,
             signature = ByteArray(0)
         )
-        val signed = unsigned.copy(signature = localIdentity.sign(unsigned.signedBody()))
+        val signed = unsigned.copy(signature = signIdentity(unsigned.signedBody()))
         return Exchange(ephemeral, signed, encodeHello(signed))
     }
 
     private fun validateRemoteHello(hello: Hello) {
-        require(hello.deviceId != localIdentity.deviceId) { "A phone cannot pair with itself" }
+        require(hello.deviceId != localDeviceId) { "A phone cannot pair with itself" }
         require(hello.deviceId.matches(Regex("[0-9a-fA-F-]{36}"))) {
             "The peer LINKA device ID is invalid"
         }
 
-        val trusted = trustedDevices.get(hello.deviceId)
+        val trusted = trustedIdentity(hello.deviceId)
             ?: throw SecurityException("This phone is not trusted yet. Scan its LINKA identity QR first.")
         val trustedPublicKey = Base64.getDecoder().decode(trusted.publicKeyBase64)
         require(MessageDigest.isEqual(trustedPublicKey, hello.signingPublicKey)) {
@@ -296,7 +318,7 @@ class PeerSessionSecurity(
         val remote = exchange.remoteHello ?: return false
         val root = exchange.rootKey ?: return false
         secureSessions[endpointId] = SecurePeerSession(
-            localDeviceId = localIdentity.deviceId,
+            localDeviceId = localDeviceId,
             remoteDeviceId = remote.deviceId,
             remoteFingerprint = sha256(remote.signingPublicKey).toHex(),
             rootKey = root.copyOf()

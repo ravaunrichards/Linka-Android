@@ -237,6 +237,31 @@ class NearbyCallController(
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
     }
 
+    fun refreshSecurePairings() {
+        val current = machine.snapshot
+        if (current.phase in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) {
+            endCall()
+        }
+        val endpoints = (
+            nearbyLink.state.value.connectedPeers.map { it.endpointId } +
+                listOfNotNull(nearbyLink.state.value.connectedPeer?.endpointId)
+            ).toSet()
+        endpoints.forEach { endpoint ->
+            peerSecurity.remove(endpoint)
+            trackedEndpoints.add(endpoint)
+            val hello = runCatching { peerSecurity.begin(endpoint) }.getOrNull()
+            if (hello != null) {
+                nearbyLink.sendBytes(endpoint, hello) { error ->
+                    if (error != null) publishError(error)
+                }
+            }
+        }
+        _state.value = _state.value.copy(
+            status = "Rechecking trusted LINKA devices",
+            error = null
+        )
+    }
+
     fun reset() {
         try {
             machine.reset()

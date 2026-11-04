@@ -523,6 +523,8 @@ class NearbyCallController(
         if (current.phase in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) {
             endCall()
         }
+        routedPeerSecurity.close()
+        meshRouter.clearRoutesAndPendingDiscovery()
         val endpoints = (
             nearbyLink.state.value.connectedPeers.map { it.endpointId } +
                 listOfNotNull(nearbyLink.state.value.connectedPeer?.endpointId)

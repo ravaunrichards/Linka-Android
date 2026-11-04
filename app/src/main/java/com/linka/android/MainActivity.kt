@@ -605,7 +605,17 @@ private fun NearbyScreen(
         }
 
         if (linkState.connectedPeers.isNotEmpty() || linkState.connectedPeer != null) {
-            item { ConnectedDevicesCard(linkState, nearbyLink) }
+            item {
+                ConnectedDevicesCard(
+                    state = linkState,
+                    nearbyLink = nearbyLink,
+                    canSelect = callState.call.phase !in setOf(
+                        CallPhase.OUTGOING_RINGING,
+                        CallPhase.INCOMING_RINGING,
+                        CallPhase.ACTIVE
+                    )
+                )
+            }
         }
 
         item {
@@ -1038,7 +1048,11 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
 }
 
 @Composable
-private fun ConnectedDevicesCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
+private fun ConnectedDevicesCard(
+    state: NearbyLinkState,
+    nearbyLink: NearbyDirectLink,
+    canSelect: Boolean
+) {
     val peers = state.connectedPeers.ifEmpty { listOfNotNull(state.connectedPeer) }
     if (peers.isEmpty()) return
 
@@ -1079,7 +1093,7 @@ private fun ConnectedDevicesCard(state: NearbyLinkState, nearbyLink: NearbyDirec
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (!selected) {
+                    if (!selected && canSelect) {
                         TextButton(onClick = { nearbyLink.selectPeer(peer.endpointId) }) {
                             Text("Use")
                         }

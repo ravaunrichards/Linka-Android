@@ -152,11 +152,7 @@ class NearbyCallController(
             return publishError(error.message ?: "Invalid call details")
         }
 
-        val endpoint = call.peerDeviceId ?: run {
-            publishError("Incoming call has no verified peer connection")
-            return
-        }
-        val securePeer = peerSecurity.session(endpoint) ?: run {
+        val securePeer = peerSecurity.session(peer.endpointId) ?: run {
             publishError("Secure peer identity verification was lost")
             return
         }
@@ -193,6 +189,15 @@ class NearbyCallController(
             return
         }
 
+        val endpoint = call.peerDeviceId ?: run {
+            publishError("Incoming call has no verified peer connection")
+            return
+        }
+        val securePeer = peerSecurity.session(endpoint) ?: run {
+            publishError("Secure peer identity verification was lost")
+            return
+        }
+
         try {
             LinkaVoiceForegroundService.start(appContext)
         } catch (error: Exception) {
@@ -209,7 +214,7 @@ class NearbyCallController(
             publishError(error.message ?: "Unable to accept call")
             return
         }
-        _state.value = NearbyCallUiState(active, "Call accepted; starting voice media")
+        _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
         send(CallControlType.ACCEPT, active.callId!!, active.peerDeviceId!!)
         voiceSession.start(active.peerDeviceId!!, active.callId!!, securePeer.forCall(active.callId!!))
     }

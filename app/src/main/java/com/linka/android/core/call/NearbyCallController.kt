@@ -171,20 +171,28 @@ class NearbyCallController(
                 }
 
                 val current = machine.snapshot
-                if (linkState.connectedPeer == null &&
-                    current.phase in setOf(
+                if (current.phase in setOf(
                         CallPhase.OUTGOING_RINGING,
                         CallPhase.INCOMING_RINGING,
                         CallPhase.ACTIVE
                     )
                 ) {
-                    voiceSession.stop("Nearby connection lost")
-                    LinkaVoiceForegroundService.stop(appContext)
-                    _state.value = NearbyCallUiState(
-                        call = machine.connectionLost(),
-                        status = "Nearby connection lost",
-                        error = "The paired phone disconnected"
-                    )
+                    val peer = current.peerDeviceId.orEmpty()
+                    val isRouted = peer.startsWith(ROUTE_ENDPOINT_PREFIX)
+                    val routeLost = isRouted &&
+                        meshRouter.routeTo(peer.removePrefix(ROUTE_ENDPOINT_PREFIX)) == null
+                    val directLost = !isRouted &&
+                        linkState.connectedPeers.none { it.endpointId == peer } &&
+                        linkState.connectedPeer?.endpointId != peer
+                    if (routeLost || directLost) {
+                        stopVoice("Connection route lost")
+                        LinkaVoiceForegroundService.stop(appContext)
+                        _state.value = NearbyCallUiState(
+                            call = machine.connectionLost(),
+                            status = "Connection route lost",
+                            error = "LINKA could not keep a connected path to the other phone"
+                        )
+                    }
                 }
             }
         }
@@ -228,7 +236,7 @@ class NearbyCallController(
                 val timedOut = machine.end("no_answer")
                 _state.value = NearbyCallUiState(timedOut, "No answer")
                 send(CallControlType.END, timedOut.callId!!, timedOut.peerDeviceId!!)
-                voiceSession.stop("No answer")
+                stopVoice("No answer")
                 LinkaVoiceForegroundService.stop(appContext)
             }
         }
@@ -245,7 +253,7 @@ class NearbyCallController(
             publishError("Incoming call has no verified peer connection")
             return
         }
-        val securePeer = peerSecurity.session(endpoint) ?: run {
+        val securePeer = securePeer(endpoint) ?: run {
             publishError("Secure peer identity verification was lost")
             return
         }
@@ -279,7 +287,7 @@ class NearbyCallController(
         }
         _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
         send(CallControlType.ACCEPT, active.callId!!, active.peerDeviceId!!)
-        voiceSession.start(active.peerDeviceId!!, active.callId!!, mediaCipher)
+        startVoiceForPeer(active.peerDeviceId!!, active.callId!!, mediaCipher)
     }
 
     fun rejectIncomingCall() {
@@ -294,7 +302,7 @@ class NearbyCallController(
         val call = machine.snapshot
         if (call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) return
         val ended = machine.end("local_hangup")
-        voiceSession.stop("Call ended")
+        stopVoice("Call ended")
         LinkaVoiceForegroundService.stop(appContext)
         _state.value = NearbyCallUiState(ended, "Call ended")
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
@@ -568,7 +576,11 @@ class NearbyCallController(
                     return
                 }
                 val incoming = machine.receiveInvite(message.callId, endpointId)
-                val name = nearbyLink.state.value.connectedPeer?.displayName ?: "Nearby LINKA phone"
+                val name = if (endpointId.startsWith(ROUTE_ENDPOINT_PREFIX)) {
+                    trustedDevices.get(verifiedSenderId)?.displayName ?: "Trusted offline LINKA device"
+                } else {
+                    nearbyLink.state.value.connectedPeer?.displayName ?: "Nearby LINKA phone"
+                }
                 _state.value = NearbyCallUiState(incoming, "Incoming call from $name")
                 scope.launch {
                     delay(CALL_RING_TIMEOUT_MS)
@@ -584,7 +596,7 @@ class NearbyCallController(
 
             CallControlType.ACCEPT -> {
                 if (message.callId != call.callId || call.phase != CallPhase.OUTGOING_RINGING) return
-                val securePeer = peerSecurity.session(endpointId) ?: run {
+                val securePeer = securePeer(endpointId) ?: run {
                     publishError("Secure session disappeared before voice media started")
                     return
                 }
@@ -599,7 +611,7 @@ class NearbyCallController(
                 }
                 val active = machine.outgoingAccepted(System.currentTimeMillis())
                 _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
-                voiceSession.start(active.peerDeviceId!!, active.callId!!, mediaCipher)
+                startVoiceForPeer(active.peerDeviceId!!, active.callId!!, mediaCipher)
             }
 
             CallControlType.REJECT -> {
@@ -607,7 +619,7 @@ class NearbyCallController(
                     call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING)
                 ) return
                 val ended = machine.rejectOrDecline("remote_rejected")
-                voiceSession.stop("The other phone rejected the call")
+                stopVoice("The other phone rejected the call")
                 LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone rejected the call")
             }
@@ -617,7 +629,7 @@ class NearbyCallController(
                     call.phase !in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)
                 ) return
                 val ended = machine.end("remote_ended")
-                voiceSession.stop("The other phone ended the call")
+                stopVoice("The other phone ended the call")
                 LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone ended the call")
             }
@@ -625,7 +637,7 @@ class NearbyCallController(
             CallControlType.BUSY -> {
                 if (message.callId != call.callId || call.phase != CallPhase.OUTGOING_RINGING) return
                 val ended = machine.rejectOrDecline("peer_busy")
-                voiceSession.stop("The other phone is busy")
+                stopVoice("The other phone is busy")
                 LinkaVoiceForegroundService.stop(appContext)
                 _state.value = NearbyCallUiState(ended, "The other phone is busy")
             }
@@ -643,6 +655,22 @@ class NearbyCallController(
             )
         } catch (error: IllegalArgumentException) {
             publishError(error.message ?: "Could not encode call-control message")
+            return
+        }
+
+        if (endpointId.startsWith(ROUTE_ENDPOINT_PREFIX)) {
+            val destinationDeviceId = endpointId.removePrefix(ROUTE_ENDPOINT_PREFIX)
+            val session = routedPeerSecurity.session(endpointId) ?: run {
+                publishError("Cannot send routed call controls before end-to-end verification")
+                return
+            }
+            val encrypted = try {
+                session.encryptControl(bytes)
+            } catch (error: Exception) {
+                publishError(error.localizedMessage ?: "Could not encrypt routed call-control message")
+                return
+            }
+            sendRoutedPayload(destinationDeviceId, RoutedPayloadType.CALL_CONTROL, encrypted)
             return
         }
 
@@ -666,8 +694,11 @@ class NearbyCallController(
     }
 
     fun close() {
+        stopVoice("LINKA is closing")
         voiceSession.close()
+        routedVoiceSession.close()
         peerSecurity.close()
+        routedPeerSecurity.close()
         trackedEndpoints.clear()
         LinkaVoiceForegroundService.stop(appContext)
         scope.cancel()
@@ -675,5 +706,7 @@ class NearbyCallController(
 
     companion object {
         private const val CALL_RING_TIMEOUT_MS = 45_000L
+        private const val ROUTE_ENDPOINT_PREFIX = "route:"
+        private const val ROUTED_VOICE_QUEUE_CAPACITY = 128
     }
 }

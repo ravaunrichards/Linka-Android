@@ -595,6 +595,7 @@ private class SecurePayloadChannel(
     private var lastReceivedSequence = -1L
     @Volatile private var destroyed = false
 
+    @Synchronized
     fun encrypt(plaintext: ByteArray): ByteArray {
         check(!destroyed) { "Secure payload channel has been destroyed" }
         require(plaintext.isNotEmpty() && plaintext.size <= MAX_PLAINTEXT_BYTES)

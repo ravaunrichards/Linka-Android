@@ -65,6 +65,7 @@ class NearbyCallController(
         }
     )
     private val trackedEndpoints = mutableSetOf<String>()
+    private val autoRouteRequests = mutableSetOf<String>()
     private val voiceSession = NearbyVoiceSession(appContext, nearbyLink)
     private val routedVoiceSession = RoutedVoiceSession(appContext)
     private var routedIncomingVoiceChannel: Channel<ByteArray>? = null
@@ -105,6 +106,9 @@ class NearbyCallController(
                                 deviceId = authenticatedPeer.remoteDeviceId,
                                 relayOptIn = authenticatedPeer.remoteRelayOptIn
                             )
+                            // A newly authenticated neighbour may unlock routes to
+                            // other QR-trusted destinations through this relay.
+                            discoverTrustedRoutes()
                         }
                         _state.value = _state.value.copy(
                             status = if (authenticatedPeer?.remoteRelayOptIn == true) {
@@ -315,6 +319,28 @@ class NearbyCallController(
         val session = routedPeerSecurity.session(routeEndpoint(destinationDeviceId)) ?: return false
         return session.remoteDeviceId == destinationDeviceId &&
             meshRouter.routeTo(destinationDeviceId) != null
+    }
+
+    fun routeHopCount(destinationDeviceId: String): Int? =
+        meshRouter.routeTo(destinationDeviceId)?.hopCount
+
+    private fun discoverTrustedRoutes() {
+        trustedDevices.list()
+            .asSequence()
+            .filter { it.deviceId != localDeviceId }
+            .forEach { destination ->
+                val knownRoute = meshRouter.routeTo(destination.deviceId)
+                if (knownRoute != null) {
+                    dispatchMeshActions(listOf(MeshRouterAction.RouteEstablished(knownRoute)))
+                    return@forEach
+                }
+                if (!autoRouteRequests.add(destination.deviceId)) return@forEach
+                dispatchMeshActions(meshRouter.startRouteDiscovery(destination.deviceId))
+                scope.launch {
+                    delay(MESH_ROUTE_DISCOVERY_RETRY_MS)
+                    autoRouteRequests.remove(destination.deviceId)
+                }
+            }
     }
 
     fun startRoutedCall(destinationDeviceId: String) {
@@ -556,6 +582,7 @@ class NearbyCallController(
         }
         routedPeerSecurity.close()
         meshRouter.clearRoutesAndPendingDiscovery()
+        autoRouteRequests.clear()
         val endpoints = (
             nearbyLink.state.value.connectedPeers.map { it.endpointId } +
                 listOfNotNull(nearbyLink.state.value.connectedPeer?.endpointId)
@@ -743,6 +770,7 @@ class NearbyCallController(
 
     companion object {
         private const val CALL_RING_TIMEOUT_MS = 45_000L
+        private const val MESH_ROUTE_DISCOVERY_RETRY_MS = 16_000L
         private const val ROUTE_ENDPOINT_PREFIX = "route:"
         private const val ROUTED_VOICE_QUEUE_CAPACITY = 128
     }

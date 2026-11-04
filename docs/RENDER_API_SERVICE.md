@@ -20,7 +20,7 @@ The API does not relay voice audio. It is not a TURN server, SFU, push-notificat
 - Node version: 22 or newer
 - Build command: `npm --prefix backend/api install --omit=dev`
 - Start command: `npm --prefix backend/api start`
-- Health check path: `/healthz`
+- Health endpoint: `/healthz` (available to monitors and covered by API CI; the Render dashboard health-check field itself remains unset)
 - Region target: Virginia
 - Initial plan target: Free (subject to Render's current plan availability and limits)
 - Required secret environment variables: none

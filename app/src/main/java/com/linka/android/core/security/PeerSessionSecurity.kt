@@ -609,7 +609,8 @@ private class SecurePayloadChannel(
     private val context: ByteArray
 ) {
     private val sendSequence = AtomicLong(0)
-    private var lastReceivedSequence = -1L
+    private var highestReceivedSequence = -1L
+    private var receivedSequenceWindow = 0L
     @Volatile private var destroyed = false
 
     @Synchronized
@@ -634,9 +635,21 @@ private class SecurePayloadChannel(
             "Encrypted LINKA packet size is invalid"
         }
         val sequence = ByteBuffer.wrap(packet, 0, 8).long
-        require(sequence >= 0 && sequence > lastReceivedSequence) {
-            "Replayed or out-of-order LINKA packet rejected"
+        require(sequence >= 0) { "Encrypted LINKA packet sequence is invalid" }
+        val highest = highestReceivedSequence
+        val bit = if (highest >= sequence) {
+            val distance = highest - sequence
+            require(distance < REPLAY_WINDOW_BITS) {
+                "Encrypted LINKA packet is outside the replay window"
+            }
+            1L shl distance.toInt()
+        } else {
+            0L
         }
+        require(bit == 0L || receivedSequenceWindow and bit == 0L) {
+            "Replayed LINKA packet rejected"
+        }
+
         val sequenceBytes = packet.copyOfRange(0, 8)
         val encrypted = packet.copyOfRange(8, packet.size)
         val plaintext = Cipher.getInstance("AES/GCM/NoPadding").run {
@@ -644,7 +657,21 @@ private class SecurePayloadChannel(
             updateAAD(context + sequenceBytes)
             doFinal(encrypted)
         }
-        lastReceivedSequence = sequence
+
+        if (highest < 0) {
+            highestReceivedSequence = sequence
+            receivedSequenceWindow = 1L
+        } else if (sequence > highest) {
+            val shift = sequence - highest
+            receivedSequenceWindow = if (shift >= REPLAY_WINDOW_BITS) {
+                1L
+            } else {
+                (receivedSequenceWindow shl shift.toInt()) or 1L
+            }
+            highestReceivedSequence = sequence
+        } else {
+            receivedSequenceWindow = receivedSequenceWindow or bit
+        }
         return plaintext
     }
 
@@ -654,7 +681,8 @@ private class SecurePayloadChannel(
         destroyed = true
         sendKey.fill(0)
         receiveKey.fill(0)
-        lastReceivedSequence = Long.MAX_VALUE
+        highestReceivedSequence = Long.MAX_VALUE
+        receivedSequenceWindow = -1L
     }
 
     private fun nonce(key: ByteArray, sequence: Long): ByteArray {
@@ -665,6 +693,7 @@ private class SecurePayloadChannel(
     companion object {
         private const val TAG_BYTES = 16
         private const val MAX_PLAINTEXT_BYTES = 8192
+        private const val REPLAY_WINDOW_BITS = 64L
     }
 }
 

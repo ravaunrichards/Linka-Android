@@ -72,7 +72,7 @@ class PeerSessionSecurity internal constructor(
             canonicalHello(deviceId, signingPublicKey, ephemeralPublicKey, nonce)
     }
 
-    private data class Ack(val senderDeviceId: String, val mac: ByteArray)
+    private data class Ack(val senderDeviceId: String, val transcriptHash: ByteArray, val mac: ByteArray)
 
     private data class Exchange(
         val localKeyPair: KeyPair,
@@ -162,10 +162,9 @@ class PeerSessionSecurity internal constructor(
 
                 is HandshakePacket.AckPacket -> {
                     if (exchange.rootKey == null) {
-                        val pending = exchange.pendingAcknowledgement
-                        if (pending != null && !sameAck(pending, message.ack)) {
-                            throw SecurityException("Conflicting secure-pairing confirmations")
-                        }
+                        // ACKs can overtake HELLOs on the radio callbacks. Keep
+                        // the newest candidate; the transcript hash binds it to
+                        // this exact ephemeral exchange when the peer HELLO arrives.
                         exchange.pendingAcknowledgement = message.ack
                     } else {
                         verifyAcknowledgement(exchange, message.ack)
@@ -298,7 +297,7 @@ class PeerSessionSecurity internal constructor(
         val body = ACK_DOMAIN + transcriptHash + senderId.toByteArray(StandardCharsets.UTF_8)
         val mac = hmacSha256(key, body)
         key.fill(0)
-        return Ack(senderId, mac)
+        return Ack(senderId, transcriptHash.copyOf(), mac)
     }
 
     private fun verifyAcknowledgement(exchange: Exchange, ack: Ack) {
@@ -307,9 +306,16 @@ class PeerSessionSecurity internal constructor(
         require(ack.senderDeviceId == remote.deviceId) {
             "Secure-pairing confirmation came from the wrong device"
         }
+        val transcriptHash = exchange.transcriptHash
+            ?: throw SecurityException("Secure handshake transcript is unavailable")
+        if (!MessageDigest.isEqual(transcriptHash, ack.transcriptHash)) {
+            // This is an ACK for an earlier ephemeral exchange. Ignore it;
+            // the peer will send a confirmation for the current transcript.
+            return
+        }
         val expected = createAcknowledgement(
             exchange.rootKey ?: throw SecurityException("Secure session key is unavailable"),
-            exchange.transcriptHash ?: throw SecurityException("Secure handshake transcript is unavailable"),
+            transcriptHash,
             remote.deviceId
         )
         require(MessageDigest.isEqual(expected.mac, ack.mac)) {
@@ -338,6 +344,7 @@ class PeerSessionSecurity internal constructor(
 
     private fun sameAck(first: Ack, second: Ack): Boolean =
         first.senderDeviceId == second.senderDeviceId &&
+            MessageDigest.isEqual(first.transcriptHash, second.transcriptHash) &&
             MessageDigest.isEqual(first.mac, second.mac)
 
     private sealed interface HandshakePacket {
@@ -369,6 +376,7 @@ class PeerSessionSecurity internal constructor(
 
         private fun encodeAck(ack: Ack): ByteArray = packet(ACK) { output ->
             writeField(output, ack.senderDeviceId.toByteArray(StandardCharsets.UTF_8), 64)
+            writeField(output, ack.transcriptHash, ACK_BYTES)
             writeField(output, ack.mac, ACK_BYTES)
         }
 
@@ -393,11 +401,12 @@ class PeerSessionSecurity internal constructor(
                 }
                 ACK -> {
                     val sender = String(readField(input, 64), StandardCharsets.UTF_8)
+                    val transcriptHash = readField(input, ACK_BYTES)
                     val mac = readField(input, ACK_BYTES)
-                    require(sender.isNotBlank() && mac.size == ACK_BYTES) {
+                    require(sender.isNotBlank() && transcriptHash.size == ACK_BYTES && mac.size == ACK_BYTES) {
                         "Secure key confirmation fields are invalid"
                     }
-                    HandshakePacket.AckPacket(Ack(sender, mac))
+                    HandshakePacket.AckPacket(Ack(sender, transcriptHash, mac))
                 }
                 else -> throw IllegalArgumentException("Unknown secure-pairing message type")
             }

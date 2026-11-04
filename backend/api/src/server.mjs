@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 import { LinkaRuntime } from "./runtime.mjs";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
@@ -6,6 +7,13 @@ const NODE_ENV = process.env.NODE_ENV ?? "development";
 const API_VERSION = "0.1.0";
 const MAX_BODY_BYTES = 20 * 1024;
 const runtime = new LinkaRuntime();
+const WEB_ROOT = new URL("../../../web/", import.meta.url);
+const WEB_ASSETS = new Map([
+  ["/", { file: "index.html", contentType: "text/html; charset=utf-8" }],
+  ["/index.html", { file: "index.html", contentType: "text/html; charset=utf-8" }],
+  ["/styles.css", { file: "styles.css", contentType: "text/css; charset=utf-8" }],
+  ["/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }]
+]);
 
 const rateBuckets = new Map();
 
@@ -19,6 +27,28 @@ function response(res, status, body) {
     "referrer-policy": "no-referrer"
   });
   res.end(bytes);
+}
+
+async function serveWebAsset(req, res, pathname) {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  const asset = WEB_ASSETS.get(pathname);
+  if (!asset) return false;
+
+  try {
+    const body = await readFile(new URL(asset.file, WEB_ROOT));
+    res.writeHead(200, {
+      "content-type": asset.contentType,
+      "content-length": body.length,
+      "cache-control": asset.file === "index.html" ? "no-cache" : "public, max-age=3600",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer"
+    });
+    res.end(req.method === "HEAD" ? undefined : body);
+    return true;
+  } catch {
+    response(res, 503, { error: "web_companion_unavailable" });
+    return true;
+  }
 }
 
 function rateLimit(key, limit, windowMs) {
@@ -105,6 +135,8 @@ async function handleRequest(req, res) {
   const path = url.pathname;
 
   try {
+    if (await serveWebAsset(req, res, path)) return;
+
     if (req.method === "GET" && path === "/healthz") {
       response(res, 200, {
         status: "ok",

@@ -277,6 +277,46 @@ class MeshPacketRouterTest {
         assertTrue(duplicate.reason.contains("Duplicate"))
     }
 
+
+    @Test
+    fun opaqueVoicePayloadsAvoidPerFrameOriginSignatures() {
+        val caller = identity()
+        val relay = identity()
+        val recipient = identity()
+        val identities = listOf(caller, relay, recipient).associateBy { it.deviceId }
+        val callerRouter = router(caller, identities, relayEnabled = false)
+        val relayRouter = router(relay, identities, relayEnabled = true)
+        val recipientRouter = router(recipient, identities, relayEnabled = false)
+
+        callerRouter.registerNeighbor("caller-relay", relay.deviceId, relayOptIn = true)
+        relayRouter.registerNeighbor("relay-caller", caller.deviceId, relayOptIn = false)
+        relayRouter.registerNeighbor("relay-recipient", recipient.deviceId, relayOptIn = false)
+        recipientRouter.registerNeighbor("recipient-relay", relay.deviceId, relayOptIn = true)
+
+        val request = (callerRouter.startRouteDiscovery(recipient.deviceId).single()
+            as MeshRouterAction.SendTo).packet
+        val forwarded = relayRouter.receive(request.packet, "relay-caller").single()
+            as MeshRouterAction.SendTo
+        val reply = recipientRouter.receive(forwarded.packet, "recipient-relay").single()
+            as MeshRouterAction.SendTo
+        val replyAtRelay = relayRouter.receive(reply.packet, "relay-recipient").single()
+            as MeshRouterAction.SendTo
+        callerRouter.receive(replyAtRelay.packet, "caller-relay").single()
+
+        val frameCiphertext = ByteArray(200) { (it * 9).toByte() }
+        val data = (callerRouter.sendOpaqueData(recipient.deviceId, frameCiphertext).single()
+            as MeshRouterAction.SendTo).packet
+        val decoded = MeshPacketCodec.decode(data)
+        assertTrue(decoded.signature.isEmpty())
+        val relayed = relayRouter.receive(data, "relay-caller").single()
+            as MeshRouterAction.SendTo
+        val delivered = recipientRouter.receive(
+            relayed.packet,
+            "recipient-relay"
+        ).single() as MeshRouterAction.DeliverOpaqueData
+        assertArrayEquals(frameCiphertext, delivered.payload)
+    }
+
     @Test
     fun rejectsTamperedOriginSignature() {
         val caller = identity()

@@ -184,7 +184,7 @@ class MeshPacketRouterTest {
         val signed = (callerRouter.startRouteDiscovery(UUID.randomUUID().toString()).single()
             as MeshRouterAction.SendTo).packet
         val expires = UUID.randomUUID()
-        val packet = MeshPacketCodec.decode(signed.packet)
+        val packet = MeshPacketCodec.decode(signed)
         val expired = packet.copy(
             packetId = expires.toString(),
             requestId = expires.toString(),

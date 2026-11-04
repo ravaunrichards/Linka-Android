@@ -406,7 +406,7 @@ class MeshPacketRouterTest {
             nowEpochMs = 100_000L
         ).single() as MeshRouterAction.Dropped
 
-        assertTrue(result.reason.contains("lifetime exceeds"))
+        assertTrue(result.reason.contains("expiry"))
     }
 
     @Test

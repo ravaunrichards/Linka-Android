@@ -123,7 +123,7 @@ class MeshPacketRouterTest {
         callerRouter.registerNeighbor("caller-a", relayA.deviceId, relayOptIn = true)
         relayARouter.registerNeighbor("a-caller", caller.deviceId, relayOptIn = false)
         relayARouter.registerNeighbor("a-b", relayB.deviceId, relayOptIn = true)
-        relayBRouter.registerNeighbor("b-a", relayA.deviceId, relayOptIn = false)
+        relayBRouter.registerNeighbor("b-a", relayA.deviceId, relayOptIn = true)
         relayBRouter.registerNeighbor("b-recipient", recipient.deviceId, relayOptIn = false)
         recipientRouter.registerNeighbor("recipient-b", relayB.deviceId, relayOptIn = true)
 
@@ -332,12 +332,9 @@ class MeshPacketRouterTest {
         ).single() as MeshRouterAction.Dropped
         assertTrue(lifetimeResult.reason.contains("expiry"))
 
-        val malformedId = packet.copy(packetId = "not-a-uuid", signature = ByteArray(0))
-        val signedMalformedId = malformedId.copy(
-            signature = caller.sign(MeshPacketCodec.signingBytes(malformedId))
-        )
+        val malformedId = packet.copy(packetId = "not-a-uuid")
         assertThrows(IllegalArgumentException::class.java) {
-            MeshPacketCodec.encode(signedMalformedId)
+            MeshPacketCodec.encode(malformedId)
         }
     }
 

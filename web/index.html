@@ -30,7 +30,7 @@
       <header class="topbar">
         <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
         <div class="breadcrumb">LINKA <span>/</span> <strong id="currentSection">Overview</strong></div>
-        <div class="top-status"><span class="status-dot"></span> Browser preview</div>
+        <div class="top-status"><span class="status-dot"></span> Live LINKA companion</div>
       </header>
 
       <section class="view active" id="overview">
@@ -52,13 +52,13 @@
         <div class="status-grid">
           <article class="status-card"><div class="card-top"><span class="card-icon cyan">⌁</span><span class="tag progress">Foundation added</span></div><h3>Nearby connections</h3><p>Android discovery and multiple neighbour links are in the code. Real-phone testing is still required.</p><div class="card-foot">ANDROID RADIO</div></article>
           <article class="status-card"><div class="card-top"><span class="card-icon violet">◖</span><span class="tag warning">Testing required</span></div><h3>Direct voice calls</h3><p>A narrowband audio path exists in Android source. SIM-free two-phone calling has not been verified.</p><div class="card-foot">ANDROID AUDIO</div></article>
-          <article class="status-card"><div class="card-top"><span class="card-icon amber">⌘</span><span class="tag pending">In development</span></div><h3>Long-distance mesh</h3><p>Multi-hop routing, relay forwarding and end-to-end media encryption are not complete.</p><div class="card-foot">OFFLINE RELAY NETWORK</div></article>
+          <article class="status-card"><div class="card-top"><span class="card-icon amber">⌘</span><span class="tag warning">Field testing pending</span></div><h3>Long-distance mesh</h3><p>Android includes multi-hop route discovery, opt-in relay forwarding and end-to-end encrypted routed voice. Physical relay-chain testing is still required.</p><div class="card-foot">OFFLINE RELAY NETWORK</div></article>
         </div>
 
         <div class="section-heading"><div><div class="eyebrow">THE TWO PATHS</div><h2>Nearby first. Long distance through relays.</h2></div></div>
         <div class="path-grid">
           <article class="path-card"><div class="path-number">01</div><h3>Direct nearby calling</h3><p>Two LINKA phones discover and connect over supported local radios. No SIM, airtime, mobile data or internet should be required.</p><span class="path-state">Android implementation · validation pending</span></article>
-          <article class="path-card"><div class="path-number">02</div><h3>Long-distance offline calling</h3><p>Phones or powered relay devices pass encrypted voice packets from one neighbour to the next along a continuous live route.</p><span class="path-state">Routing and relay engine · not yet implemented</span></article>
+          <article class="path-card"><div class="path-number">02</div><h3>Long-distance offline calling</h3><p>Phones or powered relay devices pass encrypted voice packets from one neighbour to the next along a continuous live route.</p><span class="path-state">Android routing engine implemented · physical field testing pending</span></article>
         </div>
       </section>
 
@@ -79,7 +79,7 @@
         <div class="page-heading"><div class="eyebrow">VOICE</div><h1>Calling</h1><p>LINKA separates local offline calls from optional internet and carrier calling.</p></div>
         <div class="call-mode-grid">
           <article class="mode-panel"><span class="tag progress">Android path exists</span><h2>Nearby offline call</h2><p>Direct local-radio voice between two connected LINKA phones. SIM-free operation still needs physical testing.</p><ul><li>No airtime or mobile data intended</li><li>Requires compatible local radios</li><li>Two-way audio verification outstanding</li></ul></article>
-          <article class="mode-panel"><span class="tag pending">Not available yet</span><h2>Long-distance mesh call</h2><p>Live voice forwarded through a continuous chain of trusted relay devices.</p><ul><li>End-to-end media encryption required</li><li>Route discovery and repair required</li><li>Relay forwarding engine required</li></ul></article>
+          <article class="mode-panel"><span class="tag warning">Physical validation pending</span><h2>Long-distance mesh call</h2><p>Android source includes live voice forwarding through a continuous chain of trusted relay devices.</p><ul><li>End-to-end media encryption is implemented in the Android source</li><li>Route discovery, bounded forwarding and loop protection are implemented</li><li>Real multi-phone relay-chain calling and coverage still need field testing</li></ul></article>
         </div>
         <div class="notice"><strong>Calling is not enabled in this browser preview</strong><p>No call button is shown as working until a browser-compatible call transport and secure signaling are implemented and tested. The webpage will not silently place a carrier call.</p></div>
       </section>

@@ -264,6 +264,15 @@ class MeshPacketRouter(
             hopCount = packet.hopCount + 1,
             expiresAt = packet.expiresAtEpochMs
         )
+        // Every relay learns the reverse route to the request origin. This
+        // enables recipient-to-caller media on chains with multiple relays.
+        routes[packet.sourceDeviceId] = MeshRoute(
+            destinationDeviceId = packet.sourceDeviceId,
+            nextHopEndpointId = ingress.endpointId,
+            nextHopDeviceId = ingress.deviceId,
+            hopCount = (packet.hopCount + 1).coerceAtMost(MAX_HOPS),
+            expiresAtEpochMs = minOf(packet.expiresAtEpochMs, nowEpochMs + ROUTE_TTL_MS)
+        )
 
         if (packet.destinationDeviceId == localDeviceId) {
             val directRoute = MeshRoute(

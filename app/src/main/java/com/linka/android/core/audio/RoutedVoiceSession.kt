@@ -123,6 +123,7 @@ class RoutedVoiceSession(context: Context) {
             .setAudioFormat(inputFormat)
             .setBufferSizeInBytes(maxOf(recordBuffer * 2, VoiceFrameCodec.SAMPLES_PER_FRAME * 4))
             .build()
+        recorder = audioRecord
         check(audioRecord.state == AudioRecord.STATE_INITIALIZED) {
             "The Android microphone could not be initialized"
         }
@@ -138,12 +139,10 @@ class RoutedVoiceSession(context: Context) {
             .setBufferSizeInBytes(maxOf(playbackBuffer * 2, VoiceFrameCodec.SAMPLES_PER_FRAME * 4))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        player = audioTrack
         check(audioTrack.state == AudioTrack.STATE_INITIALIZED) {
             "The Android speaker could not be initialized"
         }
-
-        recorder = audioRecord
-        player = audioTrack
         if (AcousticEchoCanceler.isAvailable()) {
             echoCanceler = runCatching {
                 AcousticEchoCanceler.create(audioRecord.audioSessionId)?.apply { enabled = true }

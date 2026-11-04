@@ -7,6 +7,10 @@ import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.identity.LocalDeviceIdentity
 import com.linka.android.core.identity.TrustedDeviceStore
+import com.linka.android.core.mesh.MeshPacketCodec
+import com.linka.android.core.mesh.MeshPacketRouter
+import com.linka.android.core.mesh.MeshRouterAction
+import com.linka.android.core.mesh.RelayConsentStore
 import com.linka.android.core.security.PeerSessionSecurity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,12 +39,23 @@ class NearbyCallController(
     context: Context,
     private val localIdentity: LocalDeviceIdentity,
     trustedDevices: TrustedDeviceStore,
+    private val relayConsent: RelayConsentStore,
     private val nearbyLink: NearbyDirectLink
 ) {
     private val localDeviceId = localIdentity.deviceId
     private val appContext = context.applicationContext
     private val machine = CallStateMachine()
-    private val peerSecurity = PeerSessionSecurity(localIdentity, trustedDevices)
+    private val peerSecurity = PeerSessionSecurity(localIdentity, trustedDevices) { relayConsent.isEnabled() }
+    private val meshRouter = MeshPacketRouter(
+        localDeviceId = localDeviceId,
+        relayEnabled = { relayConsent.isEnabled() },
+        signOrigin = { bytes -> localIdentity.sign(bytes) },
+        verifyOrigin = { sourceDeviceId, body, signature ->
+            trustedDevices.get(sourceDeviceId)?.let { trusted ->
+                LocalDeviceIdentity.verify(trusted.publicKeyBase64, body, signature)
+            } ?: false
+        }
+    )
     private val trackedEndpoints = mutableSetOf<String>()
     private val voiceSession = NearbyVoiceSession(appContext, nearbyLink)
     val voiceState: StateFlow<VoiceSessionState> = voiceSession.state
@@ -63,26 +78,44 @@ class NearbyCallController(
                     if (result.error != null) {
                         publishError(result.error)
                     } else if (result.isAuthenticated) {
+                        val authenticatedPeer = peerSecurity.session(incoming.endpointId)
+                        if (authenticatedPeer != null) {
+                            meshRouter.registerNeighbor(
+                                endpointId = incoming.endpointId,
+                                deviceId = authenticatedPeer.remoteDeviceId,
+                                relayOptIn = authenticatedPeer.remoteRelayOptIn
+                            )
+                        }
                         _state.value = _state.value.copy(
-                            status = "Secure identity verified",
+                            status = if (authenticatedPeer?.remoteRelayOptIn == true) {
+                                "Secure identity verified; peer permits relay participation"
+                            } else {
+                                "Secure identity verified; peer is not a relay"
+                            },
                             error = null
                         )
                     }
                     return@collect
                 }
 
-                if (incoming.endpointId != nearbyLink.state.value.connectedPeer?.endpointId) {
-                    return@collect
-                }
                 val session = peerSecurity.session(incoming.endpointId)
                 if (session == null) {
-                    publishError("Ignored call data before trusted identity verification")
+                    publishError("Ignored nearby data before trusted identity verification")
                     return@collect
                 }
                 val plaintext = try {
                     session.decryptControl(incoming.bytes)
                 } catch (error: Exception) {
-                    publishError(error.localizedMessage ?: "Secure call-control authentication failed")
+                    publishError(error.localizedMessage ?: "Secure nearby packet authentication failed")
+                    return@collect
+                }
+
+                if (MeshPacketCodec.isMeshPacket(plaintext)) {
+                    dispatchMeshActions(meshRouter.receive(plaintext, incoming.endpointId))
+                    return@collect
+                }
+
+                if (incoming.endpointId != nearbyLink.state.value.connectedPeer?.endpointId) {
                     return@collect
                 }
                 handleIncoming(plaintext, incoming.endpointId, session.remoteDeviceId)
@@ -98,6 +131,7 @@ class NearbyCallController(
                 val disconnected = trackedEndpoints - connectedEndpoints
                 disconnected.forEach { endpoint ->
                     peerSecurity.remove(endpoint)
+                    meshRouter.unregisterNeighbor(endpoint)
                     trackedEndpoints.remove(endpoint)
                 }
 
@@ -248,6 +282,61 @@ class NearbyCallController(
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
     }
 
+    fun discoverMeshRoute(destinationDeviceId: String) {
+        if (trustedDevices.get(destinationDeviceId) == null) {
+            publishError("Trust the destination LINKA identity before discovering a route")
+            return
+        }
+        dispatchMeshActions(meshRouter.startRouteDiscovery(destinationDeviceId))
+    }
+
+    private fun dispatchMeshActions(actions: List<MeshRouterAction>) {
+        actions.forEach { action ->
+            when (action) {
+                is MeshRouterAction.SendTo -> {
+                    val nextHop = peerSecurity.session(action.endpointId)
+                    if (nextHop == null) {
+                        _state.value = _state.value.copy(
+                            status = "Mesh route is waiting for an authenticated next hop",
+                            error = null
+                        )
+                        return@forEach
+                    }
+                    val encrypted = try {
+                        nextHop.encryptControl(action.packet)
+                    } catch (error: Exception) {
+                        publishError(error.localizedMessage ?: "Could not protect mesh packet for next hop")
+                        return@forEach
+                    }
+                    nearbyLink.sendBytes(action.endpointId, encrypted) { error ->
+                        if (error != null) publishError(error)
+                    }
+                }
+
+                is MeshRouterAction.RouteEstablished -> {
+                    _state.value = _state.value.copy(
+                        status = "Offline route discovered to ${action.route.destinationDeviceId.take(8)} via ${action.route.hopCount} hop(s)",
+                        error = null
+                    )
+                }
+
+                is MeshRouterAction.Dropped -> {
+                    _state.value = _state.value.copy(
+                        status = "Mesh packet not forwarded: ${action.reason}",
+                        error = null
+                    )
+                }
+
+                is MeshRouterAction.DeliverOpaqueData -> {
+                    _state.value = _state.value.copy(
+                        status = "Encrypted routed payload received from ${action.sourceDeviceId.take(8)}; routed call transport is not yet connected",
+                        error = null
+                    )
+                }
+            }
+        }
+    }
+
     fun refreshSecurePairings() {
         val current = machine.snapshot
         if (current.phase in setOf(CallPhase.OUTGOING_RINGING, CallPhase.INCOMING_RINGING, CallPhase.ACTIVE)) {
@@ -259,6 +348,7 @@ class NearbyCallController(
             ).toSet()
         endpoints.forEach { endpoint ->
             peerSecurity.remove(endpoint)
+            meshRouter.unregisterNeighbor(endpoint)
             trackedEndpoints.add(endpoint)
             val hello = runCatching { peerSecurity.begin(endpoint) }.getOrNull()
             if (hello != null) {

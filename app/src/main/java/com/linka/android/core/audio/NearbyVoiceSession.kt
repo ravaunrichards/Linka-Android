@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyIncomingStream
 import com.linka.android.core.nearby.NearbyOutgoingStream
+import com.linka.android.core.security.SecureCallCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.DataInputStream
 import java.io.IOException
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
@@ -42,9 +44,8 @@ data class VoiceSessionState(
  * Foreground-only, full-duplex 8 kHz narrowband voice path.
  *
  * Audio is captured as PCM16 mono, compressed to G.711 mu-law 20 ms frames,
- * and carried by a Nearby Connections stream. The Nearby SDK encrypts the
- * direct transport. A separate signed identity/key schedule is still required
- * before mesh relaying or any claim of app-layer E2E protection.
+ * encrypted with the authenticated per-call AES-GCM key, then carried by a
+ * Nearby Connections stream. The direct path requires a verified peer session.
  */
 class NearbyVoiceSession(
     context: Context,
@@ -59,6 +60,7 @@ class NearbyVoiceSession(
     private var callScope: CoroutineScope? = null
     private var callJob: Job? = null
     private var endpointId: String? = null
+    private var callCipher: SecureCallCipher? = null
     private var outgoingStream: NearbyOutgoingStream? = null
     private var incomingStream: NearbyIncomingStream? = null
     private val incomingStreamLock = Any()
@@ -80,9 +82,10 @@ class NearbyVoiceSession(
         }
     }
 
-    fun start(peerEndpointId: String) {
+    fun start(peerEndpointId: String, callId: String, secureCipher: SecureCallCipher) {
         if (!started.compareAndSet(false, true)) return
         endpointId = peerEndpointId
+        callCipher = secureCipher
         _state.value = VoiceSessionState(isStarting = true, status = "Preparing microphone and speaker")
 
         val job = SupervisorJob()
@@ -258,7 +261,9 @@ class NearbyVoiceSession(
                     collected += count
                 }
                 if (!started.get()) break
-                VoiceFrameCodec.write(writer.let { StreamOutputAdapter(it) }, sequence++, frame)
+                val cipher = callCipher ?: throw IOException("Secure call keys are unavailable")
+                val encodedFrame = VoiceFrameCodec.encode(sequence++, frame)
+                writer.write(cipher.encryptFrame(encodedFrame))
             }
         } catch (error: Exception) {
             if (started.get()) fail(error.localizedMessage ?: "Microphone stream failed")
@@ -309,10 +314,25 @@ class NearbyVoiceSession(
 
         var lastSequence = -1L
         try {
-            incoming.input.use { input ->
+            incoming.input.use { rawInput ->
+                val input = DataInputStream(rawInput)
                 while (started.get()) {
-                    val frame = VoiceFrameCodec.read(input) ?: break
-                    if (frame.sequence <= lastSequence) continue
+                    val first = rawInput.read()
+                    if (first == -1) break
+                    val encrypted = ByteArray(SecureCallCipher.ENCRYPTED_FRAME_BYTES)
+                    encrypted[0] = first.toByte()
+                    try {
+                        input.readFully(encrypted, 1, encrypted.size - 1)
+                    } catch (error: java.io.EOFException) {
+                        throw IOException("Truncated encrypted voice frame", error)
+                    }
+
+                    val cipher = callCipher ?: throw IOException("Secure call keys are unavailable")
+                    val plaintext = cipher.decryptFrame(encrypted)
+                    val frame = VoiceFrameCodec.decode(plaintext)
+                    if (frame.sequence <= lastSequence) {
+                        throw IOException("Replayed voice frame rejected")
+                    }
                     lastSequence = frame.sequence
 
                     var written = 0
@@ -334,21 +354,6 @@ class NearbyVoiceSession(
             incoming.close()
             if (incomingStream === incoming) incomingStream = null
         }
-    }
-
-    private class StreamOutputAdapter(
-        private val stream: NearbyOutgoingStream
-    ) : java.io.OutputStream() {
-        override fun write(value: Int) {
-            stream.write(byteArrayOf(value.toByte()))
-        }
-
-        override fun write(buffer: ByteArray, offset: Int, length: Int) {
-            stream.write(buffer.copyOfRange(offset, offset + length))
-        }
-
-        override fun flush() = Unit
-        override fun close() = stream.close()
     }
 
     private fun fail(message: String) {
@@ -403,6 +408,7 @@ class NearbyVoiceSession(
         LinkaVoiceForegroundService.stop(appContext)
         previousAudioMode = null
         endpointId = null
+        callCipher = null
         _state.value = VoiceSessionState(status = reason)
     }
 

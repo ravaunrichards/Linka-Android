@@ -395,6 +395,11 @@ class NearbyCallController(
         when (payload.type) {
             RoutedPayloadType.PEER_HANDSHAKE -> {
                 val result = routedPeerSecurity.handle(endpoint, payload.bytes)
+                if (result.remoteDeviceId != null && result.remoteDeviceId != sourceDeviceId) {
+                    routedPeerSecurity.remove(endpoint)
+                    publishError("Routed peer identity does not match the authenticated packet source")
+                    return
+                }
                 result.responses.forEach { response ->
                     sendRoutedPayload(sourceDeviceId, RoutedPayloadType.PEER_HANDSHAKE, response)
                 }

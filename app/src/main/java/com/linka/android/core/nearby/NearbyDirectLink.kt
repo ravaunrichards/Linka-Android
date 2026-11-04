@@ -76,6 +76,7 @@ data class NearbyLinkState(
     val peers: List<NearbyPeer> = emptyList(),
     val pendingPairing: PendingPairing? = null,
     val connectedPeer: NearbyPeer? = null,
+    val connectedPeers: List<NearbyPeer> = emptyList(),
     val status: String = "Nearby calling is stopped",
     val error: String? = null
 )
@@ -106,7 +107,9 @@ class NearbyDirectLink(
     )
     val incomingStreams: SharedFlow<NearbyIncomingStream> = _incomingStreams.asSharedFlow()
 
-    private val strategy = Strategy.P2P_POINT_TO_POINT
+    // Cluster topology is required to keep multiple nearby relay neighbours connected.
+    // Direct calls still select one peer for their high-level call session.
+    private val strategy = Strategy.P2P_CLUSTER
     private val serviceId = "com.linka.android"
     private val maxControlPayloadBytes = 1024
     private val streamPipeBufferBytes = 64 * 1024
@@ -186,16 +189,17 @@ class NearbyDirectLink(
                     val pending = _state.value.pendingPairing
                     val peer = _state.value.peers.firstOrNull { it.endpointId == endpointId }
                         ?: NearbyPeer(endpointId, pending?.peerName ?: "LINKA device")
-                    _state.update {
-                        it.copy(
+                    _state.update { current ->
+                        val connected = current.connectedPeers
+                            .filterNot { it.endpointId == endpointId } + peer
+                        current.copy(
                             pendingPairing = null,
-                            connectedPeer = peer,
-                            status = "Secure nearby connection established",
+                            connectedPeers = connected,
+                            connectedPeer = current.connectedPeer ?: peer,
+                            status = "Nearby peer connected (${connected.size} link(s))",
                             error = null
                         )
                     }
-                    client.stopAdvertising()
-                    client.stopDiscovery()
                 }
 
                 ConnectionsStatusCodes.STATUS_CONNECTION_REJECTED -> {
@@ -221,14 +225,17 @@ class NearbyDirectLink(
 
         override fun onDisconnected(endpointId: String) {
             _state.update { current ->
-                if (current.connectedPeer?.endpointId == endpointId) {
-                    current.copy(
-                        connectedPeer = null,
-                        status = "Nearby device disconnected"
-                    )
-                } else {
-                    current
-                }
+                val remaining = current.connectedPeers.filterNot { it.endpointId == endpointId }
+                val activeWasDisconnected = current.connectedPeer?.endpointId == endpointId
+                current.copy(
+                    connectedPeers = remaining,
+                    connectedPeer = if (activeWasDisconnected) null else current.connectedPeer,
+                    status = if (activeWasDisconnected) {
+                        "Selected nearby device disconnected"
+                    } else {
+                        "Nearby peer disconnected (${remaining.size} link(s) remain)"
+                    }
+                )
             }
         }
     }
@@ -313,7 +320,9 @@ class NearbyDirectLink(
     }
 
     fun sendBytes(endpointId: String, bytes: ByteArray, onResult: (String?) -> Unit = {}) {
-        if (_state.value.connectedPeer?.endpointId != endpointId) {
+        if (_state.value.connectedPeers.none { it.endpointId == endpointId } &&
+            _state.value.connectedPeer?.endpointId != endpointId
+        ) {
             onResult("The requested LINKA peer is not connected")
             return
         }
@@ -336,7 +345,9 @@ class NearbyDirectLink(
         endpointId: String,
         onReady: (NearbyOutgoingStream?, String?) -> Unit
     ) {
-        if (_state.value.connectedPeer?.endpointId != endpointId) {
+        if (_state.value.connectedPeers.none { it.endpointId == endpointId } &&
+            _state.value.connectedPeer?.endpointId != endpointId
+        ) {
             onReady(null, "The requested LINKA peer is not connected")
             return
         }
@@ -356,16 +367,33 @@ class NearbyDirectLink(
         }
     }
 
-    fun disconnect() {
-        val endpointId = _state.value.connectedPeer?.endpointId ?: return
-        client.disconnectFromEndpoint(endpointId)
+    /** Selects one already-connected neighbour for a direct voice call. */
+    fun selectPeer(endpointId: String) {
+        val peer = _state.value.connectedPeers.firstOrNull { it.endpointId == endpointId }
+            ?: return
         _state.update {
-            it.copy(
-                connectedPeer = null,
-                pendingPairing = null,
-                status = "Disconnected"
+            it.copy(connectedPeer = peer, status = "Selected ${peer.displayName} for direct calling")
+        }
+    }
+
+    /** Disconnects one neighbour without dropping the other mesh-capable links. */
+    fun disconnectPeer(endpointId: String) {
+        client.disconnectFromEndpoint(endpointId)
+        _state.update { current ->
+            val remaining = current.connectedPeers.filterNot { it.endpointId == endpointId }
+            val activeWasDisconnected = current.connectedPeer?.endpointId == endpointId
+            current.copy(
+                connectedPeers = remaining,
+                connectedPeer = if (activeWasDisconnected) null else current.connectedPeer,
+                pendingPairing = if (current.pendingPairing?.endpointId == endpointId) null else current.pendingPairing,
+                status = "Disconnected from one nearby device (${remaining.size} link(s) remain)"
             )
         }
+    }
+
+    fun disconnect() {
+        val endpointId = _state.value.connectedPeer?.endpointId ?: return
+        disconnectPeer(endpointId)
     }
 
     fun stopDiscoveryAndAdvertising() {

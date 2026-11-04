@@ -85,3 +85,9 @@ This changes the topology; it does not automatically route traffic between peers
 - **Gate E — Jamaica deployment:** measured relay placements, power plan, device support matrix and coverage maps backed by field tests.
 
 Do not mark a gate complete based on UI screens, a code commit or a CI build alone.
+
+## Current implementation update
+
+The direct-call Android source now includes QR-trusted identity binding, fresh authenticated ECDH session setup, transcript confirmation, HKDF-derived directional AES-GCM control/media keys, encrypted voice frames, replay/tamper checks and key destruction. Automated unit tests cover the handshake and encrypted-frame behavior. These are implementation/test results, not physical-device proof.
+
+Multi-peer cluster connectivity remains a radio-link foundation only. Authenticated route discovery, opt-in relay capabilities, end-to-end caller-to-recipient handshakes across a routed path, ciphertext-only forwarding and physical three-plus-phone relay tests remain outstanding. Do not enable multi-hop voice or claim Jamaica-wide coverage until those gates pass.

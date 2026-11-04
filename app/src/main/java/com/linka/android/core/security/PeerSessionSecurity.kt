@@ -646,7 +646,7 @@ private class SecurePayloadChannel(
         } else {
             0L
         }
-        require(bit == 0L || receivedSequenceWindow and bit == 0L) {
+        require(bit == 0L || (receivedSequenceWindow and bit) == 0L) {
             "Replayed LINKA packet rejected"
         }
 

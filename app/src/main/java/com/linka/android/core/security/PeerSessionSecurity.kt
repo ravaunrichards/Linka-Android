@@ -180,7 +180,8 @@ class PeerSessionSecurity internal constructor(
                     Result(
                         responses = responses,
                         isAuthenticated = authenticated,
-                        remoteDeviceId = exchange.remoteHello?.deviceId
+                        remoteDeviceId = exchange.remoteHello?.deviceId,
+                        remoteRelayOptIn = exchange.remoteHello?.relayOptIn
                     )
                 }
             }

@@ -105,6 +105,70 @@ class MeshPacketRouterTest {
         assertArrayEquals(encryptedPayload, delivered.payload)
     }
 
+
+    @Test
+    fun discoversAndForwardsBidirectionallyAcrossTwoRelayPhones() {
+        val caller = identity()
+        val relayA = identity()
+        val relayB = identity()
+        val recipient = identity()
+        val identities = listOf(caller, relayA, relayB, recipient).associateBy { it.deviceId }
+
+        val callerRouter = router(caller, identities, relayEnabled = false)
+        val relayARouter = router(relayA, identities, relayEnabled = true)
+        val relayBRouter = router(relayB, identities, relayEnabled = true)
+        val recipientRouter = router(recipient, identities, relayEnabled = false)
+
+        callerRouter.registerNeighbor("caller-a", relayA.deviceId, relayOptIn = true)
+        relayARouter.registerNeighbor("a-caller", caller.deviceId, relayOptIn = false)
+        relayARouter.registerNeighbor("a-b", relayB.deviceId, relayOptIn = true)
+        relayBRouter.registerNeighbor("b-a", relayA.deviceId, relayOptIn = false)
+        relayBRouter.registerNeighbor("b-recipient", recipient.deviceId, relayOptIn = false)
+        recipientRouter.registerNeighbor("recipient-b", relayB.deviceId, relayOptIn = true)
+
+        val request = (callerRouter.startRouteDiscovery(recipient.deviceId).single()
+            as MeshRouterAction.SendTo).packet
+        val atA = relayARouter.receive(request, "a-caller").single() as MeshRouterAction.SendTo
+        assertEquals("a-b", atA.endpointId)
+        val atB = relayBRouter.receive(atA.packet, "b-a").single() as MeshRouterAction.SendTo
+        assertEquals("b-recipient", atB.endpointId)
+        val reply = recipientRouter.receive(atB.packet, "recipient-b").single() as MeshRouterAction.SendTo
+        val replyAtB = relayBRouter.receive(reply.packet, "b-recipient").single() as MeshRouterAction.SendTo
+        assertEquals("b-a", replyAtB.endpointId)
+        val replyAtA = relayARouter.receive(replyAtB.packet, "a-b").single() as MeshRouterAction.SendTo
+        assertEquals("a-caller", replyAtA.endpointId)
+        val route = callerRouter.receive(replyAtA.packet, "caller-a").single() as MeshRouterAction.RouteEstablished
+        assertEquals(3, route.route.hopCount)
+
+        val forwardPayload = ByteArray(144) { (it * 3).toByte() }
+        val fromCaller = (callerRouter.sendOpaqueData(recipient.deviceId, forwardPayload).single()
+            as MeshRouterAction.SendTo).packet
+        val forwardAtA = relayARouter.receive(fromCaller, "a-caller").single() as MeshRouterAction.SendTo
+        assertEquals("a-b", forwardAtA.endpointId)
+        val forwardAtB = relayBRouter.receive(forwardAtA.packet, "b-a").single() as MeshRouterAction.SendTo
+        assertEquals("b-recipient", forwardAtB.endpointId)
+        val deliveredToRecipient = recipientRouter.receive(
+            forwardAtB.packet,
+            "recipient-b"
+        ).single() as MeshRouterAction.DeliverOpaqueData
+        assertEquals(caller.deviceId, deliveredToRecipient.sourceDeviceId)
+        assertArrayEquals(forwardPayload, deliveredToRecipient.payload)
+
+        val returnPayload = ByteArray(144) { (it * 5).toByte() }
+        val fromRecipient = (recipientRouter.sendOpaqueData(caller.deviceId, returnPayload).single()
+            as MeshRouterAction.SendTo).packet
+        val returnAtB = relayBRouter.receive(fromRecipient, "b-recipient").single() as MeshRouterAction.SendTo
+        assertEquals("b-a", returnAtB.endpointId)
+        val returnAtA = relayARouter.receive(returnAtB.packet, "a-b").single() as MeshRouterAction.SendTo
+        assertEquals("a-caller", returnAtA.endpointId)
+        val deliveredToCaller = callerRouter.receive(
+            returnAtA.packet,
+            "caller-a"
+        ).single() as MeshRouterAction.DeliverOpaqueData
+        assertEquals(recipient.deviceId, deliveredToCaller.sourceDeviceId)
+        assertArrayEquals(returnPayload, deliveredToCaller.payload)
+    }
+
     @Test
     fun relayRefusesToForwardWhenRelayParticipationIsDisabled() {
         val caller = identity()

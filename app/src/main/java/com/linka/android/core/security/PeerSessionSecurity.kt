@@ -45,11 +45,13 @@ class PeerSessionSecurity internal constructor(
     private val localDeviceId: String,
     private val localPublicKeyBase64: String,
     private val signIdentity: (ByteArray) -> ByteArray,
-    private val trustedIdentity: (String) -> TrustedPeerIdentity?
+    private val trustedIdentity: (String) -> TrustedPeerIdentity?,
+    private val localRelayOptIn: () -> Boolean = { false }
 ) {
     constructor(
         localIdentity: LocalDeviceIdentity,
-        trustedDevices: TrustedDeviceStore
+        trustedDevices: TrustedDeviceStore,
+        localRelayOptIn: () -> Boolean = { false }
     ) : this(
         localIdentity.deviceId,
         localIdentity.publicKeyBase64,
@@ -58,7 +60,8 @@ class PeerSessionSecurity internal constructor(
             trustedDevices.get(deviceId)?.let {
                 TrustedPeerIdentity(it.deviceId, it.publicKeyBase64, it.fingerprint)
             }
-        }
+        },
+        localRelayOptIn
     )
 
     private data class Hello(
@@ -66,10 +69,11 @@ class PeerSessionSecurity internal constructor(
         val signingPublicKey: ByteArray,
         val ephemeralPublicKey: ByteArray,
         val nonce: ByteArray,
+        val relayOptIn: Boolean,
         val signature: ByteArray
     ) {
         fun signedBody(): ByteArray =
-            canonicalHello(deviceId, signingPublicKey, ephemeralPublicKey, nonce)
+            canonicalHello(deviceId, signingPublicKey, ephemeralPublicKey, nonce, relayOptIn)
     }
 
     private data class Ack(val senderDeviceId: String, val transcriptHash: ByteArray, val mac: ByteArray)
@@ -90,6 +94,7 @@ class PeerSessionSecurity internal constructor(
         val responses: List<ByteArray> = emptyList(),
         val isAuthenticated: Boolean = false,
         val remoteDeviceId: String? = null,
+        val remoteRelayOptIn: Boolean? = null,
         val error: String? = null
     )
 
@@ -157,7 +162,8 @@ class PeerSessionSecurity internal constructor(
                     Result(
                         responses = responses,
                         isAuthenticated = authenticated,
-                        remoteDeviceId = exchange.remoteHello?.deviceId
+                        remoteDeviceId = exchange.remoteHello?.deviceId,
+                        remoteRelayOptIn = exchange.remoteHello?.relayOptIn
                     )
                 }
 
@@ -227,6 +233,7 @@ class PeerSessionSecurity internal constructor(
             signingPublicKey = publicKey,
             ephemeralPublicKey = ephemeral.public.encoded,
             nonce = nonce,
+            relayOptIn = localRelayOptIn(),
             signature = ByteArray(0)
         )
         val signed = unsigned.copy(signature = signIdentity(unsigned.signedBody()))
@@ -336,6 +343,7 @@ class PeerSessionSecurity internal constructor(
             localDeviceId = localDeviceId,
             remoteDeviceId = remote.deviceId,
             remoteFingerprint = sha256(remote.signingPublicKey).toHex(),
+            remoteRelayOptIn = remote.relayOptIn,
             rootKey = root.copyOf()
         )
         return true
@@ -374,6 +382,7 @@ class PeerSessionSecurity internal constructor(
             writeField(output, hello.signingPublicKey, 256)
             writeField(output, hello.ephemeralPublicKey, 256)
             writeField(output, hello.nonce, NONCE_BYTES)
+            output.writeByte(if (hello.relayOptIn) 1 else 0)
             writeField(output, hello.signature, 96)
         }
 
@@ -395,12 +404,16 @@ class PeerSessionSecurity internal constructor(
                     val signingKey = readField(input, 256)
                     val ephemeral = readField(input, 256)
                     val nonce = readField(input, NONCE_BYTES)
+                    val relayValue = input.readUnsignedByte()
+                    require(relayValue in 0..1) { "Secure relay-consent value is invalid" }
                     val signature = readField(input, 96)
                     require(id.isNotBlank() && signingKey.size in 64..256 &&
                         ephemeral.size in 64..256 && nonce.size == NONCE_BYTES &&
                         signature.size in 64..96
                     ) { "Secure identity announcement fields are invalid" }
-                    HandshakePacket.HelloPacket(Hello(id, signingKey, ephemeral, nonce, signature))
+                    HandshakePacket.HelloPacket(
+                        Hello(id, signingKey, ephemeral, nonce, relayValue == 1, signature)
+                    )
                 }
                 ACK -> {
                     val sender = String(readField(input, 64), StandardCharsets.UTF_8)
@@ -446,7 +459,8 @@ class PeerSessionSecurity internal constructor(
             deviceId: String,
             signingPublicKey: ByteArray,
             ephemeralPublicKey: ByteArray,
-            nonce: ByteArray
+            nonce: ByteArray,
+            relayOptIn: Boolean
         ): ByteArray {
             val bytes = ByteArrayOutputStream()
             DataOutputStream(bytes).use { output ->
@@ -456,6 +470,7 @@ class PeerSessionSecurity internal constructor(
                 writeField(output, signingPublicKey, 256)
                 writeField(output, ephemeralPublicKey, 256)
                 writeField(output, nonce, NONCE_BYTES)
+                output.writeByte(if (relayOptIn) 1 else 0)
             }
             return bytes.toByteArray()
         }
@@ -517,6 +532,7 @@ class SecurePeerSession internal constructor(
     private val localDeviceId: String,
     val remoteDeviceId: String,
     val remoteFingerprint: String,
+    val remoteRelayOptIn: Boolean,
     private val rootKey: ByteArray
 ) {
     private val controlChannel = payloadChannel("LINKA-CONTROL-v1")

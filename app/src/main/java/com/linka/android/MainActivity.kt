@@ -673,7 +673,7 @@ private fun NearbyScreen(
         item {
             ScreenHeading(
                 title = "Trusted offline destinations",
-                subtitle = "Request a route through connected phones whose owners have opted in to relaying. A route is not yet a routed voice call."
+                subtitle = "Find a live path through consenting relay phones. LINKA will verify the destination identity end-to-end before showing the Call action. Each relay phone must also trust the source and destination identities."
             )
         }
 
@@ -842,8 +842,8 @@ private fun SettingsScreen(
         }
         item {
             MessageCard(
-                title = "Three different call options",
-                message = "Nearby LINKA is designed for direct local connections. Internet calling is a separate mode. Optional cellular calls use your Android dialer and your mobile operator; normal carrier charges may apply."
+                title = "Available calling modes",
+                message = "LINKA currently implements direct nearby voice and an opt-in encrypted mesh-call path. Internet calling and carrier calling are not part of this offline build. LINKA is not an emergency-calling service."
             )
         }
         item {
@@ -1245,7 +1245,7 @@ private fun CallControlsCard(
             Text("Voice call", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(state.status, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "Connect to a nearby phone first. Both phones need microphone permission for a call.",
+                "Direct calls need a securely paired nearby phone. Routed calls need a verified offline route and consenting relays. Both phones need microphone permission.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1268,7 +1268,7 @@ private fun CallControlsCard(
                     OutlinedButton(onClick = { controller.endCall() }) { Text("Cancel call") }
                 }
                 CallPhase.INCOMING_RINGING -> {
-                    Text("Incoming nearby call")
+                    Text("Incoming LINKA call")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onAcceptCall) { Text("Accept") }
                         OutlinedButton(onClick = { controller.rejectIncomingCall() }) { Text("Decline") }

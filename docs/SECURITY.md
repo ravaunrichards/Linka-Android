@@ -39,3 +39,18 @@ Address malicious nearby endpoints, device impersonation, man-in-the-middle pair
 ## Release gate
 
 The current code contains direct-call control and audio components, but they still require real-device testing with internet connectivity disabled. Do not claim that LINKA calls are caller-to-recipient end-to-end encrypted until authenticated session keys and encrypted media frames are implemented, tested and independently reviewed. Do not enable multi-hop voice relaying before that security gate passes.
+
+## Current direct-call implementation status
+
+The Android source now contains:
+
+- P-256 ECDSA signing identity in Android Keystore and signed, expiring identity QR trust.
+- A fresh P-256 ECDH handshake bound to the exact QR-trusted public key and fingerprint.
+- Transcript-bound HMAC key confirmation and HKDF-SHA-256 derivation.
+- Independent directional AES-GCM control keys and per-call media keys.
+- Encrypted G.711 voice frames, authenticated metadata, monotonic sequence checks, replay/tamper rejection and unique call-ID enforcement.
+- Trust revocation checks and explicit key-array clearing on disconnect, call stop and trust refresh.
+
+Automated tests cover mutual handshake, untrusted-key rejection, signature tampering, bidirectional encrypted payloads, call-ID binding, frame-size bounds, replay and ciphertext tampering. These source/test results do not replace independent cryptographic review or two-phone radio validation.
+
+The remaining direct-call release work is physical-device verification of no-SIM/no-internet discovery, bidirectional audio, range, latency, jitter, reconnect, background operation and battery behavior. Do not describe the app as independently security-certified.

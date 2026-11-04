@@ -13,11 +13,11 @@
 - Persisted local device ID and P-256 signing key generated and retained in Android Keystore.
 - Signed, expiring QR identity exchange, trusted-device storage and revocation UI.
 - Google Nearby Connections advertising, discovery, explicit connection requests and two-sided authentication-code confirmation.
-- Nearby Connections now uses the cluster strategy and retains multiple direct neighbour links. The UI can select a neighbour for a direct call or disconnect one link without removing the others.
+- Nearby Connections uses the cluster strategy and retains multiple direct neighbour links. LINKA starts advertising and discovery together when the network is activated, then reactivates both on foreground return after permissions have been granted. The UI can select a neighbour for a direct call or disconnect one link without removing the others.
 - Call lifecycle/control state handling for invite, ringing, accept, reject, timeout and end.
 - An 8 kHz mono, G.711 mu-law 20 ms frame audio path using Android AudioRecord/AudioTrack, with echo cancellation/noise suppression/automatic gain control where supported and a foreground microphone service.
 
-The code includes a direct-call media path, but physical two-phone operation with mobile data and Wi-Fi internet disabled remains a release verification requirement. A successful Gradle build does not validate radio discovery, microphone permissions, two-way audio, acoustic quality, battery use or Android background behavior.
+The code includes direct and routed media paths. Signed multi-hop route discovery, reverse-path forwarding, bounded hop budgets, ciphertext-only relay forwarding, and end-to-end secured routed voice are implemented in Android source. LINKA begins discovery for QR-trusted destinations after a secure neighbour is established. Physical two-phone and multi-relay operation with mobile data and Wi-Fi internet disabled remain release verification requirements. A successful Gradle build does not validate radio discovery, microphone permissions, two-way audio, acoustic quality, battery use or Android background behavior.
 
 ## Android phone hub integrations
 
@@ -32,7 +32,7 @@ These handoffs are not an in-app telephony or messaging implementation. Carrier 
 
 - Nearby Connections P2P_POINT_TO_POINT is one-to-one and prioritizes highest throughput. It cannot keep multiple peer links open at once.
 - Nearby Connections P2P_CLUSTER supports multiple-to-multiple nearby peer connections, which provides a basis for a local cluster and relay neighbours, but has lower bandwidth than point-to-point.
-- The current app uses the cluster topology to retain multiple neighbour links. It does not yet implement an overlay route protocol, so a connected cluster is not the same thing as an operational multi-hop mesh.
+- The current app uses the cluster topology to retain multiple neighbour links and implements an overlay route protocol. A connected cluster is only a candidate mesh: a live multi-hop route still requires authenticated links, QR trust for the destination, every relay's explicit opt-in, successful route discovery, and destination end-to-end verification.
 - Every radio hop remains limited by the actual radios, handset models, environment and power state. A long-distance path requires a continuous chain of simultaneously available relay nodes.
 - For wider or more reliable coverage, evaluate fixed powered relay nodes and separately validated radio hardware. Do not assume that every Android phone supports the same Wi-Fi Direct, Wi-Fi Aware or simultaneous-radio capabilities.
 
@@ -42,7 +42,7 @@ These handoffs are not an in-app telephony or messaging implementation. Carrier 
 - **Identity:** stable local device ID, Keystore signing identity, QR exchange, local username cache, trust and revocation.
 - **Radio adapters:** Google Nearby Connections first; separately tested Wi-Fi Direct, Wi-Fi Aware or other local-radio adapters where device support justifies them.
 - **Neighbour manager:** authenticated peer links, capabilities, link health, user consent, battery policy and per-peer limits.
-- **Route discovery:** route requests/advertisements, route expiry, path cost, hop limits, loop prevention, duplicate suppression and route repair.
+- **Route discovery:** signed route requests/replies, route expiry, hop limits, reverse-path tracking, loop prevention and duplicate suppression are implemented; active-route repair and route-quality selection need further field validation.
 - **Relay data plane:** bounded packet envelope, per-hop forwarding, congestion/back-pressure, rate limits and failure handling. A relay may forward ciphertext only.
 - **Call control:** signed invite, ringing, accept, reject, timeout, end and reconnect, with origin identity and replay protection.
 - **Audio:** low-latency capture/playback, codec negotiation, jitter buffering, packet-loss concealment, adaptive bitrate and per-hop performance measurement.
@@ -74,7 +74,7 @@ The mesh protocol must preserve end-to-end encryption from caller to recipient. 
 2. Validate a two-phone direct call with SIM removed or disabled, mobile data off and Wi-Fi internet disconnected; manually enable only the local radios required by Android.
 3. Complete identity-bound call authentication and end-to-end media key agreement/encryption.
 4. Test simultaneous cluster neighbour links and direct voice quality across supported Android handsets.
-5. Implement and test route discovery, ciphertext forwarding, bounded hop count, duplicate suppression, loop prevention, route expiry and route repair.
+5. Validate the implemented route discovery, ciphertext forwarding, hop limits, duplicate suppression, loop prevention, route expiry and route-loss handling on physical devices.
 6. Test live voice across increasing relay hops, measuring setup time, one-way delay, packet loss, jitter, battery and reconnect behavior.
 7. Evaluate fixed, powered relay nodes and additional radio hardware for areas where phones cannot maintain a continuous chain.
-8. Complete security review, Jamaica field testing, release signing and distribution.
+8. Complete independent security review, Jamaica field testing, release signing and distribution.

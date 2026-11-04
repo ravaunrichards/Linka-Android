@@ -5,6 +5,9 @@ import com.linka.android.core.audio.LinkaVoiceForegroundService
 import com.linka.android.core.audio.NearbyVoiceSession
 import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.nearby.NearbyDirectLink
+import com.linka.android.core.identity.LocalDeviceIdentity
+import com.linka.android.core.identity.TrustedDeviceStore
+import com.linka.android.core.security.PeerSessionSecurity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,11 +33,15 @@ data class NearbyCallUiState(
  */
 class NearbyCallController(
     context: Context,
-    private val localDeviceId: String,
+    private val localIdentity: LocalDeviceIdentity,
+    trustedDevices: TrustedDeviceStore,
     private val nearbyLink: NearbyDirectLink
 ) {
+    private val localDeviceId = localIdentity.deviceId
     private val appContext = context.applicationContext
     private val machine = CallStateMachine()
+    private val peerSecurity = PeerSessionSecurity(localIdentity, trustedDevices)
+    private val trackedEndpoints = mutableSetOf<String>()
     private val voiceSession = NearbyVoiceSession(appContext, nearbyLink)
     val voiceState: StateFlow<VoiceSessionState> = voiceSession.state
 
@@ -46,13 +53,71 @@ class NearbyCallController(
         require(localDeviceId.isNotBlank() && localDeviceId.length <= 64)
         scope.launch {
             nearbyLink.incomingBytes.collect { incoming ->
-                val currentEndpoint = nearbyLink.state.value.connectedPeer?.endpointId
-                if (incoming.endpointId != currentEndpoint) return@collect
-                handleIncoming(incoming.bytes, incoming.endpointId)
+                if (PeerSessionSecurity.isHandshakePacket(incoming.bytes)) {
+                    val result = peerSecurity.handle(incoming.endpointId, incoming.bytes)
+                    result.responses.forEach { response ->
+                        nearbyLink.sendBytes(incoming.endpointId, response) { error ->
+                            if (error != null) publishError(error)
+                        }
+                    }
+                    if (result.error != null) {
+                        publishError(result.error)
+                    } else if (result.isAuthenticated) {
+                        _state.value = _state.value.copy(
+                            status = "Secure identity verified",
+                            error = null
+                        )
+                    }
+                    return@collect
+                }
+
+                if (incoming.endpointId != nearbyLink.state.value.connectedPeer?.endpointId) {
+                    return@collect
+                }
+                val session = peerSecurity.session(incoming.endpointId)
+                if (session == null) {
+                    publishError("Ignored call data before trusted identity verification")
+                    return@collect
+                }
+                val plaintext = try {
+                    session.decryptControl(incoming.bytes)
+                } catch (error: Exception) {
+                    publishError(error.localizedMessage ?: "Secure call-control authentication failed")
+                    return@collect
+                }
+                handleIncoming(plaintext, incoming.endpointId, session.remoteDeviceId)
             }
         }
         scope.launch {
             nearbyLink.state.collect { linkState ->
+                val connectedEndpoints = (
+                    linkState.connectedPeers.map { it.endpointId } +
+                        listOfNotNull(linkState.connectedPeer?.endpointId)
+                    ).toSet()
+
+                val disconnected = trackedEndpoints - connectedEndpoints
+                disconnected.forEach { endpoint ->
+                    peerSecurity.remove(endpoint)
+                    trackedEndpoints.remove(endpoint)
+                }
+
+                connectedEndpoints.forEach { endpoint ->
+                    if (trackedEndpoints.add(endpoint)) {
+                        val hello = runCatching { peerSecurity.begin(endpoint) }.getOrNull()
+                        if (hello != null) {
+                            nearbyLink.sendBytes(endpoint, hello) { error ->
+                                if (error != null) publishError(error)
+                            }
+                            _state.value = _state.value.copy(
+                                status = "Verifying trusted LINKA identity",
+                                error = null
+                            )
+                        } else if (peerSecurity.session(endpoint) == null) {
+                            publishError("Could not start secure identity verification")
+                        }
+                    }
+                }
+
                 val current = machine.snapshot
                 if (linkState.connectedPeer == null &&
                     current.phase in setOf(
@@ -76,12 +141,24 @@ class NearbyCallController(
     fun startOutgoingCall() {
         val peer = nearbyLink.state.value.connectedPeer
             ?: return publishError("Connect to a nearby LINKA phone first")
+        if (peerSecurity.session(peer.endpointId) == null) {
+            return publishError("Secure pairing is not complete. Scan this phone's LINKA identity QR on the other phone and retry after verification.")
+        }
         val next = try {
             machine.beginOutgoing(UUID.randomUUID().toString(), peer.endpointId)
         } catch (error: IllegalStateException) {
             return publishError(error.message ?: "A call is already in progress")
         } catch (error: IllegalArgumentException) {
             return publishError(error.message ?: "Invalid call details")
+        }
+
+        val endpoint = call.peerDeviceId ?: run {
+            publishError("Incoming call has no verified peer connection")
+            return
+        }
+        val securePeer = peerSecurity.session(endpoint) ?: run {
+            publishError("Secure peer identity verification was lost")
+            return
         }
 
         try {
@@ -134,7 +211,7 @@ class NearbyCallController(
         }
         _state.value = NearbyCallUiState(active, "Call accepted; starting voice media")
         send(CallControlType.ACCEPT, active.callId!!, active.peerDeviceId!!)
-        voiceSession.start(active.peerDeviceId)
+        voiceSession.start(active.peerDeviceId!!, active.callId!!, securePeer.forCall(active.callId!!))
     }
 
     fun rejectIncomingCall() {
@@ -164,11 +241,16 @@ class NearbyCallController(
         }
     }
 
-    private fun handleIncoming(bytes: ByteArray, endpointId: String) {
+    private fun handleIncoming(bytes: ByteArray, endpointId: String, verifiedSenderId: String) {
         val message = try {
             CallControlCodec.decode(bytes)
         } catch (error: IllegalArgumentException) {
             publishError("Ignored malformed call-control message")
+            return
+        }
+
+        if (message.senderDeviceId != verifiedSenderId) {
+            publishError("Call-control sender does not match the QR-trusted LINKA identity")
             return
         }
 
@@ -198,9 +280,17 @@ class NearbyCallController(
 
             CallControlType.ACCEPT -> {
                 if (message.callId != call.callId || call.phase != CallPhase.OUTGOING_RINGING) return
+                val securePeer = peerSecurity.session(endpointId) ?: run {
+                    publishError("Secure session disappeared before voice media started")
+                    return
+                }
                 val active = machine.outgoingAccepted(System.currentTimeMillis())
-                _state.value = NearbyCallUiState(active, "Call accepted; starting voice media")
-                voiceSession.start(active.peerDeviceId!!)
+                _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
+                voiceSession.start(
+                    active.peerDeviceId!!,
+                    active.callId!!,
+                    securePeer.forCall(active.callId!!)
+                )
             }
 
             CallControlType.REJECT -> {
@@ -247,7 +337,17 @@ class NearbyCallController(
             return
         }
 
-        nearbyLink.sendBytes(endpointId, bytes) { error ->
+        val session = peerSecurity.session(endpointId) ?: run {
+            publishError("Cannot send call controls before secure identity verification")
+            return
+        }
+        val encrypted = try {
+            session.encryptControl(bytes)
+        } catch (error: Exception) {
+            publishError(error.localizedMessage ?: "Could not encrypt call-control message")
+            return
+        }
+        nearbyLink.sendBytes(endpointId, encrypted) { error ->
             if (error != null) publishError(error)
         }
     }
@@ -258,6 +358,8 @@ class NearbyCallController(
 
     fun close() {
         voiceSession.close()
+        peerSecurity.close()
+        trackedEndpoints.clear()
         LinkaVoiceForegroundService.stop(appContext)
         scope.cancel()
     }

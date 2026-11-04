@@ -29,10 +29,15 @@ jobs:
           API_PID=$!
           trap 'kill "$API_PID" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
-            if curl --fail --silent http://127.0.0.1:8080/healthz; then
-              exit 0
+            if curl --fail --silent http://127.0.0.1:8080/healthz > /dev/null; then
+              break
             fi
             sleep 1
           done
-          cat /tmp/linka-api.log
-          exit 1
+          curl --fail --silent http://127.0.0.1:8080/readyz
+          curl --fail --silent http://127.0.0.1:8080/v1/info
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q "LINKA"
+          curl --fail --silent http://127.0.0.1:8080/styles.css | grep -q ":root"
+          curl --fail --silent http://127.0.0.1:8080/app.js | grep -q "showView"
+          curl --fail --silent --head http://127.0.0.1:8080/ | grep -qi "content-type: text/html"
+          cat /tmp/linka-api.log | tail -n 30

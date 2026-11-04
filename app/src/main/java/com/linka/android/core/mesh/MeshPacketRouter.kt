@@ -354,8 +354,10 @@ class MeshPacketRouter(
             hopLimit = packet.hopLimit - 1,
             hopCount = (packet.hopCount + 1).coerceAtMost(MAX_HOPS)
         )
+        val returnPath = reverse
+            ?: return listOf(MeshRouterAction.Dropped("No reverse route exists for route reply"))
         return listOf(
-            MeshRouterAction.SendTo(reverse.endpointId, MeshPacketCodec.encode(forwarded))
+            MeshRouterAction.SendTo(returnPath.endpointId, MeshPacketCodec.encode(forwarded))
         )
     }
 

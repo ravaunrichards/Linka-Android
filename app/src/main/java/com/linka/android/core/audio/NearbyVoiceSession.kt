@@ -51,6 +51,9 @@ class NearbyVoiceSession(
     context: Context,
     private val nearbyLink: NearbyDirectLink
 ) {
+    companion object {
+        private const val MAX_PENDING_INCOMING_STREAMS = 4
+    }
     private val appContext = context.applicationContext
     private val audioManager = appContext.getSystemService(AudioManager::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -272,19 +275,33 @@ class NearbyVoiceSession(
 
     private fun dispatchIncomingStream(incoming: NearbyIncomingStream) {
         synchronized(incomingStreamLock) {
-            val connectedEndpoint = nearbyLink.state.value.connectedPeer?.endpointId
-            if (incoming.endpointId != connectedEndpoint) {
+            val linkState = nearbyLink.state.value
+            val connectedEndpointIds = (
+                linkState.connectedPeers.map { it.endpointId } +
+                    listOfNotNull(linkState.connectedPeer?.endpointId)
+                ).toSet()
+            if (incoming.endpointId !in connectedEndpointIds) {
                 incoming.close()
                 return
             }
 
             val worker = callScope
-            if (started.get() && worker != null && incoming.endpointId == endpointId && player != null) {
-                worker.launch { receiveAudio(incoming) }
+            if (started.get()) {
+                if (worker != null && incoming.endpointId == endpointId && player != null) {
+                    worker.launch { receiveAudio(incoming) }
+                } else {
+                    // A different neighbour may also be connected and trusted,
+                    // but only one direct call can own this audio engine.
+                    incoming.close()
+                }
             } else {
-                // Both peers open their outgoing stream after accepting. The
-                // remote stream can therefore arrive just before this side
-                // processes ACCEPT and starts its own session.
+                // The remote stream can arrive just before this side processes
+                // ACCEPT and starts its own audio engine. Queue only a few
+                // connected streams; drainPendingIncomingStreams keeps the
+                // stream belonging to the accepted peer and closes the rest.
+                if (pendingIncomingStreams.size >= MAX_PENDING_INCOMING_STREAMS) {
+                    pendingIncomingStreams.removeFirst().close()
+                }
                 pendingIncomingStreams.addLast(incoming)
             }
         }

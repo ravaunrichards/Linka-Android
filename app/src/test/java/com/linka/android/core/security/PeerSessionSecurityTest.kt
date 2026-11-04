@@ -90,6 +90,31 @@ class PeerSessionSecurityTest {
         )
     }
 
+
+    @Test
+    fun completesHandshakeWhenKeyConfirmationArrivesBeforePeerHello() {
+        val alice = newIdentity()
+        val bob = newIdentity()
+        val aliceSession = session(alice, bob)
+        val bobSession = session(bob, alice)
+
+        val aliceHello = aliceSession.begin("endpoint-b")!!
+        val bobHello = bobSession.begin("endpoint-a")!!
+
+        val bobAck = bobSession.handle("endpoint-a", aliceHello).responses.single()
+        val earlyAck = aliceSession.handle("endpoint-b", bobAck)
+        assertFalse(earlyAck.isAuthenticated)
+        assertNull(aliceSession.session("endpoint-b"))
+
+        val aliceAck = aliceSession.handle("endpoint-b", bobHello)
+        assertTrue(aliceAck.isAuthenticated)
+        assertNotNull(aliceSession.session("endpoint-b"))
+
+        val bobComplete = bobSession.handle("endpoint-a", aliceAck.responses.single())
+        assertTrue(bobComplete.isAuthenticated)
+        assertNotNull(bobSession.session("endpoint-a"))
+    }
+
     @Test
     fun rejectsPeerThatWasNotExplicitlyTrusted() {
         val alice = newIdentity()

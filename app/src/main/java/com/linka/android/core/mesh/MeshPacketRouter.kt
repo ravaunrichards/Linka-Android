@@ -69,12 +69,21 @@ class MeshPacketRouter(
     private val signOrigin: (ByteArray) -> ByteArray,
     private val verifyOrigin: (sourceDeviceId: String, body: ByteArray, signature: ByteArray) -> Boolean
 ) {
-    private data class ReversePath(val endpointId: String, val hopCount: Int, val expiresAt: Long)
+    private data class ReversePath(
+        val endpointId: String,
+        val originDeviceId: String,
+        val destinationDeviceId: String,
+        val hopCount: Int,
+        val expiresAt: Long
+    )
 
     private val neighbors = mutableMapOf<String, MeshNeighbor>()
     private val routes = mutableMapOf<String, MeshRoute>()
     private val reversePaths = mutableMapOf<String, ReversePath>()
     private val seenRequests = mutableMapOf<String, Long>()
+    private val seenReplies = mutableMapOf<String, Long>()
+    private val pendingDestinations = mutableMapOf<String, String>()
+    private val pendingDiscoveryExpiry = mutableMapOf<String, Long>()
     private val seenData = mutableMapOf<String, Long>()
 
     init {
@@ -138,6 +147,8 @@ class MeshPacketRouter(
         )
         val packet = sign(unsigned)
         seenRequests[requestId] = packet.expiresAtEpochMs
+        pendingDestinations[requestId] = destinationDeviceId
+        pendingDiscoveryExpiry[requestId] = packet.expiresAtEpochMs
 
         val targets = neighbors.values.filter {
             it.relayOptIn || it.deviceId == destinationDeviceId
@@ -227,8 +238,13 @@ class MeshPacketRouter(
             return listOf(MeshRouterAction.Dropped("Duplicate route request suppressed"))
         }
         seenRequests[packet.requestId] = packet.expiresAtEpochMs
+        if (packet.hopCount >= MAX_HOPS || packet.hopLimit <= 0) {
+            return listOf(MeshRouterAction.Dropped("Route request exceeded the maximum hop count"))
+        }
         reversePaths[packet.requestId] = ReversePath(
             endpointId = ingress.endpointId,
+            originDeviceId = packet.sourceDeviceId,
+            destinationDeviceId = packet.destinationDeviceId,
             hopCount = packet.hopCount + 1,
             expiresAt = packet.expiresAtEpochMs
         )
@@ -283,6 +299,34 @@ class MeshPacketRouter(
         if (packet.payload.isNotEmpty() || packet.requestId.isBlank()) {
             return listOf(MeshRouterAction.Dropped("Invalid route reply fields"))
         }
+        val duplicateExpiry = seenReplies[packet.packetId]
+        if (duplicateExpiry != null && duplicateExpiry > nowEpochMs) {
+            return listOf(MeshRouterAction.Dropped("Duplicate route reply suppressed"))
+        }
+
+        val isFinalDestination = packet.destinationDeviceId == localDeviceId
+        val reverse = if (isFinalDestination) {
+            val expectedDestination = pendingDestinations[packet.requestId]
+            if (expectedDestination == null || expectedDestination != packet.sourceDeviceId) {
+                return listOf(MeshRouterAction.Dropped("Route reply does not match an outstanding discovery"))
+            }
+            null
+        } else {
+            reversePaths[packet.requestId]
+                ?: return listOf(MeshRouterAction.Dropped("No reverse path exists for route reply"))
+        }
+
+        if (reverse != null && (
+            reverse.expiresAt <= nowEpochMs ||
+                reverse.endpointId == ingress.endpointId ||
+                reverse.originDeviceId != packet.destinationDeviceId ||
+                reverse.destinationDeviceId != packet.sourceDeviceId
+            )
+        ) {
+            return listOf(MeshRouterAction.Dropped("Expired, mismatched or looping reverse route"))
+        }
+
+        seenReplies[packet.packetId] = packet.expiresAtEpochMs
         val route = MeshRoute(
             destinationDeviceId = packet.sourceDeviceId,
             nextHopEndpointId = ingress.endpointId,
@@ -292,17 +336,14 @@ class MeshPacketRouter(
         )
         routes[packet.sourceDeviceId] = route
 
-        if (packet.destinationDeviceId == localDeviceId) {
+        if (isFinalDestination) {
+            pendingDestinations.remove(packet.requestId)
+            pendingDiscoveryExpiry.remove(packet.requestId)
             return listOf(MeshRouterAction.RouteEstablished(route))
         }
 
         if (!relayEnabled() || packet.hopLimit <= 1) {
             return listOf(MeshRouterAction.Dropped("This phone cannot relay the route reply"))
-        }
-        val reverse = reversePaths[packet.requestId]
-            ?: return listOf(MeshRouterAction.Dropped("No reverse path exists for route reply"))
-        if (reverse.expiresAt <= nowEpochMs || reverse.endpointId == ingress.endpointId) {
-            return listOf(MeshRouterAction.Dropped("Expired or looping reverse route"))
         }
         val forwarded = packet.copy(
             hopLimit = packet.hopLimit - 1,
@@ -353,7 +394,12 @@ class MeshPacketRouter(
         return listOf(
             MeshRouterAction.SendTo(
                 route.nextHopEndpointId,
-                MeshPacketCodec.encode(packet.copy(hopLimit = packet.hopLimit - 1))
+                MeshPacketCodec.encode(
+                    packet.copy(
+                        hopLimit = packet.hopLimit - 1,
+                        hopCount = (packet.hopCount + 1).coerceAtMost(MAX_HOPS)
+                    )
+                )
             )
         )
     }
@@ -370,8 +416,18 @@ class MeshPacketRouter(
         routes.entries.removeAll { it.value.expiresAtEpochMs <= nowEpochMs }
         reversePaths.entries.removeAll { it.value.expiresAt <= nowEpochMs }
         seenRequests.entries.removeAll { it.value <= nowEpochMs }
+        seenReplies.entries.removeAll { it.value <= nowEpochMs }
+        pendingDiscoveryExpiry.entries.removeAll { entry ->
+            if (entry.value <= nowEpochMs) {
+                pendingDestinations.remove(entry.key)
+                true
+            } else false
+        }
         seenData.entries.removeAll { it.value <= nowEpochMs }
         trimMap(seenRequests, MAX_SEEN_IDS)
+        trimMap(seenReplies, MAX_SEEN_IDS)
+        trimMap(pendingDestinations, MAX_SEEN_IDS)
+        trimMap(pendingDiscoveryExpiry, MAX_SEEN_IDS)
         trimMap(seenData, MAX_SEEN_IDS)
         trimMap(reversePaths, MAX_SEEN_IDS)
         trimMap(routes, MAX_ROUTE_ENTRIES)

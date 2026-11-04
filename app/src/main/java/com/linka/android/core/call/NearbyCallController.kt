@@ -197,6 +197,15 @@ class NearbyCallController(
             publishError("Secure peer identity verification was lost")
             return
         }
+        val mediaCipher = try {
+            securePeer.forCall(call.callId!!)
+        } catch (error: Exception) {
+            val ended = machine.rejectOrDecline("secure_media_key_unavailable")
+            _state.value = NearbyCallUiState(ended, "Could not establish secure voice keys")
+            send(CallControlType.REJECT, ended.callId!!, ended.peerDeviceId!!)
+            publishError(error.localizedMessage ?: "Could not create unique voice encryption keys")
+            return
+        }
 
         try {
             LinkaVoiceForegroundService.start(appContext)
@@ -216,7 +225,7 @@ class NearbyCallController(
         }
         _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
         send(CallControlType.ACCEPT, active.callId!!, active.peerDeviceId!!)
-        voiceSession.start(active.peerDeviceId!!, active.callId!!, securePeer.forCall(active.callId!!))
+        voiceSession.start(active.peerDeviceId!!, active.callId!!, mediaCipher)
     }
 
     fun rejectIncomingCall() {
@@ -314,13 +323,18 @@ class NearbyCallController(
                     publishError("Secure session disappeared before voice media started")
                     return
                 }
+                val mediaCipher = try {
+                    securePeer.forCall(call.callId!!)
+                } catch (error: Exception) {
+                    val ended = machine.end("secure_media_key_unavailable")
+                    LinkaVoiceForegroundService.stop(appContext)
+                    _state.value = NearbyCallUiState(ended, "Could not establish secure voice keys")
+                    send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
+                    return
+                }
                 val active = machine.outgoingAccepted(System.currentTimeMillis())
                 _state.value = NearbyCallUiState(active, "Secure call accepted; starting encrypted voice")
-                voiceSession.start(
-                    active.peerDeviceId!!,
-                    active.callId!!,
-                    securePeer.forCall(active.callId!!)
-                )
+                voiceSession.start(active.peerDeviceId!!, active.callId!!, mediaCipher)
             }
 
             CallControlType.REJECT -> {

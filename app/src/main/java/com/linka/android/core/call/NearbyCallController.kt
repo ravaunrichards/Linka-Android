@@ -304,9 +304,11 @@ class NearbyCallController(
         send(CallControlType.END, ended.callId!!, ended.peerDeviceId!!)
     }
 
-    fun isRoutedPeerAuthenticated(destinationDeviceId: String): Boolean =
-        meshRouter.routeTo(destinationDeviceId) != null &&
-            routedPeerSecurity.session(routeEndpoint(destinationDeviceId)) != null
+    fun isRoutedPeerAuthenticated(destinationDeviceId: String): Boolean {
+        val session = routedPeerSecurity.session(routeEndpoint(destinationDeviceId)) ?: return false
+        return session.remoteDeviceId == destinationDeviceId &&
+            meshRouter.routeTo(destinationDeviceId) != null
+    }
 
     fun startRoutedCall(destinationDeviceId: String) {
         val endpoint = routeEndpoint(destinationDeviceId)
@@ -314,8 +316,9 @@ class NearbyCallController(
             publishError("The offline route has expired. Discover a fresh route first.")
             return
         }
-        if (routedPeerSecurity.session(endpoint) == null) {
-            publishError("The offline route is not securely paired yet")
+        val routedPeer = routedPeerSecurity.session(endpoint)
+        if (routedPeer == null || routedPeer.remoteDeviceId != destinationDeviceId) {
+            publishError("The offline route is not securely paired with the selected destination")
             return
         }
         val next = try {

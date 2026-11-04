@@ -378,6 +378,37 @@ class MeshPacketRouterTest {
         }
     }
 
+
+    @Test
+    fun rejectsPacketsWithExcessiveFutureExpiry() {
+        val source = identity()
+        val relay = identity()
+        val identities = listOf(source, relay).associateBy { it.deviceId }
+        val relayRouter = router(relay, identities, relayEnabled = true)
+        relayRouter.registerNeighbor("source-link", source.deviceId, relayOptIn = false)
+
+        val unsigned = MeshPacket(
+            type = MeshPacketType.ROUTE_REQUEST,
+            packetId = UUID.randomUUID().toString(),
+            requestId = UUID.randomUUID().toString(),
+            sourceDeviceId = source.deviceId,
+            destinationDeviceId = UUID.randomUUID().toString(),
+            hopLimit = MeshPacketRouter.MAX_HOPS,
+            hopCount = 0,
+            expiresAtEpochMs = 160_001L,
+            payload = ByteArray(0),
+            signature = ByteArray(0)
+        )
+        val signed = unsigned.copy(signature = source.sign(MeshPacketCodec.signingBytes(unsigned)))
+        val result = relayRouter.receive(
+            MeshPacketCodec.encode(signed),
+            "source-link",
+            nowEpochMs = 100_000L
+        ).single() as MeshRouterAction.Dropped
+
+        assertTrue(result.reason.contains("lifetime exceeds"))
+    }
+
     @Test
     fun rejectsExpiredPacketsAndUnknownIngressNeighbors() {
         val caller = identity()

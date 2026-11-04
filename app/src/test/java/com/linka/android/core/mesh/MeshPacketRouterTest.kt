@@ -251,7 +251,7 @@ class MeshPacketRouterTest {
 
         val request = callerRouter.startRouteDiscovery(recipient.deviceId).single()
             as MeshRouterAction.SendTo
-        val result = relayRouter.receive(request.packet, "relay-caller").single()
+        val result = relayRouter.receive(request, "relay-caller").single()
             as MeshRouterAction.Dropped
         assertTrue(result.reason.contains("not enabled"))
     }

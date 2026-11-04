@@ -386,7 +386,8 @@ private fun LinkaApp(
                     modifier = Modifier.padding(contentPadding),
                     identity = identity,
                     trustedDevices = trustedDevices,
-                    onScanQr = onScanQr
+                    onScanQr = onScanQr,
+                    onTrustChanged = { callController.refreshSecurePairings() }
                 )
 
                 LinkaDestination.SETTINGS -> SettingsScreen(
@@ -688,7 +689,8 @@ private fun IdentityScreen(
     modifier: Modifier = Modifier,
     identity: LocalDeviceIdentity,
     trustedDevices: TrustedDeviceStore,
-    onScanQr: (onResult: (String?) -> Unit) -> Unit
+    onScanQr: (onResult: (String?) -> Unit) -> Unit,
+    onTrustChanged: () -> Unit
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -702,7 +704,7 @@ private fun IdentityScreen(
             )
         }
         item { IdentityCard(identity) }
-        item { IdentityQrControls(identity, trustedDevices, onScanQr) }
+        item { IdentityQrControls(identity, trustedDevices, onScanQr, onTrustChanged) }
         item {
             MessageCard(
                 title = "Keep your identity safe",
@@ -1188,7 +1190,8 @@ private fun CallControlsCard(
 private fun IdentityQrControls(
     identity: LocalDeviceIdentity,
     trustedDevices: TrustedDeviceStore,
-    onScanQr: (onResult: (String?) -> Unit) -> Unit
+    onScanQr: (onResult: (String?) -> Unit) -> Unit,
+    onTrustChanged: () -> Unit
 ) {
     var showQr by remember { mutableStateOf(false) }
     var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -1268,6 +1271,7 @@ private fun IdentityQrControls(
                     TextButton(onClick = {
                         trustedDevices.revoke(device.deviceId)
                         savedDevices.value = trustedDevices.list()
+                        onTrustChanged()
                         status = "Revoked ${device.displayName}"
                     }) {
                         Text("Revoke")
@@ -1340,6 +1344,7 @@ private fun IdentityQrControls(
                     runCatching { trustedDevices.trust(candidate) }
                         .onSuccess { saved ->
                             savedDevices.value = trustedDevices.list()
+                            onTrustChanged()
                             status = "Trusted ${saved.displayName}"
                         }
                         .onFailure {

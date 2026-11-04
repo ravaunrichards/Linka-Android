@@ -520,6 +520,7 @@ class SecurePeerSession internal constructor(
     private val rootKey: ByteArray
 ) {
     private val controlChannel = payloadChannel("LINKA-CONTROL-v1")
+    private val usedCallIds = mutableSetOf<String>()
 
     fun encryptControl(plaintext: ByteArray): ByteArray =
         controlChannel.encrypt(plaintext)
@@ -527,8 +528,10 @@ class SecurePeerSession internal constructor(
     fun decryptControl(packet: ByteArray): ByteArray =
         controlChannel.decrypt(packet)
 
+    @Synchronized
     fun forCall(callId: String): SecureCallCipher {
-        require(callId.isNotBlank() && callId.length <= 128)
+        require(callId.isNotBlank() && callId.length <= 64)
+        check(usedCallIds.add(callId)) { "A LINKA call ID cannot be reused on the same secure session" }
         val salt = MessageDigest.getInstance("SHA-256")
             .digest(callId.toByteArray(StandardCharsets.UTF_8))
         val prefix = "LINKA-CALL-v1:$callId:"
@@ -546,6 +549,7 @@ class SecurePeerSession internal constructor(
     fun destroy() {
         controlChannel.destroy()
         rootKey.fill(0)
+        usedCallIds.clear()
     }
 
     private fun deriveDirectionalKey(salt: ByteArray, label: String): ByteArray =

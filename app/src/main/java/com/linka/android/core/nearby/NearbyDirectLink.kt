@@ -74,8 +74,9 @@ data class NearbyLinkState(
     val isAdvertising: Boolean = false,
     val isDiscovering: Boolean = false,
     val peers: List<NearbyPeer> = emptyList(),
-    val pendingPairing: PendingPairing? = null,
+    val pendingPairings: List<PendingPairing> = emptyList(),
     val connectedPeer: NearbyPeer? = null,
+    val connectedPeers: List<NearbyPeer> = emptyList(),
     val status: String = "Nearby calling is stopped",
     val error: String? = null
 )
@@ -106,7 +107,9 @@ class NearbyDirectLink(
     )
     val incomingStreams: SharedFlow<NearbyIncomingStream> = _incomingStreams.asSharedFlow()
 
-    private val strategy = Strategy.P2P_POINT_TO_POINT
+    // Cluster topology is required to keep multiple nearby relay neighbours connected.
+    // Direct calls still select one peer for their high-level call session.
+    private val strategy = Strategy.P2P_CLUSTER
     private val serviceId = "com.linka.android"
     private val maxControlPayloadBytes = 1024
     private val streamPipeBufferBytes = 64 * 1024
@@ -166,15 +169,21 @@ class NearbyDirectLink(
 
     private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            val peerName = info.endpointName.ifBlank { "Nearby LINKA device" }
-            _state.update {
-                it.copy(
-                    pendingPairing = PendingPairing(
-                        endpointId = endpointId,
-                        peerName = peerName,
-                        authenticationDigits = info.authenticationDigits
-                    ),
-                    status = "Confirm the same security code on both phones",
+            val pending = PendingPairing(
+                endpointId = endpointId,
+                peerName = info.endpointName.ifBlank { "Nearby LINKA device" },
+                authenticationDigits = info.authenticationDigits
+            )
+            _state.update { current ->
+                val requests = current.pendingPairings
+                    .filterNot { it.endpointId == endpointId } + pending
+                current.copy(
+                    pendingPairings = requests,
+                    status = if (requests.size == 1) {
+                        "Confirm the same security code on both phones"
+                    } else {
+                        "Review ${requests.size} nearby connection requests"
+                    },
                     error = null
                 )
             }
@@ -183,34 +192,35 @@ class NearbyDirectLink(
         override fun onConnectionResult(endpointId: String, resolution: ConnectionResolution) {
             when (resolution.status.statusCode) {
                 ConnectionsStatusCodes.STATUS_OK -> {
-                    val pending = _state.value.pendingPairing
+                    val pending = _state.value.pendingPairings.firstOrNull { it.endpointId == endpointId }
                     val peer = _state.value.peers.firstOrNull { it.endpointId == endpointId }
                         ?: NearbyPeer(endpointId, pending?.peerName ?: "LINKA device")
-                    _state.update {
-                        it.copy(
-                            pendingPairing = null,
-                            connectedPeer = peer,
-                            status = "Secure nearby connection established",
+                    _state.update { current ->
+                        val connected = current.connectedPeers
+                            .filterNot { it.endpointId == endpointId } + peer
+                        current.copy(
+                            pendingPairings = current.pendingPairings.filterNot { it.endpointId == endpointId },
+                            connectedPeers = connected,
+                            connectedPeer = current.connectedPeer ?: peer,
+                            status = "Nearby peer connected (${connected.size} link(s))",
                             error = null
                         )
                     }
-                    client.stopAdvertising()
-                    client.stopDiscovery()
                 }
 
                 ConnectionsStatusCodes.STATUS_CONNECTION_REJECTED -> {
-                    _state.update {
-                        it.copy(
-                            pendingPairing = null,
+                    _state.update { current ->
+                        current.copy(
+                            pendingPairings = current.pendingPairings.filterNot { it.endpointId == endpointId },
                             status = "Connection was rejected"
                         )
                     }
                 }
 
                 else -> {
-                    _state.update {
-                        it.copy(
-                            pendingPairing = null,
+                    _state.update { current ->
+                        current.copy(
+                            pendingPairings = current.pendingPairings.filterNot { it.endpointId == endpointId },
                             status = "Nearby connection failed",
                             error = "Connection status code: ${resolution.status.statusCode}"
                         )
@@ -221,14 +231,17 @@ class NearbyDirectLink(
 
         override fun onDisconnected(endpointId: String) {
             _state.update { current ->
-                if (current.connectedPeer?.endpointId == endpointId) {
-                    current.copy(
-                        connectedPeer = null,
-                        status = "Nearby device disconnected"
-                    )
-                } else {
-                    current
-                }
+                val remaining = current.connectedPeers.filterNot { it.endpointId == endpointId }
+                val activeWasDisconnected = current.connectedPeer?.endpointId == endpointId
+                current.copy(
+                    connectedPeers = remaining,
+                    connectedPeer = if (activeWasDisconnected) null else current.connectedPeer,
+                    status = if (activeWasDisconnected) {
+                        "Selected nearby device disconnected"
+                    } else {
+                        "Nearby peer disconnected (${remaining.size} link(s) remain)"
+                    }
+                )
             }
         }
     }
@@ -291,8 +304,8 @@ class NearbyDirectLink(
             }
     }
 
-    fun acceptPairing() {
-        val pending = _state.value.pendingPairing ?: return
+    fun acceptPairing(endpointId: String) {
+        val pending = _state.value.pendingPairings.firstOrNull { it.endpointId == endpointId } ?: return
         client.acceptConnection(pending.endpointId, payloadCallback)
             .addOnFailureListener { exception ->
                 _state.update {
@@ -301,19 +314,21 @@ class NearbyDirectLink(
             }
     }
 
-    fun rejectPairing() {
-        val pending = _state.value.pendingPairing ?: return
+    fun rejectPairing(endpointId: String) {
+        val pending = _state.value.pendingPairings.firstOrNull { it.endpointId == endpointId } ?: return
         client.rejectConnection(pending.endpointId)
-        _state.update {
-            it.copy(
-                pendingPairing = null,
+        _state.update { current ->
+            current.copy(
+                pendingPairings = current.pendingPairings.filterNot { it.endpointId == endpointId },
                 status = "Pairing rejected"
             )
         }
     }
 
     fun sendBytes(endpointId: String, bytes: ByteArray, onResult: (String?) -> Unit = {}) {
-        if (_state.value.connectedPeer?.endpointId != endpointId) {
+        if (_state.value.connectedPeers.none { it.endpointId == endpointId } &&
+            _state.value.connectedPeer?.endpointId != endpointId
+        ) {
             onResult("The requested LINKA peer is not connected")
             return
         }
@@ -336,7 +351,9 @@ class NearbyDirectLink(
         endpointId: String,
         onReady: (NearbyOutgoingStream?, String?) -> Unit
     ) {
-        if (_state.value.connectedPeer?.endpointId != endpointId) {
+        if (_state.value.connectedPeers.none { it.endpointId == endpointId } &&
+            _state.value.connectedPeer?.endpointId != endpointId
+        ) {
             onReady(null, "The requested LINKA peer is not connected")
             return
         }
@@ -356,16 +373,33 @@ class NearbyDirectLink(
         }
     }
 
-    fun disconnect() {
-        val endpointId = _state.value.connectedPeer?.endpointId ?: return
-        client.disconnectFromEndpoint(endpointId)
+    /** Selects one already-connected neighbour for a direct voice call. */
+    fun selectPeer(endpointId: String) {
+        val peer = _state.value.connectedPeers.firstOrNull { it.endpointId == endpointId }
+            ?: return
         _state.update {
-            it.copy(
-                connectedPeer = null,
-                pendingPairing = null,
-                status = "Disconnected"
+            it.copy(connectedPeer = peer, status = "Selected ${peer.displayName} for direct calling")
+        }
+    }
+
+    /** Disconnects one neighbour without dropping the other mesh-capable links. */
+    fun disconnectPeer(endpointId: String) {
+        client.disconnectFromEndpoint(endpointId)
+        _state.update { current ->
+            val remaining = current.connectedPeers.filterNot { it.endpointId == endpointId }
+            val activeWasDisconnected = current.connectedPeer?.endpointId == endpointId
+            current.copy(
+                connectedPeers = remaining,
+                connectedPeer = if (activeWasDisconnected) null else current.connectedPeer,
+                pendingPairings = current.pendingPairings.filterNot { it.endpointId == endpointId },
+                status = "Disconnected from one nearby device (${remaining.size} link(s) remain)"
             )
         }
+    }
+
+    fun disconnect() {
+        val endpointId = _state.value.connectedPeer?.endpointId ?: return
+        disconnectPeer(endpointId)
     }
 
     fun stopDiscoveryAndAdvertising() {

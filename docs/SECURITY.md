@@ -3,19 +3,30 @@
 ## Implemented foundation
 
 - A random local device ID is persisted in app-private preferences. It is a public routing label, not a secret.
-- A P-256 signing key pair is generated using Android Keystore. The private key is not exported by the app; the public-key fingerprint is shown in the identity screen.
-- Nearby connection requests require a human to compare the same four-digit authentication code on both phones and explicitly accept. Unexpected requests must be rejected.
-- The Nearby Connections SDK provides an encrypted peer transport, but LINKA still needs its own authenticated identity binding and call-session security.
+- A P-256 signing key pair is generated using Android Keystore. The private key is not exported by the app.
+- The identity screen can display a signed, short-lived public identity QR. The peer can scan, verify and explicitly trust the presented identity; trusted devices can be revoked.
+- Nearby connection requests display the SDK authentication digits for both users to compare and explicitly accept or reject.
+- Google Nearby Connections encrypts each direct peer transport. This protects an individual radio link; it does not, by itself, provide caller-to-recipient end-to-end encryption through intermediate relays.
 
-## Required before voice calling
+## Required before production direct calling
 
-- Sign and verify identity claims so a peer's device ID and public key cannot be silently substituted.
-- Establish ephemeral endpoint key agreement and derive independent keys for each call direction.
-- Encrypt voice frames using a reviewed AEAD construction with unique nonces and authenticated metadata.
-- Include sequence numbers, replay protection, bounded packet lifetimes and safe re-keying.
-- Erase per-call secrets and stop capture/playback on every disconnect, rejection, permission loss or app shutdown.
+- Bind the connected Nearby endpoint to the QR-verified LINKA device identity. Do not treat a radio endpoint ID or display name as an authenticated identity.
+- Sign and verify call-control messages so a peer's device ID and call lifecycle cannot be silently substituted.
+- Establish ephemeral key agreement and derive unique keys for each call and direction.
+- Encrypt voice frames with a reviewed AEAD construction and authenticated metadata.
+- Include sequence numbers, replay protection, bounded packet lifetimes, key rotation and safe failure behavior.
+- Erase per-call secrets and stop capture/playback on every disconnect, rejection, permission loss, call end or app shutdown.
 - Do not expose call secrets or private keys in QR codes, logs, notifications, crash reports or analytics.
-- Mesh relays must never possess media decryption keys and may forward ciphertext only.
+
+## Additional requirements before mesh relaying
+
+- End-to-end encrypt call media before it leaves the originating phone. Relays must never receive media decryption keys.
+- Authenticate every immediate neighbour and reject unauthenticated route advertisements.
+- Use bounded hop counts, packet expiry, duplicate suppression, loop prevention and rate limits.
+- Protect route-control messages against spoofing and replay.
+- Make relay participation explicit, visible and revocable. Apply battery, thermal and data-rate limits.
+- Ensure relays cannot modify media undetected. A relay may drop or delay ciphertext, but it must not be able to impersonate the caller or recipient.
+- Test malicious relays, route poisoning, replay, malformed packets, connection churn and denial-of-service attempts.
 
 ## QR pairing
 
@@ -23,8 +34,8 @@ QR content may include a public device ID, public key, version and an expiry-lim
 
 ## Threat model
 
-Address malicious nearby endpoints, device impersonation, man-in-the-middle pairing, replay, malformed payloads, denial of service, traffic analysis, lost devices and malicious relays. Add trust revocation and lost-device recovery before production.
+Address malicious nearby endpoints, device impersonation, man-in-the-middle pairing, replay, malformed payloads, route poisoning, malicious relays, denial of service, traffic analysis, lost devices and compromised relay devices. Include trust revocation and lost-device recovery before production.
 
 ## Release gate
 
-The current pairing screen is not a complete end-to-end identity system, and voice media has not yet been implemented. Do not claim that LINKA voice calls are end-to-end encrypted until call media is implemented, tested and independently reviewed.
+The current code contains direct-call control and audio components, but they still require real-device testing with internet connectivity disabled. Do not claim that LINKA calls are caller-to-recipient end-to-end encrypted until authenticated session keys and encrypted media frames are implemented, tested and independently reviewed. Do not enable multi-hop voice relaying before that security gate passes.

@@ -117,6 +117,17 @@ class MeshPacketRouter(
     }
 
     @Synchronized
+    fun clearRoutesAndPendingDiscovery() {
+        routes.clear()
+        reversePaths.clear()
+        seenRequests.clear()
+        seenReplies.clear()
+        pendingDestinations.clear()
+        pendingDiscoveryExpiry.clear()
+        seenData.clear()
+    }
+
+    @Synchronized
     fun routeTo(destinationDeviceId: String, nowEpochMs: Long = System.currentTimeMillis()): MeshRoute? {
         prune(nowEpochMs)
         if (destinationDeviceId == localDeviceId) return null

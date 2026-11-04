@@ -203,12 +203,14 @@ class PeerSessionSecurity internal constructor(
 
     @Synchronized
     fun remove(endpointId: String) {
-        exchanges.remove(endpointId)
-        secureSessions.remove(endpointId)
+        exchanges.remove(endpointId)?.rootKey?.fill(0)
+        secureSessions.remove(endpointId)?.destroy()
     }
 
     @Synchronized
     fun close() {
+        exchanges.values.forEach { it.rootKey?.fill(0) }
+        secureSessions.values.forEach { it.destroy() }
         exchanges.clear()
         secureSessions.clear()
     }
@@ -540,6 +542,11 @@ class SecurePeerSession internal constructor(
         return SecurePayloadChannel(send, receive, context.toByteArray(StandardCharsets.UTF_8))
     }
 
+    fun destroy() {
+        controlChannel.destroy()
+        rootKey.fill(0)
+    }
+
     private fun deriveDirectionalKey(salt: ByteArray, label: String): ByteArray =
         hkdf(rootKey, salt, label.toByteArray(StandardCharsets.UTF_8), 32)
 
@@ -610,6 +617,13 @@ private class SecurePayloadChannel(
         return plaintext
     }
 
+    @Synchronized
+    fun destroy() {
+        sendKey.fill(0)
+        receiveKey.fill(0)
+        lastReceivedSequence = Long.MAX_VALUE
+    }
+
     private fun nonce(key: ByteArray, sequence: Long): ByteArray {
         val prefix = MessageDigest.getInstance("SHA-256").digest(key).copyOf(4)
         return ByteBuffer.allocate(12).put(prefix).putLong(sequence).array()
@@ -635,6 +649,8 @@ class SecureCallCipher internal constructor(
 
     fun encryptFrame(plaintextFrame: ByteArray): ByteArray = channel.encrypt(plaintextFrame)
     fun decryptFrame(encryptedFrame: ByteArray): ByteArray = channel.decrypt(encryptedFrame)
+
+    fun destroy() = channel.destroy()
 
     companion object {
         val ENCRYPTED_FRAME_BYTES: Int = 8 + VoiceFrameCodec.ENCODED_FRAME_BYTES + 16

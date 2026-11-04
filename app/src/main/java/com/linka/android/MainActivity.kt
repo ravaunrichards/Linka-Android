@@ -41,6 +41,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,6 +78,7 @@ import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyLinkState
 import com.linka.android.core.nearby.NearbyPeer
 import com.linka.android.core.nearby.PendingPairing
+import com.linka.android.core.mesh.RelayConsentStore
 
 private val LinkaColors = lightColorScheme(
     primary = Color(0xFF2459C4),
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var nearbyLink: NearbyDirectLink
     private lateinit var callController: NearbyCallController
     private lateinit var trustedDevices: TrustedDeviceStore
+    private lateinit var relayConsent: RelayConsentStore
     private var actionAfterPermissions: (() -> Unit)? = null
     private var actionAfterMicrophonePermission: (() -> Unit)? = null
 
@@ -149,6 +152,7 @@ class MainActivity : ComponentActivity() {
         nearbyLink = runtime.nearbyLink
         callController = runtime.callController
         trustedDevices = runtime.trustedDevices
+        relayConsent = runtime.relayConsent
 
         setContent {
             LinkaApp(
@@ -156,6 +160,7 @@ class MainActivity : ComponentActivity() {
                 nearbyLink = nearbyLink,
                 callController = callController,
                 trustedDevices = trustedDevices,
+                relayConsent = relayConsent,
                 onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
                 onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } },
                 onStartCall = { withMicrophonePermission { callController.startOutgoingCall() } },
@@ -274,6 +279,7 @@ private fun LinkaApp(
     nearbyLink: NearbyDirectLink,
     callController: NearbyCallController,
     trustedDevices: TrustedDeviceStore,
+    relayConsent: RelayConsentStore,
     onScanQr: (onResult: (String?) -> Unit) -> Unit,
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
@@ -376,6 +382,7 @@ private fun LinkaApp(
                     voiceState = voiceState,
                     nearbyLink = nearbyLink,
                     callController = callController,
+                    trustedDevices = trustedDevices,
                     onStartDiscovery = onStartDiscovery,
                     onStartAdvertising = onStartAdvertising,
                     onStartCall = onStartCall,
@@ -391,7 +398,9 @@ private fun LinkaApp(
                 )
 
                 LinkaDestination.SETTINGS -> SettingsScreen(
-                    modifier = Modifier.padding(contentPadding)
+                    modifier = Modifier.padding(contentPadding),
+                    relayConsent = relayConsent,
+                    onRelayConsentChanged = { callController.refreshSecurePairings() }
                 )
             }
         }
@@ -565,6 +574,7 @@ private fun NearbyScreen(
     voiceState: VoiceSessionState,
     nearbyLink: NearbyDirectLink,
     callController: NearbyCallController,
+    trustedDevices: TrustedDeviceStore,
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
     onStartCall: () -> Unit,
@@ -655,6 +665,49 @@ private fun NearbyScreen(
         }
 
         item {
+            ScreenHeading(
+                title = "Trusted offline destinations",
+                subtitle = "Request a route through connected phones whose owners have opted in to relaying. A route is not yet a routed voice call."
+            )
+        }
+
+        val savedDestinations = trustedDevices.list()
+        if (savedDestinations.isEmpty()) {
+            item {
+                MessageCard(
+                    title = "No trusted destinations",
+                    message = "Scan and trust another LINKA identity QR on the My ID screen before requesting an offline route."
+                )
+            }
+        } else {
+            items(savedDestinations, key = { "route-${it.deviceId}" }) { device ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(device.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                device.fingerprint.take(16) + "…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(onClick = {
+                            callController.discoverMeshRoute(device.deviceId)
+                        }) { Text("Find route") }
+                    }
+                }
+            }
+        }
+
+        item {
             CallControlsCard(
                 state = callState,
                 voiceState = voiceState,
@@ -715,7 +768,12 @@ private fun IdentityScreen(
 }
 
 @Composable
-private fun SettingsScreen(modifier: Modifier = Modifier) {
+private fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    relayConsent: RelayConsentStore,
+    onRelayConsentChanged: () -> Unit
+) {
+    var relayEnabled by rememberSaveable { mutableStateOf(relayConsent.isEnabled()) }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
@@ -726,6 +784,36 @@ private fun SettingsScreen(modifier: Modifier = Modifier) {
                 title = "Settings & help",
                 subtitle = "Clear guidance about how LINKA works on your Android phone."
             )
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("Allow this phone to relay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "When enabled, LINKA may forward opaque encrypted network packets for another trusted phone. This can use battery. Turn it off at any time.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = relayEnabled,
+                        onCheckedChange = { enabled ->
+                            relayEnabled = enabled
+                            relayConsent.setEnabled(enabled)
+                            onRelayConsentChanged()
+                        }
+                    )
+                }
+            }
         }
         item {
             MessageCard(

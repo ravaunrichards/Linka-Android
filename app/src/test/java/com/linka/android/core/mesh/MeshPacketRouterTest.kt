@@ -169,6 +169,72 @@ class MeshPacketRouterTest {
         assertArrayEquals(returnPayload, deliveredToCaller.payload)
     }
 
+
+    @Test
+    fun keepsReturnRouteAliveBeyondRouteDiscoveryRequestTtl() {
+        val caller = identity()
+        val relay = identity()
+        val recipient = identity()
+        val identities = listOf(caller, relay, recipient).associateBy { it.deviceId }
+
+        val callerRouter = router(caller, identities, relayEnabled = false)
+        val relayRouter = router(relay, identities, relayEnabled = true)
+        val recipientRouter = router(recipient, identities, relayEnabled = false)
+        callerRouter.registerNeighbor("caller-relay", relay.deviceId, relayOptIn = true, nowEpochMs = 1_000)
+        relayRouter.registerNeighbor("relay-caller", caller.deviceId, relayOptIn = false, nowEpochMs = 1_000)
+        relayRouter.registerNeighbor("relay-recipient", recipient.deviceId, relayOptIn = false, nowEpochMs = 1_000)
+        recipientRouter.registerNeighbor("recipient-relay", relay.deviceId, relayOptIn = true, nowEpochMs = 1_000)
+
+        val request = (callerRouter.startRouteDiscovery(recipient.deviceId, nowEpochMs = 1_000).single()
+            as MeshRouterAction.SendTo).packet
+        val atRelay = relayRouter.receive(request, "relay-caller", nowEpochMs = 1_001).single()
+            as MeshRouterAction.SendTo
+        val reply = recipientRouter.receive(atRelay.packet, "recipient-relay", nowEpochMs = 1_002).single()
+            as MeshRouterAction.SendTo
+        val replyAtRelay = relayRouter.receive(reply.packet, "relay-recipient", nowEpochMs = 1_003).single()
+            as MeshRouterAction.SendTo
+        callerRouter.receive(replyAtRelay.packet, "caller-relay", nowEpochMs = 1_004).single()
+
+        // The route request expires after 15 seconds, but the installed route
+        // must remain active while the caller is ringing/starting the call.
+        val forwardPayload = byteArrayOf(1, 2, 3, 4)
+        val outgoing = callerRouter.sendOpaqueData(
+            recipient.deviceId,
+            forwardPayload,
+            nowEpochMs = 20_000
+        ).single() as MeshRouterAction.SendTo
+        val forwarded = relayRouter.receive(
+            outgoing.packet,
+            "relay-caller",
+            nowEpochMs = 20_001
+        ).single() as MeshRouterAction.SendTo
+        val delivered = recipientRouter.receive(
+            forwarded.packet,
+            "recipient-relay",
+            nowEpochMs = 20_002
+        ).single() as MeshRouterAction.DeliverOpaqueData
+        assertArrayEquals(forwardPayload, delivered.payload)
+
+        // Return traffic must use the reverse route and refresh it too.
+        val returnPayload = byteArrayOf(9, 8, 7, 6)
+        val returnPacket = recipientRouter.sendOpaqueData(
+            caller.deviceId,
+            returnPayload,
+            nowEpochMs = 20_003
+        ).single() as MeshRouterAction.SendTo
+        val returnForwarded = relayRouter.receive(
+            returnPacket.packet,
+            "relay-recipient",
+            nowEpochMs = 20_004
+        ).single() as MeshRouterAction.SendTo
+        val returned = callerRouter.receive(
+            returnForwarded.packet,
+            "caller-relay",
+            nowEpochMs = 20_005
+        ).single() as MeshRouterAction.DeliverOpaqueData
+        assertArrayEquals(returnPayload, returned.payload)
+    }
+
     @Test
     fun relayRefusesToForwardWhenRelayParticipationIsDisabled() {
         val caller = identity()

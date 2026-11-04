@@ -60,7 +60,7 @@ class NearbyVoiceSession(
     private var callScope: CoroutineScope? = null
     private var callJob: Job? = null
     private var endpointId: String? = null
-    private var callCipher: SecureCallCipher? = null
+    @Volatile private var callCipher: SecureCallCipher? = null
     private var outgoingStream: NearbyOutgoingStream? = null
     private var incomingStream: NearbyIncomingStream? = null
     private val incomingStreamLock = Any()
@@ -408,6 +408,7 @@ class NearbyVoiceSession(
         LinkaVoiceForegroundService.stop(appContext)
         previousAudioMode = null
         endpointId = null
+        callCipher?.destroy()
         callCipher = null
         _state.value = VoiceSessionState(status = reason)
     }

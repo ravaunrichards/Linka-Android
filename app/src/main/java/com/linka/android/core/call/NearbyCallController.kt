@@ -197,16 +197,6 @@ class NearbyCallController(
             publishError("Secure peer identity verification was lost")
             return
         }
-        val mediaCipher = try {
-            securePeer.forCall(call.callId!!)
-        } catch (error: Exception) {
-            val ended = machine.rejectOrDecline("secure_media_key_unavailable")
-            _state.value = NearbyCallUiState(ended, "Could not establish secure voice keys")
-            send(CallControlType.REJECT, ended.callId!!, ended.peerDeviceId!!)
-            publishError(error.localizedMessage ?: "Could not create unique voice encryption keys")
-            return
-        }
-
         try {
             LinkaVoiceForegroundService.start(appContext)
         } catch (error: Exception) {
@@ -216,9 +206,21 @@ class NearbyCallController(
             return
         }
 
+        val mediaCipher = try {
+            securePeer.forCall(call.callId!!)
+        } catch (error: Exception) {
+            LinkaVoiceForegroundService.stop(appContext)
+            val ended = machine.rejectOrDecline("secure_media_key_unavailable")
+            _state.value = NearbyCallUiState(ended, "Could not establish secure voice keys")
+            send(CallControlType.REJECT, ended.callId!!, ended.peerDeviceId!!)
+            publishError(error.localizedMessage ?: "Could not create unique voice encryption keys")
+            return
+        }
+
         val active = try {
             machine.acceptIncoming(System.currentTimeMillis())
         } catch (error: IllegalStateException) {
+            mediaCipher.destroy()
             LinkaVoiceForegroundService.stop(appContext)
             publishError(error.message ?: "Unable to accept call")
             return

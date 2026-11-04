@@ -521,6 +521,7 @@ class SecurePeerSession internal constructor(
 ) {
     private val controlChannel = payloadChannel("LINKA-CONTROL-v1")
     private val usedCallIds = mutableSetOf<String>()
+    @Volatile private var destroyed = false
 
     fun encryptControl(plaintext: ByteArray): ByteArray =
         controlChannel.encrypt(plaintext)
@@ -530,6 +531,7 @@ class SecurePeerSession internal constructor(
 
     @Synchronized
     fun forCall(callId: String): SecureCallCipher {
+        check(!destroyed) { "Secure peer session has been destroyed" }
         require(callId.isNotBlank() && callId.length <= 64)
         check(usedCallIds.add(callId)) { "A LINKA call ID cannot be reused on the same secure session" }
         val salt = MessageDigest.getInstance("SHA-256")
@@ -546,7 +548,10 @@ class SecurePeerSession internal constructor(
         return SecurePayloadChannel(send, receive, context.toByteArray(StandardCharsets.UTF_8))
     }
 
+    @Synchronized
     fun destroy() {
+        if (destroyed) return
+        destroyed = true
         controlChannel.destroy()
         rootKey.fill(0)
         usedCallIds.clear()
@@ -625,7 +630,6 @@ private class SecurePayloadChannel(
         return plaintext
     }
 
-    @Synchronized
     @Synchronized
     fun destroy() {
         if (destroyed) return

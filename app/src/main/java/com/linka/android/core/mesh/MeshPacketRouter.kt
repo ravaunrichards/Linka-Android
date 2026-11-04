@@ -271,7 +271,7 @@ class MeshPacketRouter(
             nextHopEndpointId = ingress.endpointId,
             nextHopDeviceId = ingress.deviceId,
             hopCount = (packet.hopCount + 1).coerceAtMost(MAX_HOPS),
-            expiresAtEpochMs = minOf(packet.expiresAtEpochMs, nowEpochMs + ROUTE_TTL_MS)
+            expiresAtEpochMs = nowEpochMs + ROUTE_TTL_MS
         )
 
         if (packet.destinationDeviceId == localDeviceId) {

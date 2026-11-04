@@ -42,7 +42,13 @@ gradle :app:assembleDebug
 gradle :app:testDebugUnitTest
 ```
 
-The CI workflow runs both commands on pushes and pull requests to `main`. The latest successful workflow result is the build verification authority; source commits alone do not prove the APK builds.
+The Android CI workflow runs on every push to `main`, every pull request targeting `main`, and manual dispatch. It builds the debug APK and runs unit tests. Only after both succeed does it upload the APK together with `build-info.txt`, which records the exact repository commit and workflow run. The artifact is retained by GitHub Actions for 30 days. Download it from the successful run's **Artifacts** section.
+
+The CI APK is a debug build for testing, not a Play Store release. A phone that already has LINKA installed does not update from a Git commit or CI artifact. Updating installed copies requires a release-signed APK/AAB, an increasing Android `versionCode`, and a distribution channel such as Google Play. Release signing keys and Play credentials must remain outside the repository.
+
+## Repository and backend synchronization
+
+GitHub `main` is the source of truth. The Render `linka-api` service is connected to this repository's `main` branch with automatic deployment enabled, so commits to `main` trigger a backend deployment. Android changes are built by GitHub Actions; they are not deployed as Android updates by Render.
 
 ## Jamaica scope
 

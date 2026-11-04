@@ -91,3 +91,16 @@ Do not mark a gate complete based on UI screens, a code commit or a CI build alo
 The direct-call Android source now includes QR-trusted identity binding, fresh authenticated ECDH session setup, transcript confirmation, HKDF-derived directional AES-GCM control/media keys, encrypted voice frames, replay/tamper checks and key destruction. Automated unit tests cover the handshake and encrypted-frame behavior. These are implementation/test results, not physical-device proof.
 
 Multi-peer cluster connectivity remains a radio-link foundation only. Authenticated route discovery, opt-in relay capabilities, end-to-end caller-to-recipient handshakes across a routed path, ciphertext-only forwarding and physical three-plus-phone relay tests remain outstanding. Do not enable multi-hop voice or claim Jamaica-wide coverage until those gates pass.
+
+
+## Routed-call implementation now present in the Android branch
+
+- Authenticated direct neighbours exchange the relay-consent capability inside their signed identity handshake.
+- Each phone's relay setting is persistent and defaults to off. A phone forwards only when its owner has opted in, and only through neighbours whose own signed capability permits relaying.
+- Signed, bounded route requests and reverse-path replies populate a short-lived route table. Duplicate, expired, unknown-ingress, mismatched and looping packets are rejected.
+- Route data carries an opaque payload. Peer handshake, call-control and voice-frame payloads are separately typed; the final caller and recipient establish their own fresh signed ECDH session. Relays do not receive the end-to-end media keys.
+- Direct-link transport between each adjacent relay pair is independently authenticated and encrypted. The origin signature protects immutable source/destination/request/packet/payload fields.
+- A routed voice engine sends 20 ms AES-GCM encrypted audio frames across the route. Queue limits and route loss terminate the session rather than silently switching to the cellular network.
+- Unit tests cover a three-node route request/reply, encrypted-payload forwarding, relay-consent gating, duplicate suppression, invalid signatures, expiry and unknown neighbours.
+
+The physical relay chain, radio quality, audio latency/jitter/loss, background reliability, and power usage still require tests on at least three actual Android phones. A passing source build is not a substitute for that field validation.

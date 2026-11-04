@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import java.util.ArrayDeque
 import java.util.UUID
 
 data class NearbyCallUiState(
@@ -67,6 +68,7 @@ class NearbyCallController(
     private val voiceSession = NearbyVoiceSession(appContext, nearbyLink)
     private val routedVoiceSession = RoutedVoiceSession(appContext)
     private var routedIncomingVoiceChannel: Channel<ByteArray>? = null
+    private val pendingRoutedVoiceFrames = ArrayDeque<ByteArray>()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _voiceState = MutableStateFlow(VoiceSessionState())
@@ -428,8 +430,19 @@ class NearbyCallController(
 
             RoutedPayloadType.VOICE_FRAME -> {
                 val current = machine.snapshot
-                if (current.phase != CallPhase.ACTIVE || current.peerDeviceId != endpoint) return
-                val channel = routedIncomingVoiceChannel ?: return
+                val callCanReceive = current.phase == CallPhase.ACTIVE ||
+                    current.phase == CallPhase.OUTGOING_RINGING
+                if (!callCanReceive || current.peerDeviceId != endpoint) return
+                val channel = routedIncomingVoiceChannel
+                if (channel == null) {
+                    // The remote phone can send its first frames just after ACCEPT
+                    // while this phone is still processing the call-control packet.
+                    if (pendingRoutedVoiceFrames.size >= ROUTED_VOICE_QUEUE_CAPACITY) {
+                        pendingRoutedVoiceFrames.removeFirst()
+                    }
+                    pendingRoutedVoiceFrames.addLast(payload.bytes.copyOf())
+                    return
+                }
                 if (channel.trySend(payload.bytes).isFailure) {
                     _state.value = _state.value.copy(
                         status = "Mesh voice queue is full; network congestion is affecting audio",
@@ -450,6 +463,9 @@ class NearbyCallController(
             routedIncomingVoiceChannel?.close()
             val channel = Channel<ByteArray>(capacity = ROUTED_VOICE_QUEUE_CAPACITY)
             routedIncomingVoiceChannel = channel
+            while (pendingRoutedVoiceFrames.isNotEmpty()) {
+                if (channel.trySend(pendingRoutedVoiceFrames.removeFirst()).isFailure) break
+            }
             routedVoiceSession.start(
                 secureCipher = mediaCipher,
                 sendEncryptedFrame = { encrypted ->
@@ -467,6 +483,7 @@ class NearbyCallController(
         routedVoiceSession.stop(reason)
         routedIncomingVoiceChannel?.close()
         routedIncomingVoiceChannel = null
+        pendingRoutedVoiceFrames.clear()
     }
 
     fun discoverMeshRoute(destinationDeviceId: String) {

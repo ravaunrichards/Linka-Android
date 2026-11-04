@@ -36,7 +36,7 @@ A successful build and unit suite validate the source and protocol components. T
 - Complete independent cryptographic/security review before making a production security certification claim.
 - Validate the Google Play Services requirement and build a separately tested transport adapter if non-GMS phones are in scope.
 - Complete Android system/Telecom integration, production signing, release artifact verification and distribution.
-- Configure and verify GitHub Pages separately for the static browser companion.
+- Verify the hosted browser companion and API routes on the LINKA Render service; physical Android radio tests remain separate.
 
 ## Important operating constraints
 - LINKA's offline radio path does not require a SIM, airtime, mobile data, Wi-Fi internet, Render or a cloud relay.
@@ -53,9 +53,7 @@ The Android navigation now includes a Phone hub with an on-screen keypad and sho
 These are system-app integrations, not an in-app carrier stack: call charges and SMS availability depend on the user's SIM, mobile operator and installed apps. LINKA does not request permission to place carrier calls automatically. In-app SMS, video calling and internet-based calling are not implemented in this build. SIM-free LINKA voice remains the separate nearby/mesh feature described above.
 
 ## Browser companion
-The static responsive browser companion is under `web/`. It documents LINKA and its current Android capabilities. A normal webpage cannot access Android Nearby Connections or Android Keystore and is not an offline calling client.
-
-GitHub Pages deployment is configured in `.github/workflows/web-pages.yml`. A successful deployment and public URL must be verified from the Actions run and repository Pages settings.
+The static responsive browser companion is under `web/` and is served by the same live Render service as the LINKA API at https://linka-api-vq2h.onrender.com/. Its `/healthz`, `/readyz`, and `/v1/info` API routes remain available on that origin. A normal webpage cannot access Android Nearby Connections or Android Keystore and is not an offline calling client.
 
 ## Repository layout
 - `app/`: Android app, UI, identity, nearby radio links, direct/routed call control and audio.
@@ -63,7 +61,7 @@ GitHub Pages deployment is configured in `.github/workflows/web-pages.yml`. A su
 - `backend/api/`: optional internet signaling API; not used by the SIM-free nearby or mesh path.
 - `web/`: static browser companion.
 - `docs/`: architecture, security, Jamaica compatibility, API and test plans.
-- `.github/workflows/`: Android CI, API CI and optional Pages deployment.
+- `.github/workflows/`: Android CI and API/web-route CI.
 
 ## Build and test
 Requirements: JDK 17 and Android SDK 35. Run from the repository root:

@@ -28,6 +28,6 @@ class LinkaApplication : Application() {
         identity = LocalDeviceIdentity.load(this)
         trustedDevices = TrustedDeviceStore(this, identity.deviceId)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
-        callController = NearbyCallController(this, identity.deviceId, nearbyLink)
+        callController = NearbyCallController(this, identity, trustedDevices, nearbyLink)
     }
 }

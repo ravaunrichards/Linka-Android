@@ -162,7 +162,17 @@ class PeerSessionSecurity(
     }
 
     @Synchronized
-    fun session(endpointId: String): SecurePeerSession? = secureSessions[endpointId]
+    fun session(endpointId: String): SecurePeerSession? {
+        val session = secureSessions[endpointId] ?: return null
+        val currentTrust = trustedDevices.get(session.remoteDeviceId)
+        if (currentTrust == null ||
+            !currentTrust.fingerprint.equals(session.remoteFingerprint, ignoreCase = true)
+        ) {
+            remove(endpointId)
+            return null
+        }
+        return session
+    }
 
     @Synchronized
     fun remove(endpointId: String) {
@@ -288,6 +298,7 @@ class PeerSessionSecurity(
         secureSessions[endpointId] = SecurePeerSession(
             localDeviceId = localIdentity.deviceId,
             remoteDeviceId = remote.deviceId,
+            remoteFingerprint = sha256(remote.signingPublicKey).toHex(),
             rootKey = root.copyOf()
         )
         return true
@@ -341,7 +352,7 @@ class PeerSessionSecurity(
             val type = input.readUnsignedByte()
             val message = when (type) {
                 HELLO -> {
-                    val id = readField(input, 64).toString(StandardCharsets.UTF_8)
+                    val id = String(readField(input, 64), StandardCharsets.UTF_8)
                     val signingKey = readField(input, 256)
                     val ephemeral = readField(input, 256)
                     val nonce = readField(input, NONCE_BYTES)
@@ -353,7 +364,7 @@ class PeerSessionSecurity(
                     HandshakePacket.HelloPacket(Hello(id, signingKey, ephemeral, nonce, signature))
                 }
                 ACK -> {
-                    val sender = readField(input, 64).toString(StandardCharsets.UTF_8)
+                    val sender = String(readField(input, 64), StandardCharsets.UTF_8)
                     val mac = readField(input, ACK_BYTES)
                     require(sender.isNotBlank() && mac.size == ACK_BYTES) {
                         "Secure key confirmation fields are invalid"
@@ -465,6 +476,7 @@ class PeerSessionSecurity(
 class SecurePeerSession internal constructor(
     private val localDeviceId: String,
     val remoteDeviceId: String,
+    val remoteFingerprint: String,
     private val rootKey: ByteArray
 ) {
     private val controlChannel = payloadChannel("LINKA-CONTROL-v1")

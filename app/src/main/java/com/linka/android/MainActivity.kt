@@ -76,6 +76,7 @@ import com.linka.android.core.identity.VerifiedQrIdentity
 import com.linka.android.core.nearby.NearbyDirectLink
 import com.linka.android.core.nearby.NearbyLinkState
 import com.linka.android.core.nearby.NearbyPeer
+import com.linka.android.core.nearby.PendingPairing
 
 private val LinkaColors = lightColorScheme(
     primary = Color(0xFF2459C4),
@@ -600,8 +601,10 @@ private fun NearbyScreen(
             }
         }
 
-        if (linkState.pendingPairing != null) {
-            item { PendingPairingCard(linkState, nearbyLink) }
+        linkState.pendingPairings.forEach { pending ->
+            item(key = "pending-${pending.endpointId}") {
+                PendingPairingCard(pending, nearbyLink)
+            }
         }
 
         if (linkState.connectedPeers.isNotEmpty() || linkState.connectedPeer != null) {
@@ -1010,8 +1013,7 @@ private fun PeerCard(peer: NearbyPeer, onConnect: () -> Unit) {
 }
 
 @Composable
-private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
-    val pending = state.pendingPairing ?: return
+private fun PendingPairingCard(pending: PendingPairing, nearbyLink: NearbyDirectLink) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1040,8 +1042,12 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { nearbyLink.acceptPairing() }) { Text("I confirm") }
-                OutlinedButton(onClick = { nearbyLink.rejectPairing() }) { Text("Reject") }
+                Button(onClick = { nearbyLink.acceptPairing(pending.endpointId) }) {
+                    Text("I confirm")
+                }
+                OutlinedButton(onClick = { nearbyLink.rejectPairing(pending.endpointId) }) {
+                    Text("Reject")
+                }
             }
         }
     }

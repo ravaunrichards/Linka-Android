@@ -295,7 +295,7 @@ class MeshPacketRouterTest {
 
         val request = (callerRouter.startRouteDiscovery(recipient.deviceId).single()
             as MeshRouterAction.SendTo).packet
-        val forwarded = relayRouter.receive(request.packet, "relay-caller").single()
+        val forwarded = relayRouter.receive(request, "relay-caller").single()
             as MeshRouterAction.SendTo
         val reply = recipientRouter.receive(forwarded.packet, "recipient-relay").single()
             as MeshRouterAction.SendTo

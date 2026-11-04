@@ -1,6 +1,7 @@
 package com.linka.android.core.mesh
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -299,6 +300,45 @@ class MeshPacketRouterTest {
             "relay-caller"
         ).single() as MeshRouterAction.Dropped
         assertTrue(result.reason.contains("signature"))
+    }
+
+
+    @Test
+    fun rejectsPacketsWithExcessiveLifetimeAndMalformedIdentifiers() {
+        val caller = identity()
+        val relay = identity()
+        val recipient = identity()
+        val identities = listOf(caller, relay, recipient).associateBy { it.deviceId }
+        val callerRouter = router(caller, identities, relayEnabled = false)
+        val relayRouter = router(relay, identities, relayEnabled = true)
+        callerRouter.registerNeighbor("caller-relay", relay.deviceId, relayOptIn = true)
+        relayRouter.registerNeighbor("relay-caller", caller.deviceId, relayOptIn = false)
+
+        val now = 1_000L
+        val initial = (callerRouter.startRouteDiscovery(recipient.deviceId, now).single()
+            as MeshRouterAction.SendTo).packet
+        val packet = MeshPacketCodec.decode(initial)
+        val excessiveLifetime = packet.copy(
+            expiresAtEpochMs = now + 120_000L,
+            signature = ByteArray(0)
+        )
+        val signedLongLived = excessiveLifetime.copy(
+            signature = caller.sign(MeshPacketCodec.signingBytes(excessiveLifetime))
+        )
+        val lifetimeResult = relayRouter.receive(
+            MeshPacketCodec.encode(signedLongLived),
+            "relay-caller",
+            nowEpochMs = now
+        ).single() as MeshRouterAction.Dropped
+        assertTrue(lifetimeResult.reason.contains("expiry"))
+
+        val malformedId = packet.copy(packetId = "not-a-uuid", signature = ByteArray(0))
+        val signedMalformedId = malformedId.copy(
+            signature = caller.sign(MeshPacketCodec.signingBytes(malformedId))
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            MeshPacketCodec.encode(signedMalformedId)
+        }
     }
 
     @Test

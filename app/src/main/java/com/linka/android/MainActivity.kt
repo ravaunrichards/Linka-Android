@@ -604,8 +604,8 @@ private fun NearbyScreen(
             item { PendingPairingCard(linkState, nearbyLink) }
         }
 
-        if (linkState.connectedPeer != null) {
-            item { ConnectedDeviceCard(linkState, nearbyLink) }
+        if (linkState.connectedPeers.isNotEmpty() || linkState.connectedPeer != null) {
+            item { ConnectedDevicesCard(linkState, nearbyLink) }
         }
 
         item {
@@ -795,11 +795,18 @@ private fun ConnectionStatusCard(state: NearbyLinkState) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                state.connectedPeer?.let { peer ->
+                if (state.connectedPeers.isNotEmpty()) {
                     Text(
-                        "Connected to ${peer.displayName}",
+                        "${state.connectedPeers.size} nearby link(s) connected",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                state.connectedPeer?.let { peer ->
+                    Text(
+                        "Selected for direct calls: ${peer.displayName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -1031,8 +1038,10 @@ private fun PendingPairingCard(state: NearbyLinkState, nearbyLink: NearbyDirectL
 }
 
 @Composable
-private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
-    val peer = state.connectedPeer ?: return
+private fun ConnectedDevicesCard(state: NearbyLinkState, nearbyLink: NearbyDirectLink) {
+    val peers = state.connectedPeers.ifEmpty { listOfNotNull(state.connectedPeer) }
+    if (peers.isEmpty()) return
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1040,16 +1049,46 @@ private fun ConnectedDeviceCard(state: NearbyLinkState, nearbyLink: NearbyDirect
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Nearby device connected", fontWeight = FontWeight.Bold)
-            Text(peer.displayName, style = MaterialTheme.typography.titleMedium)
             Text(
-                "The nearby radio connection is established. A direct voice stream still requires two-phone testing.",
+                "Connected nearby phones (${peers.size})",
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Each entry is a direct radio link to a neighbour. Multi-hop long-distance calling still needs the separate encrypted relay-routing layer.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedButton(onClick = { nearbyLink.disconnect() }) { Text("Disconnect") }
+            peers.forEach { peer ->
+                val selected = state.connectedPeer?.endpointId == peer.endpointId
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(peer.displayName, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (selected) "Selected for direct calls" else "Connected neighbour",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (!selected) {
+                        TextButton(onClick = { nearbyLink.selectPeer(peer.endpointId) }) {
+                            Text("Use")
+                        }
+                    }
+                    TextButton(onClick = { nearbyLink.disconnectPeer(peer.endpointId) }) {
+                        Text("Disconnect")
+                    }
+                }
+            }
         }
     }
 }

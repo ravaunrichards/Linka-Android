@@ -172,7 +172,9 @@ class MeshPacketRouter(
         }
         val route = routes[destinationDeviceId]
             ?: return listOf(MeshRouterAction.Dropped("No route to destination; discover a route first"))
-        val neighbor = neighbors[route.nextHopEndpointId]
+        val refreshedRoute = route.copy(expiresAtEpochMs = nowEpochMs + ROUTE_TTL_MS)
+        routes[destinationDeviceId] = refreshedRoute
+        val neighbor = neighbors[refreshedRoute.nextHopEndpointId]
             ?: return listOf(MeshRouterAction.Dropped("The selected next hop is no longer connected"))
         if (neighbor.deviceId != destinationDeviceId && !neighbor.relayOptIn) {
             return listOf(MeshRouterAction.Dropped("The selected next hop has not opted in to relaying"))
@@ -388,7 +390,9 @@ class MeshPacketRouter(
         if (route.nextHopEndpointId == ingress.endpointId) {
             return listOf(MeshRouterAction.Dropped("Mesh forwarding loop detected"))
         }
-        val nextHop = neighbors[route.nextHopEndpointId]
+        val refreshedRoute = route.copy(expiresAtEpochMs = nowEpochMs + ROUTE_TTL_MS)
+        routes[packet.destinationDeviceId] = refreshedRoute
+        val nextHop = neighbors[refreshedRoute.nextHopEndpointId]
             ?: return listOf(MeshRouterAction.Dropped("The next hop is disconnected"))
         if (nextHop.deviceId != packet.destinationDeviceId && !nextHop.relayOptIn) {
             return listOf(MeshRouterAction.Dropped("The next hop has not opted in to relaying"))
@@ -396,7 +400,7 @@ class MeshPacketRouter(
 
         return listOf(
             MeshRouterAction.SendTo(
-                route.nextHopEndpointId,
+                refreshedRoute.nextHopEndpointId,
                 MeshPacketCodec.encode(
                     packet.copy(
                         hopLimit = packet.hopLimit - 1,
@@ -443,7 +447,7 @@ class MeshPacketRouter(
         const val MAX_HOPS = 8
         private const val ROUTE_REQUEST_TTL_MS = 15_000L
         private const val ROUTE_TTL_MS = 60_000L
-        private const val DIRECT_ROUTE_TTL_MS = 30_000L
+        private const val DIRECT_ROUTE_TTL_MS = 24 * 60 * 60 * 1_000L
         private const val DATA_PACKET_TTL_MS = 5_000L
         private const val MAX_ID_BYTES = 64
         private const val MAX_SEEN_IDS = 2_048

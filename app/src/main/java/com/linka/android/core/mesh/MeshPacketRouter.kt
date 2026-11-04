@@ -228,9 +228,6 @@ class MeshPacketRouter(
             return listOf(MeshRouterAction.Dropped("Expired mesh packet"))
         }
         if (packet.expiresAtEpochMs - nowEpochMs > MAX_PACKET_TTL_MS) {
-            return listOf(MeshRouterAction.Dropped("Mesh packet lifetime exceeds the permitted limit"))
-        }
-        if (packet.expiresAtEpochMs - nowEpochMs > MAX_PACKET_TTL_MS) {
             return listOf(MeshRouterAction.Dropped("Mesh packet expiry exceeds the protocol limit"))
         }
         if (packet.sourceDeviceId == localDeviceId) {

@@ -263,7 +263,7 @@ class MeshPacketRouterTest {
         ).single() as MeshRouterAction.Dropped
         assertTrue(expiredAction.reason.contains("Expired"))
 
-        val unknownIngress = relayRouter.receive(signed.packet, "not-a-neighbor").single()
+        val unknownIngress = relayRouter.receive(signed, "not-a-neighbor").single()
             as MeshRouterAction.Dropped
         assertTrue(unknownIngress.reason.contains("unauthenticated"))
     }

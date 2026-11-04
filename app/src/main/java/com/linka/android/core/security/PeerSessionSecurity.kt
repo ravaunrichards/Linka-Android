@@ -113,7 +113,7 @@ class PeerSessionSecurity internal constructor(
         if (!isHandshakePacket(packet)) return Result(error = "Not a LINKA secure-pairing packet")
 
         val responses = mutableListOf<ByteArray>()
-        val exchange = exchanges[endpointId] ?: try {
+        var exchange = exchanges[endpointId] ?: try {
             createExchange().also {
                 exchanges[endpointId] = it
                 responses += it.localPacket
@@ -128,7 +128,13 @@ class PeerSessionSecurity internal constructor(
                     validateRemoteHello(message.hello)
                     val previous = exchange.remoteHello
                     if (previous != null && !sameHello(previous, message.hello)) {
-                        throw SecurityException("The peer changed identity during secure pairing")
+                        // A previously authenticated peer may have restarted its
+                        // ephemeral exchange after a trust update or reconnect.
+                        // The new hello is already signature-checked above.
+                        secureSessions.remove(endpointId)
+                        exchange = createExchange()
+                        exchanges[endpointId] = exchange
+                        responses += exchange.localPacket
                     }
                     exchange.remoteHello = message.hello
                     establishRootKey(exchange)

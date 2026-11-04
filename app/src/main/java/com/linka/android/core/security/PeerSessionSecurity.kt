@@ -282,6 +282,7 @@ class PeerSessionSecurity(
 
     private fun completeIfReady(endpointId: String, exchange: Exchange): Boolean {
         if (!exchange.acknowledgementSent || !exchange.acknowledgementVerified) return false
+        if (secureSessions.containsKey(endpointId)) return true
         val remote = exchange.remoteHello ?: return false
         val root = exchange.rootKey ?: return false
         secureSessions[endpointId] = SecurePeerSession(
@@ -463,7 +464,7 @@ class PeerSessionSecurity(
 /** Authenticated keys for a single trusted direct peer connection. */
 class SecurePeerSession internal constructor(
     private val localDeviceId: String,
-    private val remoteDeviceId: String,
+    val remoteDeviceId: String,
     private val rootKey: ByteArray
 ) {
     private val controlChannel = payloadChannel("LINKA-CONTROL-v1")

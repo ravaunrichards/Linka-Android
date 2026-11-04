@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Render service is the internet-connected signaling backend for LINKA Android. It supports signed device authentication and ephemeral call-control / WebRTC signaling between online app instances.
+The Render service is LINKA's live public web/API origin. It serves the browser companion from `/` and provides signed device authentication plus ephemeral call-control / WebRTC signaling endpoints for online app instances.
 
 It is **not** part of SIM-free nearby calling. The offline radio path must keep working with no SIM, no mobile data, no Wi-Fi internet and no Render access.
 
@@ -11,6 +11,9 @@ The API does not relay voice audio. It is not a TURN server, SFU, push-notificat
 ## Render service configuration
 
 - Service name: `linka-api`
+- Live origin: https://linka-api-vq2h.onrender.com/
+- Browser companion: https://linka-api-vq2h.onrender.com/
+- The `web/` HTML, CSS and JavaScript assets are served by the same Node process; a separate Render static-site service is not required.
 - Repository: `https://github.com/ravaunrichards/Linka-Android`
 - Branch: `main`
 - Runtime: Node
@@ -25,8 +28,10 @@ The API does not relay voice audio. It is not a TURN server, SFU, push-notificat
 
 The API has no third-party runtime dependencies. It uses Node.js built-in HTTP and cryptography modules.
 
-## Health and service information
+## Browser and health routes
 
+- `GET /` — LINKA browser companion entry point
+- `GET /styles.css` and `GET /app.js` — browser companion assets
 - `GET /healthz` — basic process health
 - `GET /readyz` — readiness and available API capabilities
 - `GET /v1/info` — API version, supported signaling mode and explicit media limitations
@@ -67,10 +72,10 @@ The sender identity is taken from the authenticated bearer session, not from a c
 - Signals expire after 90 seconds; the service is not an offline message store.
 - The API has no account database and no permanent username lookup.
 - The service does not receive or forward audio. WebRTC media connectivity requires a separate direct peer path and, for restrictive networks, a separately provisioned TURN service.
-- The Android client is not yet integrated with these HTTPS endpoints. The API deployment alone does not activate internet calling in the app.
+- The Android client is not yet integrated with these HTTPS signaling endpoints. The API being live does not activate internet calling in the Android app. Offline Nearby Connections and mesh routes are independent of this service.
 - Free instances may sleep or be constrained by Render's current free-plan policy. Use a paid always-on plan before relying on internet calling for production or emergency communication.
 - Do not send passwords, private keys, call audio, or long-lived secrets to the API.
 
 ## Verification
 
-Run `npm --prefix backend/api test` locally or use the LINKA API CI workflow. After deployment, verify `/healthz`, `/readyz`, and `/v1/info` on the Render URL. Physical Android-to-Android internet call tests are still required after client integration.
+Run `npm --prefix backend/api test` locally or use the LINKA API CI workflow. CI also verifies the hosted companion entry point, CSS, JavaScript, and API health routes. The live origin is https://linka-api-vq2h.onrender.com/. Physical Android-to-Android internet call tests are still required after client integration.

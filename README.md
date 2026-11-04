@@ -42,6 +42,14 @@ The Android source currently contains:
 - LINKA must never silently fall back to a chargeable cellular call.
 - LINKA is not an emergency-calling service.
 
+## Browser version
+
+A responsive LINKA web companion is available in `web/`. It provides browser views for the overview, nearby network, identity, calling and offline mesh roadmap. It clearly distinguishes real Android capabilities from features that are not yet implemented.
+
+The browser companion is a separate interface: it cannot use Android Nearby Connections or Android Keystore, and it does not currently scan nearby devices or place offline calls. SIM-free radio calling and future multi-hop mesh remain Android/device-network capabilities.
+
+The GitHub Pages workflow publishes the contents of `web/` after changes are merged to `main`. To activate hosting, open **Repository Settings → Pages** and set the build/deployment source to **GitHub Actions**. Once the first deployment succeeds, GitHub will display the public webpage URL in that same Pages settings area and in the deployment workflow.
+
 ## Repository layout
 
 - **app/**: Android application, UI, identity, nearby connectivity, call control and audio engine.

@@ -237,9 +237,11 @@ class RoutedVoiceSession(context: Context) {
                 val plaintext = cipher?.decryptFrame(encrypted)
                     ?: throw IOException("Secure mesh voice keys are unavailable")
                 val frame = VoiceFrameCodec.decode(plaintext)
-                if (frame.sequence <= lastSequence) {
-                    throw IOException("Replayed mesh voice frame rejected")
-                }
+                // Replayed or late frames are discarded without tearing down
+                // an otherwise healthy call. The AEAD replay window already
+                // rejects duplicate ciphertext; this also protects playout
+                // ordering when a routed frame arrives out of sequence.
+                if (frame.sequence <= lastSequence) return@collect
                 lastSequence = frame.sequence
 
                 var written = 0

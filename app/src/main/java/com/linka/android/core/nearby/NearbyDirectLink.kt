@@ -114,6 +114,8 @@ class NearbyDirectLink(
     private val serviceId = "com.linka.android"
     private val maxControlPayloadBytes = 1024
     private val streamPipeBufferBytes = 64 * 1024
+    @Volatile private var advertisingStartPending = false
+    @Volatile private var discoveryStartPending = false
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
@@ -247,7 +249,19 @@ class NearbyDirectLink(
         }
     }
 
+    /**
+     * Activates this phone as a full cluster participant: it is both discoverable
+     * by nearby LINKA phones and actively discovers neighbours for relay paths.
+     */
+    fun startNetwork() {
+        startAdvertising()
+        startDiscovery()
+    }
+
+    @Synchronized
     fun startAdvertising() {
+        if (_state.value.isAdvertising || advertisingStartPending) return
+        advertisingStartPending = true
         val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
         client.startAdvertising(
             localDeviceName,
@@ -255,10 +269,20 @@ class NearbyDirectLink(
             connectionLifecycleCallback,
             options
         ).addOnSuccessListener {
-            _state.update {
-                it.copy(isAdvertising = true, status = "This phone is discoverable nearby", error = null)
+            advertisingStartPending = false
+            _state.update { current ->
+                current.copy(
+                    isAdvertising = true,
+                    status = if (current.isDiscovering) {
+                        "LINKA network active: discoverable and searching for nearby phones"
+                    } else {
+                        "This phone is discoverable nearby"
+                    },
+                    error = null
+                )
             }
         }.addOnFailureListener { exception ->
+            advertisingStartPending = false
             _state.update {
                 it.copy(
                     isAdvertising = false,
@@ -269,17 +293,31 @@ class NearbyDirectLink(
         }
     }
 
+    @Synchronized
     fun startDiscovery() {
+        if (_state.value.isDiscovering || discoveryStartPending) return
+        discoveryStartPending = true
         val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
         client.startDiscovery(
             serviceId,
             endpointDiscoveryCallback,
             options
         ).addOnSuccessListener {
-            _state.update {
-                it.copy(isDiscovering = true, peers = emptyList(), status = "Searching for LINKA phones nearby", error = null)
+            discoveryStartPending = false
+            _state.update { current ->
+                current.copy(
+                    isDiscovering = true,
+                    peers = emptyList(),
+                    status = if (current.isAdvertising) {
+                        "LINKA network active: discoverable and searching for nearby phones"
+                    } else {
+                        "Searching for LINKA phones nearby"
+                    },
+                    error = null
+                )
             }
         }.addOnFailureListener { exception ->
+            discoveryStartPending = false
             _state.update {
                 it.copy(
                     isDiscovering = false,
@@ -404,6 +442,8 @@ class NearbyDirectLink(
     }
 
     fun stopDiscoveryAndAdvertising() {
+        discoveryStartPending = false
+        advertisingStartPending = false
         client.stopDiscovery()
         client.stopAdvertising()
         _state.update {

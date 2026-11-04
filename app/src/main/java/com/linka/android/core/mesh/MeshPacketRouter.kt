@@ -461,6 +461,9 @@ object MeshPacketCodec {
     private const val SIGNATURE_MIN_BYTES = 64
     private const val MAX_ID_BYTES = 64
 
+    fun isMeshPacket(bytes: ByteArray): Boolean =
+        bytes.size >= 4 && ByteBuffer.wrap(bytes, 0, 4).int == MAGIC
+
     fun encode(packet: MeshPacket): ByteArray {
         validatePacket(packet)
         val bytes = ByteArrayOutputStream()

@@ -1,37 +1,51 @@
-# Testing strategy
+# LINKA Testing Strategy
 
-## Automated checks
+## Automated Android CI
+The workflow runs:
 
-The GitHub Actions workflow runs:
+```bash
+gradle :app:assembleDebug
+gradle :app:testDebugUnitTest
+```
 
-- `gradle :app:assembleDebug`
-- `gradle :app:testDebugUnitTest`
+The debug APK is uploaded only after compilation and the unit-test task succeed. Build metadata records the exact repository commit and workflow run.
 
-Unit-test routing costs, hop limits, call-state transitions, identity serialization, QR payload validation, packet parsing, duplicate suppression and route expiry as those components are implemented. A source commit is not a successful build; record the latest CI conclusion and the exact commit SHA.
+## Automated test coverage
+The current unit suite exercises:
+- Call-state transitions and call-control packet parsing.
+- G.711 voice codec and bounded voice-frame framing.
+- Peer identity handshake, trusted QR key matching, invalid signature rejection and relay-capability binding.
+- Bidirectional AES-GCM control/media encryption, call-ID binding, replay/tamper rejection and frame bounds.
+- Route discovery/replies, reverse-path forwarding, multiple-relay chains, bidirectional opaque payload delivery, relay consent, duplicate suppression, malformed input, unauthenticated ingress, packet hop/lifetime bounds and route expiry.
+- Routed payload type/length framing, including handshake payloads larger than 255 bytes.
 
-## Nearby discovery and pairing tests
+Automated tests establish deterministic source-level behavior. They do not exercise Android radios, microphones, real acoustic conditions or device-specific background restrictions.
 
-Use two physical Android phones with LINKA installed.
+## Two-phone direct offline test
+Use two supported Android phones:
+1. Record manufacturer/model, Android version, security patch and Google Play services version.
+2. Install the same test build. Scan and trust the other phone's signed LINKA QR on both phones.
+3. Remove/disable SIMs where practical; turn mobile data off and disconnect from Wi-Fi internet.
+4. Enable only the local radios required by Nearby Connections. Grant nearby-device and microphone permissions.
+5. Start advertising on one phone and discovery on the other. Confirm the actual peer appears.
+6. Request a connection and compare the platform authentication digits on both screens. Accept on both sides.
+7. Confirm the app-level trusted identity handshake completes.
+8. Place and accept calls in both directions. Verify intelligible two-way audio.
+9. Repeat reject, timeout, hang-up, reconnect, permission denial, trust revocation, app backgrounding, screen off, battery saver, audio route changes and Bluetooth headset behavior.
+10. Confirm that a lost link ends the call and never triggers an unapproved cellular call.
 
-1. Clear the app data on both phones and launch LINKA.
-2. Confirm each phone displays a stable device ID across app restarts.
-3. Grant nearby permissions and manually enable Bluetooth or Wi-Fi.
-4. Start advertising on phone A and discovery on phone B.
-5. Confirm phone B discovers the correct LINKA endpoint.
-6. Request a connection and compare the four-digit authentication code on both screens.
-7. Confirm both sides must accept before the connection is established.
-8. Repeat with a mismatched/unexpected request and reject it.
-9. Disconnect either side and confirm the other side returns to a disconnected state.
-10. Repeat with mobile data off and no Wi-Fi internet connection.
+## Multi-phone offline relay test
+Use at least four physical Android phones for the two-relay chain:
+- Caller, Relay A, Relay B and Recipient.
+- Every endpoint must explicitly QR-trust the other identities required by the current route policy.
+- Relay A and Relay B must each enable relay consent. Keep consent disabled on endpoints that should not relay.
+- With mobile data off and Wi-Fi internet disconnected, discover the route and verify the destination's end-to-end identity handshake.
+- Place calls in both directions and verify audible media through the chain.
+- Disable consent, revoke trust, disconnect each relay in turn and confirm calls fail safely without cellular fallback.
+- Test duplicate, stale, forged, oversized and malformed packets; attempt route loops and route poisoning.
+- Record route/hop diagnostics and measure latency, jitter, packet loss, call setup time, quality, reconnect behavior, battery and heat.
 
-## Physical-device call tests
-
-A simulator cannot prove Bluetooth/Wi-Fi range, radio concurrency, microphone reliability, background execution, audio latency or mesh forwarding.
-
-Minimum lab: two Android phones for direct discovery and bidirectional voice; three or more phones for mesh proof-of-concept; at least two manufacturers and Android versions; Google Play services availability recorded; SIM removed and mobile data disabled; Wi-Fi internet disconnected; airplane mode with local radios re-enabled where supported.
-
-Do not label offline calling as working until a physical-device test demonstrates no SIM, no internet, authenticated identity, bidirectional intelligible audio, safe disconnect/recovery and no unapproved SIM fallback. Mesh additionally requires a demonstrated multi-hop route with encrypted payload forwarding and opt-in relay consent.
+Repeat across multiple handset manufacturers, Android versions, low-cost devices and realistic Jamaican urban, suburban and rural environments. A single chain test is not an island-wide coverage demonstration.
 
 ## Evidence to retain
-
-For each test run, record commit SHA, APK version, device model, Android version, security patch, Google Play services version, radio state, permission state, steps, expected result, observed result, logs with secrets removed and pass/fail. Do not record authentication codes or private key material.
+For every physical run, retain the commit SHA, APK version, device models, Android and Play services versions, radio/permission state, terrain/environment, exact test steps, observed results, audio/latency metrics and pass/fail. Redact identity authentication codes, private key material, media keys and personal data.

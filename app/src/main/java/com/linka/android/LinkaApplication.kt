@@ -5,6 +5,7 @@ import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.identity.LocalDeviceIdentity
 import com.linka.android.core.identity.TrustedDeviceStore
 import com.linka.android.core.nearby.NearbyDirectLink
+import com.linka.android.core.mesh.RelayConsentStore
 
 /**
  * Owns process-wide LINKA identity, radio link and call controller so activity
@@ -23,11 +24,15 @@ class LinkaApplication : Application() {
     lateinit var callController: NearbyCallController
         private set
 
+    lateinit var relayConsent: RelayConsentStore
+        private set
+
     override fun onCreate() {
         super.onCreate()
         identity = LocalDeviceIdentity.load(this)
         trustedDevices = TrustedDeviceStore(this, identity.deviceId)
+        relayConsent = RelayConsentStore(this)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")
-        callController = NearbyCallController(this, identity.deviceId, nearbyLink)
+        callController = NearbyCallController(this, identity, trustedDevices, relayConsent, nearbyLink)
     }
 }

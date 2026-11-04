@@ -85,9 +85,10 @@ data class NearbyLinkState(
  * Direct peer discovery, consent pairing, control messages and full-duplex
  * byte-stream transport over Nearby Connections.
  *
- * Google Nearby Connections encrypts its direct transport. This class does
- * not claim application-level identity binding, relay-safe E2E media keys or
- * completed voice calls; those remain explicit release requirements.
+ * Google Nearby Connections protects each direct radio link. LINKA's call
+ * controller layers QR-trusted identity authentication, directional
+ * application encryption and ciphertext-only mesh routing over this transport.
+ * This adapter is transport-only; it does not implement those security rules.
  */
 class NearbyDirectLink(
     context: Context,

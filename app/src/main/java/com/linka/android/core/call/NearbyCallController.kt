@@ -135,9 +135,16 @@ class NearbyCallController(
                     return@collect
                 }
 
-                if (incoming.endpointId != nearbyLink.state.value.connectedPeer?.endpointId) {
+                val currentLinkState = nearbyLink.state.value
+                val connectedEndpointIds = (
+                    currentLinkState.connectedPeers.map { it.endpointId } +
+                        listOfNotNull(currentLinkState.connectedPeer?.endpointId)
+                    ).toSet()
+                if (incoming.endpointId !in connectedEndpointIds) {
                     return@collect
                 }
+                // A connected, QR-trusted neighbour may call even when it is
+                // not the currently selected peer in the Nearby screen.
                 handleIncoming(plaintext, incoming.endpointId, session.remoteDeviceId)
             }
         }
@@ -605,7 +612,11 @@ class NearbyCallController(
                 val name = if (endpointId.startsWith(ROUTE_ENDPOINT_PREFIX)) {
                     trustedDevices.get(verifiedSenderId)?.displayName ?: "Trusted offline LINKA device"
                 } else {
-                    nearbyLink.state.value.connectedPeer?.displayName ?: "Nearby LINKA phone"
+                    val linkState = nearbyLink.state.value
+                    linkState.connectedPeers.firstOrNull { it.endpointId == endpointId }?.displayName
+                        ?: linkState.connectedPeer?.takeIf { it.endpointId == endpointId }?.displayName
+                        ?: trustedDevices.get(verifiedSenderId)?.displayName
+                        ?: "Nearby LINKA phone"
                 }
                 _state.value = NearbyCallUiState(incoming, "Incoming call from $name")
                 scope.launch {

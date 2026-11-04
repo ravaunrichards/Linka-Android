@@ -23,6 +23,12 @@ LINKA is an Android-first communication app for direct and multi-hop offline voi
 - Routed call-control and 20 ms AES-GCM voice-frame transport with bounded queues and route-loss handling.
 - The app offers a routed Call action only when a route is live and the destination's end-to-end identity handshake is complete.
 
+### Network activation and route status
+- Activating the LINKA network starts both Nearby Connections advertising and discovery in cluster mode, so a phone can be discovered while also finding neighbours.
+- When nearby permissions have already been granted, the app restarts both radio operations when it returns to the foreground.
+- After a neighbour passes the trusted-device handshake, LINKA automatically tries route discovery for saved QR-trusted destinations and shows whether the route is discovered and end-to-end verified.
+- Relay consent remains off by default and must be enabled by the owner on each relay phone. LINKA does not enable another person's relay participation remotely.
+
 ### Automated tests
 The unit suite covers peer identity handshakes, trusted-key rejection, signature tampering, bidirectional encrypted payloads, replay/tamper handling, route discovery, reverse paths, three-/four-device relay chains, both traffic directions, relay consent, packet bounds/expiry and routed-payload framing.
 

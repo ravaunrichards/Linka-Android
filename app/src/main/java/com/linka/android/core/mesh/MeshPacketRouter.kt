@@ -262,7 +262,7 @@ class MeshPacketRouter(
             originDeviceId = packet.sourceDeviceId,
             destinationDeviceId = packet.destinationDeviceId,
             hopCount = packet.hopCount + 1,
-            expiresAt = packet.expiresAtEpochMs
+            expiresAt = nowEpochMs + ROUTE_TTL_MS
         )
         // Every relay learns the reverse route to the request origin. This
         // enables recipient-to-caller media on chains with multiple relays.
@@ -394,6 +394,18 @@ class MeshPacketRouter(
             return listOf(MeshRouterAction.Dropped("Duplicate data packet suppressed"))
         }
         seenData[packet.packetId] = packet.expiresAtEpochMs
+
+        // Refresh the authenticated return route at every hop. Without this,
+        // the reverse path would expire with route discovery while the call
+        // might still be ringing or carrying live media.
+        val returnRoute = routes[packet.sourceDeviceId]
+            ?: return listOf(MeshRouterAction.Dropped("No return route exists for the packet origin"))
+        if (returnRoute.nextHopEndpointId != ingress.endpointId) {
+            return listOf(MeshRouterAction.Dropped("Packet arrived outside its authenticated return path"))
+        }
+        routes[packet.sourceDeviceId] = returnRoute.copy(
+            expiresAtEpochMs = nowEpochMs + ROUTE_TTL_MS
+        )
 
         if (packet.destinationDeviceId == localDeviceId) {
             return listOf(

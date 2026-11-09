@@ -159,6 +159,82 @@ async function main() {
     assert.notEqual(secondIdentity.deviceId, firstIdentity.deviceId, "separate browser contexts must use distinct device identities");
     assert.equal(secondIdentity.privateKeyExtractable, false);
 
+    // A third isolated browser context is a distinct account/device recipient.
+    const thirdContext = await browser.newContext({
+      viewport: { width: 1280, height: 900 }
+    });
+    contexts.push(thirdContext);
+    const thirdPage = await openAccountPage(thirdContext);
+    const recipientUnique = randomUUID();
+    const recipientEmail = browserName + "-recipient+" + recipientUnique + "@example.test";
+    const recipientPassword = "LINKA-recipient-" + browserName + "-" + recipientUnique;
+    const recipientName = "LINKA " + browserName + " recipient";
+    await thirdPage.locator("#accountEmail").fill(recipientEmail);
+    await thirdPage.locator("#accountDisplayName").fill(recipientName);
+    await thirdPage.locator("#accountPassword").fill(recipientPassword);
+    await thirdPage.locator("#accountRegister").click();
+    await thirdPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
+    await waitForStatus(thirdPage, "account created and this browser device linked successfully");
+    const recipientSession = await readOwnProfile(thirdPage);
+    assert.equal(recipientSession.status, 200);
+    assert.notEqual(recipientSession.profile.accountId, firstSession.profile.accountId);
+
+    const secretMessage = "LINKA E2EE browser integration " + randomUUID();
+    await firstPage.locator("#chatParticipantIds").fill(recipientSession.profile.accountId);
+    await firstPage.locator("#chatCreateConversation").click();
+    await firstPage.waitForFunction(
+      () => document.getElementById("chatStatus")?.textContent?.includes("Conversation ready"),
+      null,
+      { timeout: 15_000 }
+    );
+    const conversationId = await firstPage.locator("#chatConversationSelect").inputValue();
+    assert.match(conversationId, /^[0-9a-f-]{36}$/i);
+    await firstPage.locator("#chatMessageDraft").fill(secretMessage);
+    await firstPage.locator("#chatSendMessage").click();
+    await firstPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+
+    // The same account's second browser device and the recipient account each
+    // receive a different wrapped content-key envelope and decrypt locally.
+    await secondPage.locator("#chatRefreshConversations").click();
+    await secondPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+    await thirdPage.locator("#chatRefreshConversations").click();
+    await thirdPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+
+    const storedMessage = await firstPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(storedMessage.status, 200);
+    assert.equal(storedMessage.message.encryptionVersion, "LINKA-E2EE-2");
+    assert.equal(storedMessage.message.ciphertext.includes(secretMessage), false);
+    assert.equal(storedMessage.message.keyEnvelope.recipientDeviceId, firstIdentity.deviceId);
+
+    const secondOwnDevice = await inspectStoredIdentity(secondPage);
+    const recipientDevice = await inspectStoredIdentity(thirdPage);
+    assert.notEqual(secondOwnDevice.deviceId, firstIdentity.deviceId);
+    assert.notEqual(recipientDevice.deviceId, firstIdentity.deviceId);
+    assert.notEqual(recipientDevice.deviceId, secondOwnDevice.deviceId);
+
     await secondPage.locator("#accountLogout").click();
     await secondPage.locator("#accountSignedOut").waitFor({ state: "visible", timeout: 15_000 });
     await waitForStatus(secondPage, "You are signed out of LINKA in this browser tab");

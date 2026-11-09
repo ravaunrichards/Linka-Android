@@ -75,6 +75,20 @@ The database workflow uses PostgreSQL 17 and performs these checks:
 
 The ordinary API CI runs the same test suite without a database. In that context, the PostgreSQL integration test is explicitly skipped because `DATABASE_URL` is absent. PostgreSQL Schema CI runs it against a disposable database service.
 
-Latest verified database run: **42615498199**, commit `08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e`, completed successfully on 2026-11-09. The database-backed test run reports 58 passed, 0 failed, including durable wallet grant, idempotency, usage deduction, partial refund, snapshot read and overdraft rejection.
+Latest verified database run: **42617603718**, commit `4633d10c307fce56f1458f5ffef7e01571f84ab9`, completed successfully on 2026-11-09. It reports 65 passed, 0 failed and includes the PostgreSQL wallet integration, account HTTP integration and API readiness.
 
-This verifies the Node-to-PostgreSQL wallet-store integration in CI. It does not verify production database hosting, real customer accounts, authentication-to-account linking, public wallet endpoints, payment processing or live carrier services.
+The account HTTP integration test verifies:
+- Registration after a P-256 signed-device challenge.
+- The persistent account token authenticates `/v1/me`.
+- Re-registering with the same signed device is rejected.
+- Registering an existing email from another signed device is rejected.
+- Password recovery returns an explicit unavailable response; no email is simulated.
+- Logout revokes the persistent account token.
+- Wrong passwords return a generic invalid-credentials response.
+- The same account can log in from a second signed device.
+- The account bearer-token SHA-256 hash is stored in PostgreSQL rather than the raw token.
+- The second account session is revoked on logout.
+
+The ordinary API CI run **42617603655** on 2026-11-09 reports 63 passed, 0 failed and 2 PostgreSQL-only tests skipped because `DATABASE_URL` is absent.
+
+These tests verify account registration/login and persistent account/device/session integration in a disposable CI database. They do not verify production database hosting, email verification, password-reset delivery, public wallet endpoints, payment processing or live carrier services.

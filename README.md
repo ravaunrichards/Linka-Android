@@ -46,14 +46,16 @@ These are source and automated-test capabilities. Physical radio/audio tests and
 The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
 
 ### Backend and browser companion
-- backend/api contains a Node.js signed-device challenge and ephemeral call-signaling API.
-- The signaling runtime still holds authentication sessions and signaling queues in memory; durable account/device/session linking has not yet been implemented.
-- A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`.
-- `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured. It checks the required schema, creates/reads wallet snapshots and calls the SQL wallet function with parameterized values.
-- The API reports PostgreSQL readiness only when the wallet function and migration `0002_cross_account_integrity` are present. Without `DATABASE_URL`, it retains the existing in-memory signaling mode.
-- Database CI verifies both migrations, cross-account constraints and real Node/PostgreSQL wallet operations. The latest database run passed 58 tests with zero failures.
-- Wallet operations are server-side only. No authenticated account-linking flow or public wallet HTTP endpoint exists yet.
-- The API carries signaling, not voice audio. The browser companion is static; it cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
+- backend/api contains a Node.js P-256 signed-device challenge API and call-signaling routes.
+- `POST /v1/accounts/register` and `POST /v1/accounts/login` require a currently authenticated signed device. They store account credentials and registered device identity in PostgreSQL and return a separate persistent account bearer token.
+- Passwords are stored as versioned salted scrypt hashes; account bearer tokens are stored in PostgreSQL only as SHA-256 hashes. Device public keys are fingerprinted and a signed device can be linked to only one account.
+- Account sessions persist with a 30-day expiry, are bound to a registered account/device pair and are checked for account/device/session revocation. `/v1/me` and logout accept the persistent account token.
+- A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`. `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured.
+- Database CI verifies both migrations, cross-account constraints, account registration/login and multi-device linking over HTTP, durable wallet operations and schema-aware readiness. The latest PostgreSQL run passed 65 tests with zero failures.
+- Email verification and password recovery are not enabled: the API reports `emailVerified: false` and `POST /v1/accounts/recovery` returns `501 account_recovery_unavailable` until an email-delivery provider and secure reset/verification workflow are configured.
+- Wallet operations are server-side only. No public wallet HTTP endpoints, payment processing or customer balance UI exist yet.
+- Authentication sessions and signaling queues are separate; signaling queues and short-lived device challenge sessions remain in memory. The API carries signaling, not voice audio.
+- The browser companion is static; it cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
 - E.164 normalization, free-first route selection and provider-fed rate matching have tested domain foundations; live provider tariff import, number inventory, SIP/PSTN calling, payment webhooks and client billing screens are not integrated.
 
 ## Current repository layout
@@ -71,6 +73,8 @@ Requirements for the current Android build:
 - JDK 17.
 - Android SDK 35.
 - CI currently installs Gradle 8.9 directly. A Gradle wrapper is not yet checked into this repository.
+
+For account registration and login, first complete `/v1/auth/challenge` and `/v1/auth/verify` using the device's P-256 signing key, then use the returned short-lived device token with `/v1/accounts/register` or `/v1/accounts/login`. Store the returned account token in platform-secure storage. See [Account authentication](docs/ACCOUNT_AUTH.md) for request/response and security details.
 
 From the repository root:
 - Build Android debug APK: `gradle :app:assembleDebug`

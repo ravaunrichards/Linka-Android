@@ -6,6 +6,7 @@ This directory is the authoritative documentation hub for the LINKA repository. 
 - [Product requirements](PRODUCT_REQUIREMENTS.md) — Jamaican and international numbers, free and credit services, calling, messaging, connectivity, Android, web, backend, safety and acceptance criteria.
 - [Telephony and billing](TELEPHONY_AND_BILLING.md) — number lifecycle, rate lookup, free-first routing, credit wallet, payment authorization and billing safeguards.
 - [Database schema](DATABASE_SCHEMA.md) — private PostgreSQL schema, idempotent migration, atomic wallet-ledger function and database CI checks.
+- [Account authentication](ACCOUNT_AUTH.md) — signed-device registration/login, scrypt password hashes, persistent account sessions and recovery/verification limitations.
 - [Wallet ledger design](WALLET_LEDGER_DESIGN.md) — current pure credit-ledger domain, test guarantees and production persistence requirements.
 - [Jamaica compatibility](JAMAICA_COMPATIBILITY.md) — Jamaica-first device/carrier validation plus international number scope.
 

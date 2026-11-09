@@ -85,7 +85,7 @@ Verified root governance files now include:
 - `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`.
 - `.github/dependabot.yml`.
 
-A Gradle wrapper is still not checked into the repository. Android CI currently installs Gradle 8.9 directly. Add a wrapper only after generating and verifying the official wrapper scripts and JAR; do not fabricate a wrapper binary.
+A Gradle wrapper is still not checked into the repository. Android CI is configured to install Gradle 8.14.3 directly; the upgrade is awaiting its current Android CI verification. Add a wrapper only after generating and verifying the official wrapper scripts and JAR; do not fabricate a wrapper binary.
 
 ## 7. Rules for structural changes
 

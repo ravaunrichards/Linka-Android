@@ -724,7 +724,7 @@ export function createPostgresStore({
     const conversationId = requireUuid(input.conversationId, "conversationId");
     const result = await pool.query(
       "SELECT d.device_id, d.account_id, a.display_name, k.key_version, " +
-      "encode(k.public_key_der, 'base64') AS public_key_base64, " +
+      "replace(encode(k.public_key_der, 'base64'), E'\\n', '') AS public_key_base64, " +
       "k.public_key_fingerprint " +
       "FROM linka_private.conversation_members mine " +
       "JOIN linka_private.conversation_members member " +
@@ -833,7 +833,7 @@ export function createPostgresStore({
           "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
           "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, $5::text, '[]'::jsonb) " +
           "RETURNING message_id, conversation_id, sender_account_id, " +
-          "encode(ciphertext, 'base64') AS ciphertext, encryption_version, attachment_manifest, sent_at",
+          "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, encryption_version, attachment_manifest, sent_at",
           [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
         );
         for (const envelope of keyEnvelopes) {
@@ -863,7 +863,7 @@ export function createPostgresStore({
       "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
       "WHERE m.conversation_id = c.conversation_id AND m.account_id = $3::uuid AND m.left_at IS NULL) " +
       "RETURNING message_id, conversation_id, sender_account_id, " +
-      "encode(ciphertext, 'base64') AS ciphertext, encryption_version, " +
+      "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, encryption_version, " +
       "attachment_manifest, sent_at",
       [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
     );
@@ -923,13 +923,13 @@ export function createPostgresStore({
 
     const result = await pool.query(
       "SELECT m.message_id, m.conversation_id, m.sender_account_id, " +
-      "encode(m.ciphertext, 'base64') AS ciphertext, m.encryption_version, " +
+      "replace(encode(m.ciphertext, 'base64'), E'\\n', '') AS ciphertext, m.encryption_version, " +
       "m.attachment_manifest, m.sent_at, e.recipient_device_id AS envelope_device_id, " +
       "e.recipient_key_version AS envelope_key_version, " +
-      "encode(e.ephemeral_public_key_der, 'base64') AS envelope_ephemeral_public_key, " +
-      "encode(e.hkdf_salt, 'base64') AS envelope_hkdf_salt, " +
-      "encode(e.wrap_nonce, 'base64') AS envelope_wrap_nonce, " +
-      "encode(e.wrapped_content_key, 'base64') AS envelope_wrapped_content_key " +
+      "replace(encode(e.ephemeral_public_key_der, 'base64'), E'\\n', '') AS envelope_ephemeral_public_key, " +
+      "replace(encode(e.hkdf_salt, 'base64'), E'\\n', '') AS envelope_hkdf_salt, " +
+      "replace(encode(e.wrap_nonce, 'base64'), E'\\n', '') AS envelope_wrap_nonce, " +
+      "replace(encode(e.wrapped_content_key, 'base64'), E'\\n', '') AS envelope_wrapped_content_key " +
       "FROM linka_private.internal_messages m " +
       "LEFT JOIN linka_private.internal_message_key_envelopes e " +
       "ON e.message_id = m.message_id AND e.recipient_device_id = $4::uuid " +

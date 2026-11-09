@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.QrCode2
@@ -103,6 +104,7 @@ private val LinkaColors = lightColorScheme(
 private enum class LinkaDestination(val label: String) {
     HOME("Home"),
     PHONE("Phone"),
+    MESSAGES("Messages"),
     NEARBY("Nearby"),
     IDENTITY("My ID"),
     SETTINGS("Settings")
@@ -356,6 +358,8 @@ private fun LinkaApp(
                                         Icon(Icons.Outlined.Home, contentDescription = null)
                                     LinkaDestination.PHONE ->
                                         Icon(Icons.Outlined.Phone, contentDescription = null)
+                                    LinkaDestination.MESSAGES ->
+                                        Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null)
                                     LinkaDestination.NEARBY ->
                                         Icon(Icons.Outlined.Wifi, contentDescription = null)
                                     LinkaDestination.IDENTITY ->
@@ -394,6 +398,12 @@ private fun LinkaApp(
 
                 LinkaDestination.PHONE -> PhoneHubScreen(
                     modifier = Modifier.padding(contentPadding)
+                )
+
+                LinkaDestination.MESSAGES -> LinkaMessagingScreen(
+                    modifier = Modifier.padding(contentPadding),
+                    accountClient = accountClient,
+                    identity = identity
                 )
 
                 LinkaDestination.NEARBY -> NearbyScreen(

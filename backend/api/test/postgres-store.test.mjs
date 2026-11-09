@@ -18,6 +18,9 @@ function fakePool({ schemaReady = true, crossAccountReady = true } = {}) {
         }]
       };
       if (sql.includes("INSERT INTO linka_private.wallet_accounts")) return { rows: [], rowCount: 1 };
+      if (sql.includes("FROM linka_private.accounts WHERE email_normalized")) {
+        return { rows: [] };
+      }
       if (sql.includes("FROM linka_private.wallet_accounts")) {
         return { rows: [{
           purchased_credit_units: "25",

@@ -6,10 +6,10 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified functional baseline before this continuation: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`; latest implementation commits at checkpoint: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7` (main).
+- Verified main head at checkpoint: `800fa72e422bc8855912fa31d44e65a5623bda40` (main); latest functional implementation commit verified by PostgreSQL/Chromium CI: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`.
 - Repository ID: 1444736198.
 - Repository visibility: public.
-- Last inspected recursive tree: 144 entries, not truncated.
+- Last inspected recursive tree: 145 entries, not truncated.
 - GitHub permission snapshot during recovery: admin, maintain and push were true.
 - Recovery confidence: CONFIRMED for branch, commit ancestry, repository files, commit changes, issue records and Actions results. A local working tree is not exposed by the GitHub read APIs.
 
@@ -129,18 +129,18 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Latest Android-tested main revision: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`.
-- Latest API-tested and PostgreSQL-E2E-tested functional revision: `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`.
-- Full-product progress: **43% complete | 57% remaining**.
+- Latest Android-tested main revision: `800fa72e422bc8855912fa31d44e65a5623bda40`.
+- Latest API-tested revision: `814be0cd77904872e941133a76d9830dc7ba9b97`; latest PostgreSQL + Chromium browser UI E2E-tested functional revision: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`.
+- Full-product progress: **44% complete | 56% remaining**.
 - Latest inspected repository tree: 144 entries, recursive tree not truncated.
 - Render workspace inspection is blocked pending explicit workspace confirmation; no live Render configuration or deployment health is claimed.
 - PostgreSQL Schema CI run 42665527585 passed on `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`: 75 passed, 0 failed, 0 skipped; migrations, schema checks, account HTTP integration, PostgreSQL readiness and browser-WebCrypto account E2E passed.
 - LINKA API CI run 42665527245 passed on the same commit: 75 total, 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL.
 - Android CI run 42665968552 passed on `ebe1490459da2b758cb7f08d9012fea425ecb1aa`: Gradle 8.14.4, debug APK build and `:app:testDebugUnitTest` passed; source metadata and APK artifact were uploaded.
-- Latest debug APK artifact `linka-debug-apk-ebe1490459da2b758cb7f08d9012fea425ecb1aa` (artifact ID `13696198097`, 17,845,189 bytes) expires 2026-12-09. It is a debug APK, not a production-signed release.
-- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout behavior has seven JVM test cases; browser WebCrypto account lifecycle has a PostgreSQL-backed CI E2E.
+- Latest debug APK artifact `linka-debug-apk-800fa72e422bc8855912fa31d44e65a5623bda40` (artifact ID `13701836521`, 17,845,187 bytes, SHA-256 `7eb20593c9f861db534ba7a1233f0b41387d999449714717da6ed201b3262333`) expires 2026-12-09. It is a debug APK, not a production-signed release.
+- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout and API-origin validation behavior has nine JVM test cases; browser account behavior has both a Node WebCrypto/PostgreSQL E2E and a real Chromium DOM/IndexedDB E2E.
 - Password recovery and email verification remain unavailable pending a configured email-delivery provider. Render, carrier, payment, tariff and physical-device status have not been live-verified.
-- Next action: verify Android CI for the two newly added account-client edge cases and PostgreSQL CI for the new Chromium browser UI E2E; fix any failures before awarding progress credit.
+- CI verification: Android run 42670913670 and latest main run 42678530091 passed; API run 42677946243 passed; PostgreSQL/Chromium run 42677952248 passed with 75 tests and both browser E2E confirmation lines.
 
 ## Current CI and failure recovery
 
@@ -183,24 +183,24 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | End-to-end internet audio/video media and clients | 7% | 0% | 7% |
 | Internal chat and external SMS/MMS | 6% | 0% | 6% |
 | Payment processing, refunds and settlement reconciliation | 6% | 0% | 6% |
-| Full account-based website and browser calling | 5% | 3% | 2% |
+| Full account-based website and browser calling | 5% | 4% | 1% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **43%** | **57%** |
+| **TOTAL** | **100%** | **44%** | **56%** |
 
-**Current full-product completion: 43% | Remaining: 57%.**
+**Previous verified completion: 43% | Current verified completion: 44% | Remaining: 56% | Progress since checkpoint: +1 percentage point.**
 
-The previous verified checkpoint was 41%. Two further percentage points are credited only to independently tested portions of the existing account-client milestones: one point in the Android phone milestone for injected-client session restore/logout behavior covered by seven passing JVM tests, and one point in the browser milestone for the browser-WebCrypto account lifecycle against a disposable PostgreSQL service, including second-device login, per-device revocation and CORS allow/deny. The API's no-database workflow passed 73 tests with 2 DB-only tests skipped; the PostgreSQL workflow passed all 75 tests and the E2E script. Android CI passed on the newest source commit. These are not physical-device tests or an actual Chrome/Firefox DOM+IndexedDB run. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
+The previous verified checkpoint was 43%. One additional percentage point is now credited to the browser milestone because PostgreSQL CI run 42677952248 passed the real headless Chromium UI lifecycle test against a disposable PostgreSQL-backed API: account creation, non-exportable IndexedDB P-256 key persistence, tab-session reload restoration, second-context login with a distinct device key/token, independent per-device logout, explicit recovery limitation and zero uncaught page errors. The new Android account edge-case tests also passed in run 42670913670; the Android account-client suite now contains nine test cases. Android CI run 42678530091 passed the debug APK build and unit-test task on the current main documentation checkpoint. These are automated checks, not physical radio/audio tests, hosted-origin deployment proof or Firefox coverage. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
 
 ## Easy, medium and hard work remaining
 
 ### Easy
-- Verify the Android CI run for the no-saved-session logout and HTTPS-only API-origin edge-case tests already committed.
+- Keep Android account-client tests synchronized with account lifecycle behavior and add new cases only when a distinct requirement is still uncovered.
 - Keep current documentation and repository inventories synchronized with the verified branch.
 - Continue focused API negative-path tests where no external provider is required.
 
 ### Medium
-- Verify the first Chromium browser UI E2E run against disposable PostgreSQL, fix any failures, then extend coverage to Firefox where supported.
+- Extend the browser UI E2E to Firefox on CI after confirming Playwright browser availability and platform-specific storage behavior.
 - Run browser registration/login on a separately hosted test origin using the explicit CORS configuration; do not treat the current Node WebCrypto E2E as browser-rendering proof.
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.

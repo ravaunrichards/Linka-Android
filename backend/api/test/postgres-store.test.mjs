@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPostgresStore } from "../src/postgres-store.mjs";
 
-function fakePool({ schemaReady = true } = {}) {
+function fakePool({ schemaReady = true, crossAccountReady = true } = {}) {
   const calls = [];
   const pool = {
     on(event, callback) {
@@ -11,7 +11,12 @@ function fakePool({ schemaReady = true } = {}) {
     },
     async query(sql, values = []) {
       calls.push({ sql, values });
-      if (sql.includes("to_regprocedure")) return { rows: [{ schema_ready: schemaReady }] };
+      if (sql.includes("to_regprocedure")) return {
+        rows: [{
+          wallet_function_ready: schemaReady,
+          cross_account_migration_ready: crossAccountReady
+        }]
+      };
       if (sql.includes("INSERT INTO linka_private.wallet_accounts")) return { rows: [], rowCount: 1 };
       if (sql.includes("FROM linka_private.wallet_accounts")) {
         return { rows: [{
@@ -55,10 +60,18 @@ test("checks for the migrated wallet function before reporting readiness", async
   await store.close();
 });
 
-test("does not report readiness when the required schema is missing", async () => {
+test("does not report readiness when the wallet function is missing", async () => {
   const pool = fakePool({ schemaReady: false });
   const store = createPostgresStore({ pool });
   await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
+  await store.close();
+});
+
+test("does not report version 0002 until the ownership migration is recorded", async () => {
+  const pool = fakePool({ crossAccountReady: false });
+  const store = createPostgresStore({ pool });
+  await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
+  assert.deepEqual(pool.calls[0].values, ["0002_cross_account_integrity"]);
   await store.close();
 });
 

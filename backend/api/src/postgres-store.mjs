@@ -65,7 +65,6 @@ function safePoolError(error) {
 export function createPostgresStore({
   connectionString = process.env.DATABASE_URL,
   pool: injectedPool,
-  PoolClass = Pool,
   onPoolError = safePoolError
 } = {}) {
   const normalizedConnectionString = typeof connectionString === "string"
@@ -107,9 +106,15 @@ export function createPostgresStore({
       const result = await pool.query(
         "SELECT to_regprocedure(" +
         "'linka_private.apply_wallet_event(text,text,uuid,text,text,bigint,text,text)'" +
-        ") IS NOT NULL AS schema_ready"
+        ") IS NOT NULL AS wallet_function_ready, " +
+        "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
+        "WHERE version = $1::text) AS cross_account_migration_ready",
+        ["0002_cross_account_integrity"]
       );
-      if (result.rows[0]?.schema_ready !== true) fail("database_schema_not_ready");
+      if (result.rows[0]?.wallet_function_ready !== true ||
+          result.rows[0]?.cross_account_migration_ready !== true) {
+        fail("database_schema_not_ready");
+      }
       return Object.freeze({
         status: "ready",
         schemaVersion: "0002_cross_account_integrity"

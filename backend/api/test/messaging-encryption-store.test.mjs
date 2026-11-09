@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as signSignature } from "node:crypto";
 import { createPostgresStore } from "../src/postgres-store.mjs";
 
 const ACTOR = "00000000-0000-4000-8000-000000000001";
@@ -11,6 +11,27 @@ const MEMBER_DEVICE = "00000000-0000-4000-8000-000000000013";
 const CONVERSATION = "00000000-0000-4000-8000-000000000021";
 const MESSAGE = "00000000-0000-4000-8000-000000000031";
 const CREATED_AT = new Date("2026-11-09T17:00:00.000Z");
+const DEVICE_SIGNING_PAIR = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+
+function signedRegistrationInput(publicKeyDer = ecdhPublicKey(), {
+  signer = DEVICE_SIGNING_PAIR,
+  algorithm = "ECDH-P256"
+} = {}) {
+  const fingerprint = createHash("sha256").update(publicKeyDer).digest("hex").toUpperCase();
+  const statement = Buffer.from([
+    "LINKA-MESSAGING-KEY-V1",
+    SENDER_DEVICE,
+    algorithm,
+    fingerprint
+  ].join("\\n"), "utf8");
+  return {
+    accountId: ACTOR,
+    deviceId: SENDER_DEVICE,
+    algorithm,
+    publicKeyDer,
+    proofSignature: signSignature("sha256", statement, signer.privateKey)
+  };
+}
 
 function ecdhPublicKey() {
   return generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
@@ -47,7 +68,10 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
           if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [], rowCount: 0 };
           if (sql.includes("FROM linka_private.user_devices") &&
               sql.includes("revoked_at IS NULL") && sql.includes("FOR UPDATE")) {
-            return { rows: deviceExists ? [{ device_id: values[0] }] : [] };
+            return { rows: deviceExists ? [{
+              device_id: values[0],
+              signing_public_key_der: DEVICE_SIGNING_PAIR.publicKey.export({ format: "der", type: "spki" })
+            }] : [] };
           }
           if (sql.includes("FROM linka_private.device_encryption_keys") &&
               sql.includes("retired_at IS NULL FOR UPDATE")) {
@@ -128,12 +152,9 @@ test("registers a valid P-256 encryption key for the authenticated active device
   const pool = fakePool({ latestVersion: 0 });
   const store = createPostgresStore({ pool });
 
-  const result = await store.registerDeviceEncryptionKey({
-    accountId: ACTOR,
-    deviceId: SENDER_DEVICE,
-    algorithm: "ECDH-P256",
-    publicKeyDer
-  });
+  const result = await store.registerDeviceEncryptionKey(
+    signedRegistrationInput(publicKeyDer)
+  );
 
   assert.deepEqual(result, {
     deviceId: SENDER_DEVICE,
@@ -157,12 +178,9 @@ test("reuses the same current encryption key without creating another version", 
   });
   const store = createPostgresStore({ pool });
 
-  const result = await store.registerDeviceEncryptionKey({
-    accountId: ACTOR,
-    deviceId: SENDER_DEVICE,
-    algorithm: "ECDH-P256",
-    publicKeyDer
-  });
+  const result = await store.registerDeviceEncryptionKey(
+    signedRegistrationInput(publicKeyDer)
+  );
 
   assert.equal(result.keyVersion, 3);
   assert.equal(result.reused, true);
@@ -177,12 +195,9 @@ test("rotates a changed P-256 key to a new retained version", async () => {
   });
   const store = createPostgresStore({ pool });
 
-  const result = await store.registerDeviceEncryptionKey({
-    accountId: ACTOR,
-    deviceId: SENDER_DEVICE,
-    algorithm: "ECDH-P256",
-    publicKeyDer
-  });
+  const result = await store.registerDeviceEncryptionKey(
+    signedRegistrationInput(publicKeyDer)
+  );
 
   assert.equal(result.keyVersion, 4);
   assert.equal(result.reused, false);
@@ -212,13 +227,27 @@ test("rejects non-P256 keys, malformed DER and inactive devices", async () => {
   );
   const inactive = createPostgresStore({ pool: fakePool({ deviceExists: false }) });
   await assert.rejects(
-    inactive.registerDeviceEncryptionKey({
-      accountId: ACTOR,
-      deviceId: SENDER_DEVICE,
-      algorithm: "ECDH-P256",
-      publicKeyDer: ecdhPublicKey()
-    }),
+    inactive.registerDeviceEncryptionKey(
+      signedRegistrationInput(ecdhPublicKey())
+    ),
     { code: "encryption_key_not_found", statusCode: 404 }
+  );
+});
+
+test("rejects an ECDH key proof signed by a different device identity", async () => {
+  const publicKeyDer = ecdhPublicKey();
+  const fingerprint = createHash("sha256").update(publicKeyDer).digest("hex").toUpperCase();
+  const otherSigner = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const statement = Buffer.from([
+    "LINKA-MESSAGING-KEY-V1", SENDER_DEVICE, "ECDH-P256", fingerprint
+  ].join("\\n"), "utf8");
+  const store = createPostgresStore({ pool: fakePool() });
+  await assert.rejects(
+    store.registerDeviceEncryptionKey({
+      ...signedRegistrationInput(publicKeyDer),
+      proofSignature: signSignature("sha256", statement, otherSigner.privateKey)
+    }),
+    { code: "invalid_encryption_key_proof" }
   );
 });
 

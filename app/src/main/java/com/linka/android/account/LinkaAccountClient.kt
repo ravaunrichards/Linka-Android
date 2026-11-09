@@ -8,7 +8,9 @@ import android.util.Base64
 import com.linka.android.core.identity.LocalDeviceIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import com.linka.android.messaging.MessagingDevicePublicKey
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -294,6 +296,95 @@ class LinkaAccountClient internal constructor(
         request(store.getServerUrl(), "POST", "/v1/auth/logout", JSONObject(), token)
         store.clearToken()
     }
+
+    suspend fun registerMessagingEncryptionKey(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "PUT",
+            "/v1/me/encryption-key",
+            body,
+            requireMessagingToken()
+        )
+    }
+
+    suspend fun listConversations(): JSONArray = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations?limit=50",
+            null,
+            requireMessagingToken()
+        ).optJSONArray("conversations") ?: JSONArray()
+    }
+
+    suspend fun createConversation(participantAccountIds: List<String>): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("kind", if (participantAccountIds.size == 1) "direct" else "group")
+            .put("participantAccountIds", JSONArray(participantAccountIds))
+        request(
+            store.getServerUrl(),
+            "POST",
+            "/v1/conversations",
+            body,
+            requireMessagingToken()
+        )
+    }
+
+    suspend fun listConversationEncryptionDevices(conversationId: String): List<MessagingDevicePublicKey> =
+        withContext(Dispatchers.IO) {
+            val body = request(
+                store.getServerUrl(),
+                "GET",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/encryption-devices",
+                null,
+                requireMessagingToken()
+            )
+            val devices = body.optJSONArray("devices") ?: JSONArray()
+            (0 until devices.length()).mapNotNull { index ->
+                val item = devices.optJSONObject(index) ?: return@mapNotNull null
+                val version = item.optInt("keyVersion", 0).takeIf { it > 0 }
+                val algorithm = item.optString("algorithm").takeIf { it.isNotBlank() && it != "null" }
+                val publicKey = item.optString("publicKeyBase64").takeIf { it.isNotBlank() && it != "null" }
+                MessagingDevicePublicKey(
+                    deviceId = item.optString("deviceId"),
+                    accountId = item.optString("accountId"),
+                    keyVersion = version,
+                    algorithm = algorithm,
+                    publicKeyBase64 = publicKey
+                )
+            }
+        }
+
+    suspend fun sendEncryptedMessage(conversationId: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            request(
+                store.getServerUrl(),
+                "POST",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/messages",
+                body,
+                requireMessagingToken()
+            )
+        }
+
+    suspend fun listInternalMessages(conversationId: String): JSONArray = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations/" + encodePathSegment(conversationId) + "/messages?limit=100",
+            null,
+            requireMessagingToken()
+        ).optJSONArray("messages") ?: JSONArray()
+    }
+
+    private fun requireMessagingToken(): String =
+        store.readToken() ?: throw LinkaAccountException(
+            "unauthorized",
+            "Sign in to your LINKA account before opening encrypted messages.",
+            401
+        )
+
+    private fun encodePathSegment(value: String): String =
+        java.net.URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
 
     private fun saveAccountToken(result: JSONObject) {
         val token = result.optString("accessToken")

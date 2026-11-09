@@ -6,7 +6,7 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified main head immediately before this checkpoint documentation refresh: ae2e1110311673b6493c04e9a8de8e86ab3bebd9.
+- Verified main head immediately before this checkpoint documentation refresh: 68813c280a5ff8679aa5f4508f92d75a91edcc20.
 - Repository ID: 1444736198.
 - Repository visibility: public.
 - Last inspected recursive tree: 139 entries, not truncated.
@@ -49,6 +49,12 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 - 316db4bc4363526827c22553730988b0016e557d — added Android account registration/login UI and the Keystore-backed account client.
 - 9f291b73f2f97e9cd2ae6a6965337f1bf3333e3c — added browser account registration/login, non-exportable WebCrypto device identity and ECDSA signature conversion.
 - 124cfdb60b5d24ad77576bc72bb331fb48e5f316 — expanded API CI to syntax-check browser modules and verify both browser authentication assets are served.
+- 4a901337d42f51d45747f65e1c23ee911026d73b — upgraded Android workflow actions to checkout v7, setup-java v6, setup-gradle v6 and upload-artifact v7.
+- 31500317daa2e408419b27dd203e31d10e2ef9d4 — upgraded API workflow actions to checkout v7 and setup-node v7.
+- 3ddd892181f13de5fa5edb13d6df6b9c9af36572 — upgraded PostgreSQL workflow checkout to v7.
+- 76401c9311a25a64beec974a10794df3edaf5f49 — added API CI checks for browser account form controls and module entry point.
+- 94b69d192ba720f805657f8b83b3120f960899f4 — replaced deprecated Backspace and Message icons with AutoMirrored variants; Android CI passed.
+- 68813c280a5ff8679aa5f4508f92d75a91edcc20 — upgraded the Android CI Gradle distribution to 8.14.3; current Android CI is still verifying this change.
 
 Documentation recovery commits after that tested source revision:
 - 935080fe199b64bb1896ee125880ab451cdd5460 — corrected README account-client implementation status.
@@ -98,12 +104,13 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Latest functional source revision with green API/Android CI: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`. Documentation-only checkpoint commits follow through `ae2e1110311673b6493c04e9a8de8e86ab3bebd9`.
+- Latest tested Android source revision: `94b69d192ba720f805657f8b83b3120f960899f4` (Android CI passed). Latest API-tested revision: `76401c9311a25a64beec974a10794df3edaf5f49` (API CI passed). Current main: `68813c280a5ff8679aa5f4508f92d75a91edcc20`; the only later change is the Gradle 8.14.3 CI version update, awaiting Android CI.
 - Full-product progress: **41% complete | 59% remaining**.
 - PostgreSQL Schema CI run 42617603718 passed with 65/65 tests; migrations 0001/0002 were applied twice, schema/wallet/cross-account checks passed, account HTTP integration passed and PostgreSQL readiness passed.
 - LINKA API CI run 42619263365 passed: browser module syntax checks, 67 passed, 0 failed, 2 database-only skips; API startup and both browser-module asset routes passed.
-- Android CI run 42619263339 passed: debug APK build, Android unit tests, source revision metadata and APK artifact upload all succeeded.
-- Debug APK artifact `linka-debug-apk-124cfdb60b5d24ad77576bc72bb331fb48e5f316` (artifact ID `13675156323`, 17,842,998 bytes) is available until 2026-12-09; it is not a production-signed APK.
+- Android CI run 42660779368 passed on commit `94b69d192ba720f805657f8b83b3120f960899f4`: debug APK build, unit tests, source revision metadata and artifact upload all succeeded. The deprecated icon warnings were removed; Gradle 8.9 still emitted its deprecation warning.
+- Debug APK artifact `linka-debug-apk-94b69d192ba720f805657f8b83b3120f960899f4` (artifact ID `13694630902`, 17,843,072 bytes) is available until 2026-12-09; it is not a production-signed APK.
+- Android CI run 42661065189 is still running on current main `68813c280a5ff8679aa5f4508f92d75a91edcc20`; the Gradle 8.14.3 setup succeeded, but the `Build debug APK` step has not yet reported a result. Do not count this upgrade as verified until the run completes.
 - Android and browser registration/login/profile/sign-out source is now present. Browser account tokens are tab-scoped; Android account tokens are AES-GCM encrypted using an Android Keystore key.
 - Password recovery and email verification remain unavailable pending a configured email-delivery provider. No provider, deployment or physical-device status was live-verified.
 - Next action: add focused client session restore/logout tests and a browser account/API end-to-end test using a disposable PostgreSQL CI service.
@@ -111,8 +118,9 @@ These are provider-independent, tested foundations. They do not provide a live p
 ## Current CI and failure recovery
 
 - PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, 65/65 tests passed, account HTTP integration and PostgreSQL readiness passed.
-- LINKA API CI run 42619263365 passed at 2026-11-09T12:42:51Z: browser module syntax checks passed; 69 tests total, 67 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and both browser module asset routes passed.
-- Android CI run 42619263339 passed at 2026-11-09T12:44:40Z: `:app:assembleDebug` and `:app:testDebugUnitTest` succeeded, source revision metadata was recorded and the debug APK artifact uploaded.
+- LINKA API CI run 42660318140 passed on `76401c9311a25a64beec974a10794df3edaf5f49`: 69 tests total, 67 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; browser account form controls, browser module syntax, API startup and asset routes passed.
+- PostgreSQL Schema CI run 42659791482 passed on `3ddd892181f13de5fa5edb13d6df6b9c9af36572`: 69 passed, 0 failed, 0 skipped; migrations, constraints, account integration and readiness all passed.
+- Android CI run 42660779368 passed on `94b69d192ba720f805657f8b83b3120f960899f4`: build, unit tests, revision metadata and artifact upload succeeded. Current Android CI for Gradle 8.14.3 is still pending.
 - The API no-database job reports PostgreSQL `not_configured`; this is expected in that CI job and does not prove a hosted production database is running.
 - Historical API CI 42617260190 and PostgreSQL CI 42617260157 failed because the fake-pool test did not handle account lookup; PostgreSQL's real account HTTP integration already passed. Commit 9d870b1 added the fake query stub and the latest workflows passed.
 - Historical PostgreSQL run 42617062392 failed because a device-reuse HTTP conflict returned 400 rather than 409; commit 27b5989 fixed the store error helper to preserve status codes. The account HTTP test then passed.
@@ -123,7 +131,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 - Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; upload/deploy were skipped. The workflow was later removed in favor of the documented Render origin.
 - No external Render, email, carrier, payment, tariff or device-lab service was live-verified. Password reset and email verification are therefore not enabled.
 - A GitHub-only Markdown relative-link check passed for README.md and the four updated account, integration, repository-structure and project-status documents: 5 files checked, 0 broken relative links.
-- GitHub Actions logs contain maintenance warnings: setup-java@v4 is deprecated, and several actions still report Node.js 20 runtime deprecation. These are not failed checks; review and update action majors after checking their official compatibility notes.
+- GitHub Actions action-major maintenance is complete and verified by API CI, PostgreSQL CI and the Android CI run on commit `94b69d1`. The Gradle 8.14.3 upgrade is still pending Android CI; do not claim the Gradle 8.9 deprecation warning is resolved until that run passes.
 
 ## Full LINKA product progress tracker
 
@@ -157,6 +165,7 @@ The previous verified checkpoint was 39%. Two additional points are credited for
 - Keep documentation and integration status synchronized with source.
 - Maintain focused API unit tests and verify all local Markdown links.
 - Keep repository documentation and integration status synchronized with source and CI evidence.
+- Verify the Gradle 8.14.3 Android CI run; revert to the last tested Gradle version if it fails.
 - Add focused browser account lifecycle tests and Android account-session restore/logout tests.
 - Add API contract and negative-path validation where no external provider is required.
 
@@ -176,7 +185,7 @@ The previous verified checkpoint was 39%. Two additional points are credited for
 
 ## Exact next action
 
-Continue with focused client session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
+First finish the in-progress Gradle 8.14.3 Android CI verification on main. If it passes, update the README and checkpoint with the successful version; if it fails, inspect the build log and restore the last verified Gradle configuration. Then continue with focused client session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service.
 
 ## Execution boundaries
 

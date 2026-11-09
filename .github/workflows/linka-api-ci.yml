@@ -45,6 +45,10 @@ jobs:
           curl --fail --silent http://127.0.0.1:8080/readyz
           curl --fail --silent http://127.0.0.1:8080/v1/info
           curl --fail --silent http://127.0.0.1:8080/ | grep -q "LINKA"
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'id="accountEmail"'
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'id="accountRegister"'
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'id="accountLogin"'
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'type="module" src="./account.mjs"'
           curl --fail --silent http://127.0.0.1:8080/styles.css | grep -q ":root"
           curl --fail --silent http://127.0.0.1:8080/app.js | grep -q "showView"
           curl --fail --silent http://127.0.0.1:8080/account.mjs | grep -q "createDeviceSession"

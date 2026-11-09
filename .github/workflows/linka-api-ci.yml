@@ -29,6 +29,7 @@ jobs:
         run: |
           node --check web/account.mjs
           node --check web/auth-crypto.mjs
+          node --check backend/api/verify-browser-ui.e2e.mjs
       - name: Run API tests
         run: npm --prefix backend/api test
       - name: Verify API starts

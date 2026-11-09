@@ -162,7 +162,7 @@ test("stores opaque encrypted message bytes and returns the sender from authenti
   assert.equal(result.ciphertext, ciphertext);
   assert.equal(result.encryptionVersion, "LINKA-E2EE-1");
   const insert = pool.calls.find(call => call.sql.includes("INSERT INTO linka_private.internal_messages"));
-  assert.match(insert.sql, /EXISTS (SELECT 1 FROM linka_private.conversation_members/);
+  assert.ok(insert.sql.includes("EXISTS (SELECT 1 FROM linka_private.conversation_members"));
   assert.equal(insert.values[2], ACTOR);
   assert.equal(insert.values[4], "LINKA-E2EE-1");
 });

@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPublicKey, verify } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import {
   bytesToBase64,
   generateBrowserSigningIdentity,
   p1363ToDer,
   shouldClearAccountSession,
+  signBrowserMessagingKey,
   signLinkaDeviceChallenge
 } from "../../../web/auth-crypto.mjs";
 
@@ -39,6 +40,37 @@ test("converts WebCrypto P1363 signatures to Node-compatible ECDSA DER signature
     String(proof.issuedAt)
   ].join("\n");
   assert.equal(verify("sha256", Buffer.from(statement), publicKey, Buffer.from(signatureBase64, "base64")), true);
+});
+
+test("signs ECDH key registration with the linked non-exportable device identity", async () => {
+  const device = await generateBrowserSigningIdentity();
+  const messageKey = await (await import("../../../web/messaging-crypto.mjs"))
+    .generateBrowserEncryptionIdentity();
+  const signatureBase64 = await signBrowserMessagingKey(
+    device.privateKey,
+    device.deviceId,
+    "ECDH-P256",
+    messageKey.publicKeyBase64
+  );
+  const publicKey = createPublicKey({
+    key: Buffer.from(device.publicKeyDer),
+    format: "der",
+    type: "spki"
+  });
+  const publicDer = Buffer.from(messageKey.publicKeyBase64, "base64");
+  const fingerprint = createHash("sha256").update(publicDer).digest("hex").toUpperCase();
+  const statement = [
+    "LINKA-MESSAGING-KEY-V1",
+    device.deviceId,
+    "ECDH-P256",
+    fingerprint
+  ].join("\\n");
+  assert.equal(
+    verify("sha256", Buffer.from(statement), publicKey, Buffer.from(signatureBase64, "base64")),
+    true
+  );
+  assert.equal(device.privateKey.extractable, false);
+  assert.equal(messageKey.privateKey.extractable, false);
 });
 
 test("rejects malformed P1363 signature sizes", () => {

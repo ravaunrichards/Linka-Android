@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "backend/api/**"
+      - "web/**"
       - ".github/workflows/linka-api-ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/api/**"
+      - "web/**"
       - ".github/workflows/linka-api-ci.yml"
   workflow_dispatch:
 
@@ -23,6 +25,10 @@ jobs:
           node-version: "22"
       - name: Install API dependencies
         run: npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund
+      - name: Check browser module syntax
+        run: |
+          node --check web/account.mjs
+          node --check web/auth-crypto.mjs
       - name: Run API tests
         run: npm --prefix backend/api test
       - name: Verify API starts

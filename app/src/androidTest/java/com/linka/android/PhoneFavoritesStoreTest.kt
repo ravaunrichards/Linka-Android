@@ -1,6 +1,7 @@
 package com.linka.android
 
 import android.content.Context
+import android.content.Intent
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -114,6 +115,31 @@ class PhoneFavoritesStoreTest {
         store.save(listOf(family))
 
         assertEquals(listOf(family), PhoneFavoritesStore(context).load())
+    }
+
+    @Test
+    fun favouriteDialHandoffUsesSystemDiallerInsteadOfPlacingCarrierCall() {
+        val intent = PhoneFavoriteIntents.dial("+1 (876) 555-0100")!!
+
+        assertEquals(Intent.ACTION_DIAL, intent.action)
+        assertEquals("tel", intent.data?.scheme)
+        assertEquals("+18765550100", intent.data?.schemeSpecificPart)
+        assertFalse(intent.action == Intent.ACTION_CALL)
+    }
+
+    @Test
+    fun favouriteMessageHandoffUsesSystemSmsComposer() {
+        val intent = PhoneFavoriteIntents.message("+1 (876) 555-0100")!!
+
+        assertEquals(Intent.ACTION_SENDTO, intent.action)
+        assertEquals("smsto", intent.data?.scheme)
+        assertEquals("+18765550100", intent.data?.schemeSpecificPart)
+    }
+
+    @Test
+    fun invalidFavouriteNumbersCannotProduceCarrierHandoffIntents() {
+        assertNull(PhoneFavoriteIntents.dial("not a phone number"))
+        assertNull(PhoneFavoriteIntents.message("not a phone number"))
     }
 
     private fun deleteEncryptionKey() {

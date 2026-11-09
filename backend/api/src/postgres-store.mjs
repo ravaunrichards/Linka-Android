@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, randomUUID } from "node:crypto";
+import { createHash, createPublicKey, randomUUID, verify as verifySignature } from "node:crypto";
 import { Pool } from "pg";
 import {
   createAccessToken,
@@ -96,6 +96,15 @@ function requiredDevice(input) {
     platform: input.platform,
     deviceName
   };
+}
+
+function messageEncryptionKeyStatement(deviceId, algorithm, fingerprint) {
+  return Buffer.from([
+    "LINKA-MESSAGING-KEY-V1",
+    deviceId,
+    algorithm,
+    fingerprint
+  ].join("\n"), "utf8");
 }
 
 function encryptionPublicKeyDer(value, field = "publicKeyDer") {
@@ -626,10 +635,14 @@ export function createPostgresStore({
     if (input.algorithm !== "ECDH-P256") fail("invalid_encryption_key");
     const publicKeyDer = encryptionPublicKeyDer(input.publicKeyDer);
     const fingerprint = createHash("sha256").update(publicKeyDer).digest("hex").toUpperCase();
+    if (!Buffer.isBuffer(input.proofSignature) ||
+        input.proofSignature.length < 64 || input.proofSignature.length > 80) {
+      fail("invalid_encryption_key_proof");
+    }
 
     return transaction(async client => {
       const device = await client.query(
-        "SELECT device_id FROM linka_private.user_devices " +
+        "SELECT device_id, signing_public_key_der FROM linka_private.user_devices " +
         "WHERE device_id = $1::uuid AND account_id = $2::uuid AND revoked_at IS NULL " +
         "FOR UPDATE",
         [deviceId, accountId]
@@ -637,6 +650,25 @@ export function createPostgresStore({
       if (device.rows.length === 0) {
         fail("encryption_key_not_found", "The active signed-in device was not found.", 404);
       }
+      let proofValid = false;
+      try {
+        const signingPublicKey = createPublicKey({
+          key: device.rows[0].signing_public_key_der,
+          format: "der",
+          type: "spki"
+        });
+        proofValid = signingPublicKey.asymmetricKeyType === "ec" &&
+          signingPublicKey.asymmetricKeyDetails?.namedCurve === "prime256v1" &&
+          verifySignature(
+            "sha256",
+            messageEncryptionKeyStatement(deviceId, "ECDH-P256", fingerprint),
+            signingPublicKey,
+            input.proofSignature
+          );
+      } catch {
+        proofValid = false;
+      }
+      if (!proofValid) fail("invalid_encryption_key_proof");
 
       const current = await client.query(
         "SELECT key_version, public_key_fingerprint FROM linka_private.device_encryption_keys " +

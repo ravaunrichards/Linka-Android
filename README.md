@@ -1,86 +1,86 @@
-# LINKA — Offline Android Voice Calling
+# LINKA — International Calling and Communication Platform
 
-LINKA is an Android-first communication app for direct and multi-hop offline voice calling. Its primary mode is SIM-free communication over nearby radios. Internet and carrier calling are separate future integrations, not silent fallbacks.
+LINKA is an independent Android and web communication product planned for Jamaican and international telephone numbers, free and credit-based services, internet calling, supported cellular/SIM/eSIM integration, messaging and nearby offline voice.
 
-## Implemented in the Android source
+**Important implementation status:** The current repository already contains a substantial Android nearby/offline voice and multi-hop mesh source foundation, automated protocol tests, a small Node.js signaling API and a static browser companion. It is **not yet** a complete TextNow/2ndLine-style cloud telephone service. Provider-backed numbers, SIP/PSTN calls, integrated SMS/MMS, complete internet media calling, a durable account system, credit wallet, payment processing, destination rate catalog and SIM/eSIM provisioning are not verified as implemented.
 
-### Direct nearby voice
-- Nearby Connections advertising, discovery, explicit connection requests and two-sided platform authentication-code confirmation.
-- Persistent device identity using a P-256 signing key retained in Android Keystore.
-- Short-lived signed identity QR codes, explicit in-person trust and revocation.
-- A second peer-authentication handshake that binds a radio endpoint to the exact QR-trusted public key and fingerprint.
-- Fresh P-256 ECDH, transcript-bound HMAC confirmation and HKDF-SHA-256 session key derivation.
-- Direction-separated AES-GCM call-control keys and unique per-call media keys.
-- 8 kHz mono PCM audio, G.711 mu-law 20 ms frames, encrypted before transmission, using Android AudioRecord/AudioTrack and a microphone foreground service.
-- Replay/tamper checks, bounded framing, call-ID uniqueness and key destruction on call/session shutdown.
+## Start here
+- [Documentation index](docs/INDEX.md)
+- [Complete product requirements](docs/PRODUCT_REQUIREMENTS.md)
+- [Repository structure and organization](docs/REPOSITORY_STRUCTURE.md)
+- [Architecture decisions](docs/ARCHITECTURE_DECISIONS.md)
+- [Implementation roadmap](docs/ROADMAP.md)
+- [Integration status](docs/INTEGRATION_MATRIX.md)
+- [Telephony, free service and credits](docs/TELEPHONY_AND_BILLING.md)
+- [Project status and recovery checkpoint](docs/PROJECT_STATUS.md)
+- [Testing strategy](docs/TESTING.md)
+- [Security policy](SECURITY.md)
+- [Open physical-device and release gates](https://github.com/ravaunrichards/Linka-Android/issues/2)
 
-### Opt-in offline routing and routed voice
-- Multiple connected-neighbour links using Nearby Connections cluster topology.
-- Persistent relay consent, off by default. The peer's relay capability is included in its signed identity handshake.
-- Signed, bounded route requests and replies, reverse-route tracking, hop budgets, route expiry, duplicate suppression and loop checks.
-- Each adjacent radio hop is authenticated and encrypted. Routed payloads remain opaque to relays.
-- The final caller and recipient establish a separate end-to-end authenticated session through the route. Relays do not receive the caller-to-recipient media keys.
-- Routed call-control and 20 ms AES-GCM voice-frame transport with bounded queues and route-loss handling.
-- The app offers a routed Call action only when a route is live and the destination's end-to-end identity handshake is complete.
+## Product principles
+- Support Jamaican numbers (+1 876 and +1 658) and international destinations as real providers permit.
+- Offer both free and credit choices wherever a genuine route or allowance is available.
+- Keep eligible LINKA-to-LINKA calls and messages free; do not deduct wallet credits for internal traffic.
+- Fund any free call to an ordinary telephone number through a carrier agreement, sponsor, funded allowance or other disclosed business model.
+- Show number rental, calling and messaging prices separately.
+- Show destination-specific rates before paid calls or messages and obtain explicit consent.
+- Never silently switch a failed free route to a billable route.
+- Keep nearby offline voice separate from internet calling and carrier/PSTN calling.
+- Do not describe an unimplemented provider integration as operational.
 
-### Network activation and route status
-- Activating the LINKA network starts both Nearby Connections advertising and discovery in cluster mode, so a phone can be discovered while also finding neighbours.
-- When nearby permissions have already been granted, the app restarts both radio operations when it returns to the foreground.
-- After a neighbour passes the trusted-device handshake, LINKA automatically tries route discovery for saved QR-trusted destinations and shows whether the route is discovered and end-to-end verified.
-- Relay consent remains off by default and must be enabled by the owner on each relay phone. LINKA does not enable another person's relay participation remotely.
+## What is present in the repository today
 
-### Automated tests
-The unit suite covers peer identity handshakes, trusted-key rejection, signature tampering, bidirectional encrypted payloads, replay/tamper handling, route discovery, reverse paths, three-/four-device relay chains, both traffic directions, relay consent, packet bounds/expiry and routed-payload framing.
+### Android source foundation
+- Kotlin and Jetpack Compose Android application.
+- Nearby Connections advertising, discovery and device pairing.
+- Android Keystore-based P-256 device signing identity and signed QR identity.
+- Trusted-device handshake, ECDH/HKDF session key derivation and authenticated encryption.
+- Direct nearby voice capture/playback using 8 kHz mono audio and G.711 mu-law frames.
+- Multi-peer nearby links, explicit relay consent and multi-hop route discovery/forwarding.
+- End-to-end encrypted routed call-control and voice payloads.
+- Automated unit tests for call control/state, audio framing, peer security and routing.
 
-A successful build and unit suite validate the source and protocol components. They do **not** prove radio range or intelligible two-way calls between physical phones.
+These are source and automated-test capabilities. Physical radio/audio tests and independent security review remain release gates.
 
-## What still needs real-world validation or release work
-- Two physical phones must prove discovery, pairing and two-way voice with SIM removed/disabled, mobile data off and no Wi-Fi internet.
-- Three or more physical phones must prove end-to-end voice over a relay chain, in both directions, with all trust and opt-in conditions satisfied.
-- Measure call setup time, one-way latency, jitter, packet loss, intelligibility, echo, clipping, range, reconnect, battery and thermal behavior on multiple handset models.
-- Test screen-off/background operation, Android microphone foreground-service restrictions, battery saver, permission loss, audio-route changes and Bluetooth headsets.
-- Complete independent cryptographic/security review before making a production security certification claim.
-- Validate the Google Play Services requirement and build a separately tested transport adapter if non-GMS phones are in scope.
-- Complete Android system/Telecom integration, production signing, release artifact verification and distribution.
-- Verify the hosted browser companion and API routes on the LINKA Render service; physical Android radio tests remain separate.
+### Android system-app handoffs
+The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
 
-## Important operating constraints
-- LINKA's offline radio path does not require a SIM, airtime, mobile data, Wi-Fi internet, Render or a cloud relay.
-- Nearby Connections requires compatible Google Play services. Device support must be tested; a non-GMS fallback transport is not implemented.
-- Long-distance offline calling requires a continuous chain of powered, reachable and consenting relays. The app cannot bridge an empty radio gap, and no fixed range or Jamaica-wide coverage is promised.
-- Relays must never receive end-to-end media keys. Relays can still drop, delay or deny packets; no radio mesh can guarantee delivery.
-- LINKA must never silently fall back to a chargeable carrier call.
-- LINKA is not an emergency-calling service.
+### Backend and browser companion
+- backend/api contains a Node.js signed-device challenge and ephemeral call-signaling API.
+- The signaling runtime holds sessions and queues in memory; it is not a durable account, number, message or billing database.
+- The API carries signaling, not voice audio.
+- web contains a static responsive browser companion. It cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
 
-## Android phone tools
+## Current repository layout
+- app/ — Android application and native functionality.
+- backend/api/ — signaling API and tests.
+- web/ — static browser companion.
+- docs/ — product, architecture, security, compatibility, integration and testing records.
+- .github/ — GitHub Actions and repository collaboration configuration.
+- README.md, CONTRIBUTING.md and SECURITY.md — repository entry and governance guidance.
 
-The Android navigation now includes a Phone hub with an on-screen keypad and shortcuts to the device's recent-call history and contacts. The hub hands carrier dialing to Android with `ACTION_DIAL`, so the user reviews and confirms the number in the system dialer. SMS composition is handed to the installed Android messaging app with `ACTION_SENDTO`.
-
-These are system-app integrations, not an in-app carrier stack: call charges and SMS availability depend on the user's SIM, mobile operator and installed apps. LINKA does not request permission to place carrier calls automatically. In-app SMS, video calling and internet-based calling are not implemented in this build. SIM-free LINKA voice remains the separate nearby/mesh feature described above.
-
-## Browser companion
-The static responsive browser companion is under `web/` and is served by the same live Render service as the LINKA API at https://linka-api-vq2h.onrender.com/. Its `/healthz`, `/readyz`, and `/v1/info` API routes remain available on that origin. A normal webpage cannot access Android Nearby Connections or Android Keystore and is not an offline calling client.
-
-## Repository layout
-- `app/`: Android app, UI, identity, nearby radio links, direct/routed call control and audio.
-- `app/src/test/`: protocol and application unit tests.
-- `backend/api/`: optional internet signaling API; not used by the SIM-free nearby or mesh path.
-- `web/`: static browser companion.
-- `docs/`: architecture, security, Jamaica compatibility, API and test plans.
-- `.github/workflows/`: Android CI and API/web-route CI.
+See [Repository structure](docs/REPOSITORY_STRUCTURE.md) before adding modules. Do not create empty placeholder folders.
 
 ## Build and test
-Requirements: JDK 17 and Android SDK 35. Run from the repository root:
+Requirements for the current Android build:
+- JDK 17.
+- Android SDK 35.
+- CI currently installs Gradle 8.9 directly. A Gradle wrapper is not yet checked into this repository.
 
-```bash
-gradle :app:assembleDebug
-gradle :app:testDebugUnitTest
-```
+From the repository root:
+- Build Android debug APK: `gradle :app:assembleDebug`
+- Run Android unit tests: `gradle :app:testDebugUnitTest`
+- Run backend tests: `npm --prefix backend/api test`
+- Start local backend API: `npm --prefix backend/api start`
 
-GitHub Actions runs both Android tasks for pushes to `main`, pull requests targeting `main`, and manual dispatch. After both pass, it uploads the debug APK and build metadata containing the exact source commit and workflow run. The CI artifact is a **debug build**, not a production-signed Play Store release. Release signing keys must remain outside the repository and CI logs.
+The Android CI workflow builds the debug APK and runs unit tests. The API CI workflow runs backend tests and checks API/browser routes. A debug APK is not a production-signed release. Keep release signing keys outside the repository and CI logs.
 
-## Jamaica scope
-Digicel Jamaica and FLOW Jamaica are relevant only to separately labelled optional carrier integration and device compatibility. SIM-free offline calling is independent of both operators. Urban, town and rural field tests are required before making any coverage statement.
+## Market and platform limits
+Jamaica is the initial device/carrier validation market. Digicel Jamaica and FLOW Jamaica are compatibility test references, not evidence of a commercial LINKA carrier agreement. Number provisioning and international calling depend on real provider inventory, contracts, rates and country-specific rules.
+
+SIM/eSIM features require compatible devices, operator provisioning and applicable approval. Automatic route switching must respect user settings and must never create an unapproved paid call.
+
+LINKA is not an emergency-calling service. No offline range, island-wide coverage, international number availability, carrier integration or production security certification may be claimed without the corresponding evidence.
 
 ## License
 See [LICENSE](LICENSE).

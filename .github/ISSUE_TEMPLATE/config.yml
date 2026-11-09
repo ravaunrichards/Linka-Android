@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: LINKA documentation
+    url: https://github.com/ravaunrichards/Linka-Android/blob/main/docs/INDEX.md
+    about: Review requirements, architecture, integration status and testing guidance before opening an issue.

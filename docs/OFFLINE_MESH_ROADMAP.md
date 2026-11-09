@@ -1,61 +1,74 @@
-# LINKA Offline Network Delivery Roadmap
+# LINKA offline nearby and mesh voice status
 
 ## Product goal
-LINKA targets two SIM-free experiences:
-1. Nearby calling directly between two reachable Android phones.
-2. Long-distance offline calling across a continuous chain of consenting, powered relay phones or dedicated relay devices.
 
-The offline path must not depend on cellular service, airtime, mobile data, Wi-Fi internet or a cloud relay. It cannot cross a gap where no radio link or relay exists.
+LINKA has two SIM-free voice targets:
+1. Direct voice between two reachable Android phones using supported nearby radios.
+2. Routed voice over a continuous chain of powered and consenting relay phones or relay devices.
 
-## Implemented in Android source
+This offline path is separate from internet calling and ordinary carrier/PSTN calls. It must not depend on a SIM, airtime, mobile data, Wi-Fi internet, Render or a cloud relay. It cannot cross a radio gap without a relay.
 
-### Direct calling foundation
-- Nearby Connections discovery, advertising, multi-peer neighbour tracking and two-sided platform authentication-code confirmation.
-- P-256 Android Keystore signing identity, signed/expiring QR identities, explicit trust and revocation.
-- Fresh QR-trusted peer ECDH handshake, transcript-bound HMAC confirmation and HKDF-SHA-256.
-- Direction-separated AES-GCM call-control keys and unique per-call voice keys.
-- 8 kHz mono G.711 mu-law audio frames, encrypted before Nearby Connections stream transmission.
-- Android microphone foreground service and audio resource cleanup.
+## Source implementation recorded on main
 
-### Routed calling foundation
-- Persistent local relay consent, disabled by default, plus remote relay consent authenticated in the signed peer handshake.
-- Signed route discovery and replies, reverse routes at each relay, bounded packet lifetime and hop budget, duplicate/loop suppression and stale route cleanup.
-- Direct neighbour links are authenticated and encrypted hop by hop.
-- An independent end-to-end peer handshake runs between caller and destination through the route; routed call-control and voice payloads are encrypted end to end.
-- Relays forward opaque packets only and never receive caller-to-recipient media keys.
-- Routed voice frames use bounded payload framing and queues. Route expiry or link failure terminates the call rather than switching to cellular.
+The current Android source contains:
+- Nearby Connections advertising, discovery and multi-peer cluster connectivity.
+- Explicit connection requests and two-sided platform authentication-code confirmation.
+- Persistent P-256 signing identity stored in Android Keystore.
+- Signed and expiring public QR identity, explicit trust and revocation.
+- A second signed peer handshake binding a radio endpoint to its QR-trusted identity.
+- Fresh P-256 ECDH, transcript-bound HMAC confirmation and HKDF-SHA-256 session key derivation.
+- Direction-separated AES-GCM call-control keys and unique per-call media keys.
+- 8 kHz mono PCM capture/playback and G.711 mu-law 20 ms voice frames.
+- Encrypted voice transport over Nearby Connections streams.
+- Replay/tamper checks, bounded framing, call-ID uniqueness and key cleanup.
+- Multiple neighbour links and opt-in relay consent, disabled by default.
+- Signed bounded route requests/replies, reverse-route tracking, hop budgets, route expiry, duplicate suppression and loop checks.
+- Authenticated adjacent radio links.
+- A separate end-to-end caller-to-recipient handshake and encrypted routed call-control/voice payloads.
+- Relay forwarding of opaque payloads without caller-to-recipient media keys.
+- Route-loss handling and no cellular fallback.
 
-## Automated verification
-Unit tests cover direct peer identity and encryption, replay/tamper handling, packet validation, route request/reply, reverse paths, a two-relay chain, bidirectional opaque payload forwarding, relay consent and routed payload framing.
+## Automated test coverage in source
 
-The successful CI run on commit `e83b4b527d9bf89be963f49780b5febd37972ba5` built the debug APK, passed the complete unit-test suite, recorded source metadata and uploaded the APK artifact. This validates the source and tests, not physical radio/audio performance.
+The current unit test tree includes tests for voice frame codec, call control codec/state machine, peer session security and secure call cipher, mesh packet routing/route selection and routed payload framing.
 
-## Remaining verification and release gates
+The current README, test plan and issue #2 record source-level protocol coverage. A green unit suite does not prove radio range, intelligible two-way audio, multi-hop voice quality, battery life or Android background behavior.
 
-### Gate A — Direct offline device proof
-- Two physical phones; SIM removed/disabled, mobile data off and no Wi-Fi internet.
-- QR trust, discovery, pairing, call setup and intelligible two-way audio.
-- Reconnect, reject, timeout, trust revocation, permission loss, screen-off and background-call tests.
+## Outstanding physical and independent verification
 
-### Gate B — Secure routed device proof
-- At least four physical Android phones (caller, two relays, recipient).
-- All required QR trust relationships established; both relays opt in.
-- End-to-end routed handshake and audible voice in both directions.
-- Test loss of each relay, route expiry/repair, revocation and consent withdrawal.
-- Measure latency, jitter, packet loss, range, audio quality, battery and thermal state.
+### Direct two-phone test
+- Use two supported Android phones.
+- Establish QR trust on both devices.
+- Disable/remove SIM where practical, disable mobile data and disconnect Wi-Fi internet.
+- Enable only required local radios and permissions.
+- Discover, pair, verify the trusted identity handshake and complete a call.
+- Confirm intelligible two-way audio.
+- Repeat reject, timeout, hang-up, reconnect, permission loss, trust revocation, screen-off, background, battery saver, audio-route and Bluetooth cases.
 
-### Gate C — Independent security review
-Review ECDH/transcript construction, signature verification, HKDF use, AES-GCM nonce/sequence rules, replay window, key lifecycle, routed packet validation, trust policy and malicious-relay behavior.
+### Multi-hop relay test
+- Use at least four physical Android devices: caller, two relays and recipient.
+- Establish all trust relationships required by the route policy.
+- Enable relay consent explicitly on each relay.
+- Disable mobile data and disconnect Wi-Fi internet.
+- Establish the routed end-to-end identity handshake.
+- Confirm audible two-way voice through the relay chain.
+- Withdraw consent, revoke trust and disconnect each relay in turn.
+- Verify safe route failure without cellular fallback.
+- Measure call setup time, latency, jitter, packet loss, range, battery and thermal behavior.
 
-### Gate D — Platform and release readiness
-Test multiple manufacturers and Android versions, Google Play services availability, microphone foreground-service restrictions, audio routing, battery optimization, release signing, versioning and distribution. A non-GMS fallback radio adapter and Android Telecom/default-dialer integration are not complete.
+### Security and platform release gates
+- Independent cryptographic/protocol review.
+- Forged identity, replay, tampering, route poisoning, flooding, malicious relay, link-loss and revocation testing.
+- Test multiple manufacturers and Android versions.
+- Validate microphone foreground-service, screen-off/background and process-death behavior.
+- Decide whether non-GMS transport support is required.
+- Complete Android Telecom/default-dialer scope and release signing.
 
-### Gate E — Jamaica coverage/deployment
-Field-measure actual relay reachability and power requirements in each environment. Do not claim fixed range, island-wide availability or emergency service.
+## Limits
 
-## Constraints
-- Google Nearby Connections requires compatible Google Play services.
-- Cluster topology may have throughput/latency trade-offs; benchmark it on target phones.
-- A relay can still drop, delay or observe traffic metadata even though it cannot decrypt end-to-end media.
-- Long-distance voice requires a continuous powered route.
-- No silent cellular fallback. LINKA is not an emergency-calling service.
+- Nearby Connections requires compatible Google Play Services.
+- Long-distance offline calling requires a continuous live chain of powered, reachable, consenting relays.
+- A relay can drop or delay packets and can observe traffic metadata even when it cannot decrypt end-to-end media.
+- No fixed range or Jamaica-wide coverage is promised.
+- LINKA is not an emergency-calling service.
+- Offline mesh cannot dial ordinary telephone numbers unless a separate, explicitly authorized gateway to a carrier network is available.

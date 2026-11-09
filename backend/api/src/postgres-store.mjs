@@ -865,16 +865,18 @@ export function createPostgresStore({
         "'linka_private.apply_wallet_event(text,text,uuid,text,text,bigint,text,text)'" +
         ") IS NOT NULL AS wallet_function_ready, " +
         "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
-        "WHERE version = $1::text) AS cross_account_migration_ready",
-        ["0002_cross_account_integrity"]
+        "WHERE version = $1::text) AS message_key_migration_ready, " +
+        "to_regclass('linka_private.message_encryption_keys') IS NOT NULL AS message_key_table_ready",
+        ["0003_message_encryption_keys"]
       );
       if (result.rows[0]?.wallet_function_ready !== true ||
-          result.rows[0]?.cross_account_migration_ready !== true) {
+          result.rows[0]?.message_key_migration_ready !== true ||
+          result.rows[0]?.message_key_table_ready !== true) {
         fail("database_schema_not_ready");
       }
       return Object.freeze({
         status: "ready",
-        schemaVersion: "0002_cross_account_integrity"
+        schemaVersion: "0003_message_encryption_keys"
       });
     },
 

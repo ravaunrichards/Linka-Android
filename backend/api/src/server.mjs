@@ -168,7 +168,7 @@ function safeErrorCode(error) {
     "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
     "invalid_message_attachments", "message_attachments_unavailable",
     "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
-    "invalid_encryption_key", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
+    "invalid_encryption_key", "invalid_encryption_key_proof", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
     "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
@@ -462,15 +462,24 @@ async function handleRequest(req, res) {
         return;
       }
       const publicKeyDer = Buffer.from(body.publicKeyBase64, "base64");
-      if (publicKeyDer.toString("base64") !== body.publicKeyBase64) {
-        response(res, 400, { error: "invalid_encryption_key" });
+      if (publicKeyDer.toString("base64") !== body.publicKeyBase64 ||
+          typeof body.signatureBase64 !== "string" ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.signatureBase64)) {
+        response(res, 400, { error: "invalid_encryption_key_proof" });
+        return;
+      }
+      const proofSignature = Buffer.from(body.signatureBase64, "base64");
+      if (proofSignature.length < 64 || proofSignature.length > 80 ||
+          proofSignature.toString("base64") !== body.signatureBase64) {
+        response(res, 400, { error: "invalid_encryption_key_proof" });
         return;
       }
       const registered = await postgresStore.registerDeviceEncryptionKey({
         accountId: session.accountId,
         deviceId: session.deviceId,
         algorithm: body.algorithm,
-        publicKeyDer
+        publicKeyDer,
+        proofSignature
       });
       response(res, registered.reused ? 200 : 201, registered);
       return;

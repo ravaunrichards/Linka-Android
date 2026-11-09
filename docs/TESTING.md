@@ -107,3 +107,17 @@ On an Android device:
 8. Review the app's private preferences only in a controlled test build: the stored favourites payload must be ciphertext, not readable names/numbers.
 
 The current implementation uses an Android Keystore AES-GCM key and local encrypted preferences. Favourites are device-local; cloud sync, import from Android Contacts and cross-device synchronization are not implemented by this feature. The JVM codec tests validate number normalization, input validation, JSON round-trip, malformed stored-data handling, duplicate replacement and the 50-entry cap. They do not replace a physical-device Keystore and UI handoff test.
+
+
+## Android Keystore instrumentation coverage for phone favourites
+
+The Android emulator workflow runs `gradle :app:connectedDebugAndroidTest` on an API 35 Google APIs image. `PhoneFavoritesStoreTest` exercises the actual Android Keystore and private SharedPreferences implementation:
+
+1. Save and reload multiple user favourites across store instances.
+2. Verify the AES key is non-exportable from Android Keystore.
+3. Verify stored preferences contain only the IV and ciphertext keys, not readable names or phone numbers.
+4. Tamper with the ciphertext and confirm the store fails closed and clears the unreadable payload.
+5. Delete the encryption key and confirm old ciphertext is not returned.
+6. Save an updated list and confirm removed entries remain removed after reopening the store.
+
+The emulator workflow source has been added to the native-favourites draft branch. Until a GitHub Actions run succeeds on that branch head, these tests and the emulator configuration are **IMPLEMENTED BUT UNVERIFIED**. They do not replace real handset tests for Nearby radio transport, sustained offline audio, carrier dial/SMS handlers, manufacturer behavior or background microphone restrictions.

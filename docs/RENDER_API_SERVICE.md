@@ -49,6 +49,18 @@ API CI tests the allowed-origin preflight, the rejected-origin preflight, origin
 - `POST /v1/destinations/normalize` — rate-limited E.164 syntax normalization; this does not infer country/number type or check provider reachability.
 - `POST /v1/destinations/resolve` — rate-limited numbering-plan validation with country candidates and number type from `libphonenumber-js/max`; provider assignment and reachability remain unchecked.
 
+## Authenticated read-only wallet API
+
+When PostgreSQL is configured and the caller has a valid persisted account session:
+
+- `GET /v1/wallet` returns the caller's purchased, promotional and sponsored integer credit-unit balances, combined total and wallet version.
+- `GET /v1/wallet/ledger?limit=50` returns the caller's append-only ledger activity, ordered newest first.
+- Ledger pagination uses both `before` (the returned timestamp) and `beforeEventId` (the returned event ID) from `nextCursor`; this makes ordering stable when events share a timestamp.
+- Both endpoints derive the account ID from the authenticated account session. A caller cannot select another account by passing an account ID.
+- The endpoints are read-only. There is deliberately no public HTTP endpoint for client-supplied balance changes, grants, purchases, usage debits or refunds.
+
+The ledger response omits provider secrets and arbitrary metadata. Credit units are integer accounting units; they are not a displayed currency amount unless a separately verified tariff/conversion policy defines that mapping. Ledger writes remain server-authoritative through trusted payment or provider events and the existing atomic PostgreSQL wallet function.
+
 ## Authenticated internal messaging
 
 PostgreSQL-backed account sessions can use the following routes:

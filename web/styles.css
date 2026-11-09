@@ -15,3 +15,27 @@
 .account-status[data-kind="error"]{color:#ffc0b4;border-color:#7c3e3e}
 #accountSignedIn[hidden],#accountSignedOut[hidden]{display:none}
 @media(max-width:900px){.account-layout{grid-template-columns:1fr}}
+
+
+.wallet-panel{grid-column:1/-1;border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:20px;margin-top:4px}
+.wallet-panel-heading,.wallet-ledger-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.wallet-panel-heading h3{font-size:22px;letter-spacing:-.5px;margin:6px 0 0}
+.wallet-refresh{padding:9px 13px}
+.wallet-status{font-size:12px;color:var(--muted);line-height:1.5;margin:12px 0}
+.wallet-status[data-kind="error"]{color:#ffaaa2}
+.wallet-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0 21px}
+.wallet-balance-card{border:1px solid var(--line);background:var(--panel2);border-radius:13px;padding:13px;min-width:0}
+.wallet-balance-card span{display:block;color:var(--muted);font-size:10px;line-height:1.35}
+.wallet-balance-card strong{display:block;font-size:clamp(18px,2.4vw,24px);margin-top:9px;overflow-wrap:anywhere}
+.wallet-balance-card.total{border-color:#2b7774;background:#12333b}
+.wallet-ledger-heading{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:2px}
+.wallet-ledger-heading strong{font-size:13px}
+.wallet-ledger-heading span{font-size:10px;color:var(--muted)}
+.wallet-ledger-row{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding:13px 0}
+.wallet-ledger-row:last-child{border-bottom:0}
+.wallet-ledger-title{font-size:12px;font-weight:750;text-transform:capitalize}
+.wallet-ledger-meta{font-size:10px;color:var(--muted);margin-top:5px}
+.wallet-ledger-amount{font-size:12px;font-weight:800;white-space:nowrap}
+.wallet-ledger-empty{padding:17px 0;color:var(--muted);font-size:12px}
+#walletLoadMore{margin-top:10px}
+@media(max-width:760px){.wallet-balance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.wallet-panel{padding:15px}.wallet-ledger-heading{align-items:flex-start;flex-direction:column}}

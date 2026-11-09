@@ -48,7 +48,7 @@ jobs:
           } > app/build/metadata/build-info.txt
 
       - name: Store APK build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linka-debug-apk-${{ github.sha }}
           path: |

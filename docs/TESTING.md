@@ -61,3 +61,18 @@ Repeat across multiple handset manufacturers, Android versions, low-cost devices
 
 ## Evidence to retain
 For every physical run, retain the commit SHA, APK version, device models, Android and Play services versions, radio/permission state, terrain/environment, exact test steps, observed results, audio/latency metrics and pass/fail. Redact identity authentication codes, private key material, media keys and personal data.
+
+
+## PostgreSQL schema CI
+
+The database workflow uses PostgreSQL 17 and runs:
+
+```sh
+psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
+psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
+psql -v ON_ERROR_STOP=1 -f backend/api/db/checks/verify_core_schema.sql
+```
+
+The migration is applied twice to verify safe reapplication. The SQL check validates core tables, the wallet function and append-only trigger, then exercises a temporary account/device/session, provider number and rate, wallet purchase, duplicate idempotency, usage deduction, partial refund, insufficient-credit rejection, append-only ledger enforcement and active-number uniqueness. Test rows are rolled back.
+
+Latest verified result: PostgreSQL Schema CI run 42612753799 on commit 03d07a2 completed successfully on 2026-11-09. This verifies the schema and SQL domain operation in CI; it does not prove the Node API is connected to PostgreSQL or that a production database is provisioned.

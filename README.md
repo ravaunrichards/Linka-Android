@@ -47,7 +47,8 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 
 ### Backend and browser companion
 - backend/api contains a Node.js signed-device challenge and ephemeral call-signaling API.
-- The signaling runtime holds sessions and queues in memory; it is not a durable account, number, message or billing database.
+- The signaling runtime still holds sessions and queues in memory; it is not yet connected to the PostgreSQL persistence schema.
+- A PostgreSQL 17 migration, atomic wallet-ledger SQL function and schema verification workflow now exist under `backend/api/db/`. GitHub Actions has verified migration reapplication, wallet operations and core constraints.
 - The API carries signaling, not voice audio.
 - Pure backend domain modules now cover E.164 syntax normalization, free-first route options, provider-fed rate validation/matching/credit estimates, and an immutable purchased/promotional/sponsored wallet ledger.
 - Those domain modules have automated tests but are not yet connected to provider tariff imports, a durable database, payment webhooks, authenticated billing endpoints, Android screens or website wallet/rate screens.

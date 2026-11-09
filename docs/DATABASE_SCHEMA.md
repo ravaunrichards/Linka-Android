@@ -63,4 +63,6 @@ The CI verification script runs the migration twice, then inserts temporary test
 
 ## Current status
 
-The migration and CI exercise establish a PostgreSQL schema and test its SQL wallet invariants. They do not connect the existing in-memory API runtime to PostgreSQL, provision real numbers, process carrier usage, receive real payment webhooks or enable live telephony services.
+**Database verification: PASSED.** PostgreSQL Schema CI run 42612753799 completed successfully on 2026-11-09 against PostgreSQL 17. It applied the migration twice and passed schema, wallet purchase/idempotency/usage/refund/overdraft/append-only and number-uniqueness checks.
+
+The migration and CI exercise establish a verified PostgreSQL schema and SQL wallet primitive. They do not connect the existing in-memory API runtime to PostgreSQL, provision real numbers, process carrier usage, receive real payment webhooks or enable live telephony services.

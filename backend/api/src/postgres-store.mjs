@@ -168,6 +168,60 @@ export function createPostgresStore({
     return walletBalances(result.rows[0]);
   }
 
+  async function listWalletLedgerEvents(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_wallet_query");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const limit = input.limit == null ? 50 : Number(input.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      fail("invalid_page_limit");
+    }
+
+    let before = null;
+    let beforeEventId = null;
+    if (input.before != null || input.beforeEventId != null) {
+      if (input.before == null || typeof input.beforeEventId !== "string" ||
+          input.beforeEventId.trim().length === 0 || input.beforeEventId.length > 128) {
+        fail("invalid_wallet_cursor");
+      }
+      before = input.before instanceof Date ? input.before : new Date(input.before);
+      if (!Number.isFinite(before.getTime())) fail("invalid_wallet_cursor");
+      beforeEventId = input.beforeEventId.trim();
+    }
+
+    const result = await pool.query(
+      "SELECT event_id, event_type, credit_source, amount_credit_units, " +
+      "reference_id, reverses_event_id, created_at " +
+      "FROM linka_private.wallet_ledger_events " +
+      "WHERE account_id = $1::uuid " +
+      "AND ($3::timestamptz IS NULL OR " +
+      "(created_at, event_id) < ($3::timestamptz, $4::text)) " +
+      "ORDER BY created_at DESC, event_id DESC " +
+      "LIMIT $2::integer",
+      [accountId, limit + 1, before, beforeEventId]
+    );
+
+    const hasMore = result.rows.length > limit;
+    const page = result.rows.slice(0, limit).map(row => Object.freeze({
+      eventId: row.event_id,
+      eventType: row.event_type,
+      creditSource: row.credit_source,
+      amountCreditUnits: safeInteger(row.amount_credit_units, "ledger amount"),
+      referenceId: row.reference_id ?? null,
+      reversesEventId: row.reverses_event_id ?? null,
+      createdAt: isoDate(row.created_at, "ledger event time")
+    }));
+    const last = page[page.length - 1];
+    return Object.freeze({
+      events: Object.freeze(page),
+      nextCursor: hasMore && last
+        ? Object.freeze({ before: last.createdAt, beforeEventId: last.eventId })
+        : null
+    });
+  }
+
   async function persistSession(client, accountId, deviceId) {
     const accessToken = createAccessToken();
     const tokenHash = createHash("sha256").update(accessToken).digest();
@@ -716,6 +770,7 @@ export function createPostgresStore({
     },
 
     getWalletSnapshot,
+    listWalletLedgerEvents,
 
     async applyWalletEvent(input) {
       assertOpen();

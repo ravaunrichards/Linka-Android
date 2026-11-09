@@ -123,6 +123,7 @@ Android CI runs `gradle :app:connectedDebugAndroidTest` on an API 35 Google APIs
 5. Remove the Keystore key and verify orphaned ciphertext is cleared instead of returned.
 6. Remove one encrypted field and verify the incomplete record is cleared.
 7. Save an updated list and verify removed favourites remain removed after reopening.
+8. Verify favourite dial intents use ACTION_DIAL with the tel: scheme and favourite message intents use ACTION_SENDTO with the smsto: scheme; invalid numbers must not produce an intent.
 
 The JVM codec tests separately validate number/name normalization, JSON round-trip, malformed payload handling, duplicate replacement and the 50-entry limit.
 

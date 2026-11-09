@@ -112,7 +112,7 @@ export class LinkaRuntime {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = this.now() + this.sessionTtlMs;
     const fingerprint = createHash("sha256").update(der).digest("hex").toUpperCase();
-    this.sessions.set(token, { deviceId, fingerprint, expiresAt });
+    this.sessions.set(token, { deviceId, fingerprint, publicKeyDer: Buffer.from(der), expiresAt });
 
     const deviceTokens = this.sessionsByDevice.get(deviceId) ?? new Set();
     deviceTokens.add(token);
@@ -140,6 +140,16 @@ export class LinkaRuntime {
     tokens?.delete(token);
     if (tokens?.size === 0) this.sessionsByDevice.delete(session.deviceId);
     return true;
+  }
+
+  revokeDeviceSessions(deviceId) {
+    const tokens = this.sessionsByDevice.get(deviceId);
+    if (!tokens) return 0;
+    let revoked = 0;
+    for (const token of [...tokens]) {
+      if (this.revokeToken(token)) revoked += 1;
+    }
+    return revoked;
   }
 
   isDeviceOnline(deviceId) {

@@ -101,34 +101,54 @@ function bearerToken(req) {
   return match?.[1] ?? null;
 }
 
-function requireAuth(req, res) {
+async function requireDeviceAuth(req, res) {
   const token = bearerToken(req);
   const session = runtime.authenticate(token);
   if (!session) {
-    response(res, 401, { error: "unauthorized", message: "A valid LINKA access token is required." });
+    response(res, 401, { error: "device_auth_required" });
     return null;
   }
-  return { ...session, token };
+  return { ...session, token, authType: "device" };
+}
+
+async function requireAuth(req, res) {
+  const token = bearerToken(req);
+  const deviceSession = runtime.authenticate(token);
+  if (deviceSession) return { ...deviceSession, token, authType: "device" };
+
+  if (postgresStore) {
+    try {
+      const accountSession = await postgresStore.authenticateAccountSession(token);
+      if (accountSession) return { ...accountSession, token, authType: "account" };
+    } catch {
+      response(res, 503, { error: "authentication_store_unavailable" });
+      return null;
+    }
+  }
+
+  response(res, 401, {
+    error: "unauthorized",
+    message: "A valid LINKA access token is required."
+  });
+  return null;
 }
 
 function safeErrorCode(error) {
   const allowed = new Set([
-    "invalid_device_id",
-    "invalid_public_key",
-    "unsupported_public_key",
-    "invalid_challenge_proof",
-    "challenge_expired_or_invalid",
-    "invalid_signature",
-    "signature_verification_failed",
-    "cannot_signal_self",
-    "unsupported_signal_type",
-    "invalid_call_id",
-    "invalid_signal_payload",
-    "signal_payload_too_large",
-    "recipient_offline",
-    "recipient_queue_full",
-    "challenge_capacity_reached"
+    "invalid_device_id", "invalid_public_key", "unsupported_public_key",
+    "invalid_challenge_proof", "challenge_expired_or_invalid", "invalid_signature",
+    "signature_verification_failed", "cannot_signal_self", "unsupported_signal_type",
+    "invalid_call_id", "invalid_signal_payload", "signal_payload_too_large",
+    "recipient_offline", "recipient_queue_full", "challenge_capacity_reached",
+    "device_auth_required", "database_not_configured", "invalid_email",
+    "invalid_display_name", "invalid_password", "invalid_registration",
+    "invalid_login", "email_already_registered", "device_already_linked",
+    "device_identity_mismatch", "device_identity_conflict", "device_revoked",
+    "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
+    "authentication_store_unavailable", "account_recovery_unavailable",
+    "email_verification_unavailable"
   ]);
+  if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
 }
 
@@ -188,15 +208,20 @@ async function handleRequest(req, res) {
         persistence: {
           postgres: postgresStore ? "configured" : "not_configured",
           walletSqlFunction: postgresStore ? "available_when_ready" : "not_configured",
-          accountLinking: "not_implemented",
+          accountRegistration: postgresStore ? "available" : "database_required",
+          persistentAccountSessions: postgresStore ? "available" : "database_required",
+          passwordRecovery: "not_implemented",
+          emailVerification: "not_implemented",
           walletHttpApi: "not_implemented"
         },
         limitations: [
           "This service carries call-control and WebRTC signaling only.",
           "It does not carry voice audio.",
           "Nearby SIM-free calls do not depend on this service.",
-          "Authentication sessions and signal queues remain in-memory and expire.",
-          "PostgreSQL wallet operations are server-side only; account authentication and wallet HTTP endpoints are not implemented."
+          "Device challenge sessions and signaling queues remain in-memory and expire.",
+          "Account sessions are persisted when PostgreSQL is configured.",
+          "Password recovery and email verification require an email delivery provider that is not configured.",
+          "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented."
         ]
       });
       return;
@@ -231,27 +256,123 @@ async function handleRequest(req, res) {
       return;
     }
 
-    if (req.method === "GET" && path === "/v1/me") {
-      const session = requireAuth(req, res);
-      if (!session) return;
-      response(res, 200, {
-        deviceId: session.deviceId,
-        publicKeyFingerprint: session.fingerprint,
-        expiresAt: session.expiresAt
+    if (req.method === "POST" && path === "/v1/accounts/register") {
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit("register:" + remote, 5, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const device = await requireDeviceAuth(req, res);
+      if (!device) return;
+      const body = await readJson(req);
+      const account = await postgresStore.createAccountWithDevice({
+        email: body.email,
+        password: body.password,
+        displayName: body.displayName,
+        device: {
+          deviceId: device.deviceId,
+          publicKeyDer: device.publicKeyDer,
+          platform: body.platform,
+          deviceName: body.deviceName
+        }
+      });
+      response(res, 201, {
+        accountId: account.accountId,
+        email: account.email,
+        displayName: account.displayName,
+        emailVerified: false,
+        deviceId: account.deviceId,
+        accessToken: account.accessToken,
+        tokenType: account.tokenType,
+        expiresAt: account.expiresAt
       });
       return;
     }
 
-    if (req.method === "POST" && path === "/v1/auth/logout") {
-      const session = requireAuth(req, res);
+    if (req.method === "POST" && path === "/v1/accounts/login") {
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit("login:" + remote, 10, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const device = await requireDeviceAuth(req, res);
+      if (!device) return;
+      const body = await readJson(req);
+      const account = await postgresStore.loginAccount({
+        email: body.email,
+        password: body.password,
+        device: {
+          deviceId: device.deviceId,
+          publicKeyDer: device.publicKeyDer,
+          platform: body.platform,
+          deviceName: body.deviceName
+        }
+      });
+      response(res, 200, {
+        accountId: account.accountId,
+        email: account.email,
+        displayName: account.displayName,
+        emailVerified: account.emailVerified,
+        deviceId: account.deviceId,
+        accessToken: account.accessToken,
+        tokenType: account.tokenType,
+        expiresAt: account.expiresAt
+      });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/accounts/recovery") {
+      // Intentionally not simulated: a secure reset requires a configured email sender.
+      response(res, 501, { error: "account_recovery_unavailable" });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/me") {
+      const session = await requireAuth(req, res);
       if (!session) return;
-      runtime.revokeToken(session.token);
+      if (session.authType === "account") {
+        response(res, 200, {
+          accountId: session.accountId,
+          email: session.email,
+          displayName: session.displayName,
+          emailVerified: session.emailVerified,
+          deviceId: session.deviceId,
+          deviceFingerprint: session.fingerprint,
+          expiresAt: session.expiresAt
+        });
+      } else {
+        response(res, 200, {
+          deviceId: session.deviceId,
+          publicKeyFingerprint: session.fingerprint,
+          expiresAt: session.expiresAt
+        });
+      }
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/auth/logout") {
+      const session = await requireAuth(req, res);
+      if (!session) return;
+      if (session.authType === "account") {
+        await postgresStore.revokeAccountSession(session.token);
+        runtime.revokeDeviceSessions(session.deviceId);
+      } else {
+        runtime.revokeToken(session.token);
+      }
       response(res, 200, { status: "signed_out" });
       return;
     }
 
     if (req.method === "POST" && path === "/v1/signals") {
-      const session = requireAuth(req, res);
+      const session = await requireAuth(req, res);
       if (!session) return;
       const body = await readJson(req);
       const queued = runtime.enqueueSignal(session.deviceId, body);
@@ -260,7 +381,7 @@ async function handleRequest(req, res) {
     }
 
     if (req.method === "GET" && path === "/v1/signals") {
-      const session = requireAuth(req, res);
+      const session = await requireAuth(req, res);
       if (!session) return;
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "25", 10);
       const signals = runtime.pollSignals(session.deviceId, limit);

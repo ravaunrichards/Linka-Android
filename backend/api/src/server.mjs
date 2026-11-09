@@ -223,7 +223,7 @@ async function handleRequest(req, res) {
         capabilities: [
           "signed-device-auth",
           "ephemeral-call-signaling",
-          ...(postgresStore ? ["postgres-wallet-ledger"] : [])
+          ...(postgresStore ? ["postgres-wallet-ledger", "account-scoped-messaging-storage"] : [])
         ],
         dependencies: { postgres: postgresStore ? "ready" : "not_configured" }
       });
@@ -247,7 +247,9 @@ async function handleRequest(req, res) {
           persistentAccountSessions: postgresStore ? "available" : "database_required",
           passwordRecovery: "not_implemented",
           emailVerification: "not_implemented",
-          walletHttpApi: "not_implemented"
+          walletHttpApi: "not_implemented",
+          internalMessaging: postgresStore ? "available" : "database_required",
+          encryptedAttachmentStorage: "not_implemented"
         },
         limitations: [
           "This service carries call-control and WebRTC signaling only.",
@@ -256,7 +258,9 @@ async function handleRequest(req, res) {
           "Device challenge sessions and signaling queues remain in-memory and expire.",
           "Account sessions are persisted when PostgreSQL is configured.",
           "Password recovery and email verification require an email delivery provider that is not configured.",
-          "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented."
+          "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented.",
+          "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
+          "Message key distribution, encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
         ]
       });
       return;

@@ -295,3 +295,35 @@ Add two focused Android account-client edge-case tests (logout without a saved t
 
 **DEPLOYMENT STATUS:** Not deployed. No production service changes were made.
 
+
+
+## Continuation checkpoint — Android Keystore emulator tests — 2026-11-09
+
+**Working-branch completion remains 44.5% | Remaining 55.5%.** No additional completion credit is awarded for the new instrumentation suite until an Android emulator workflow passes. The main branch's latest durable product tracker is 44% complete / 56% remaining; the additional 0.5 percentage point is the already-recorded partial native Phone favourites implementation on this open draft branch.
+
+- Repository: `ravaunrichards/Linka-Android`.
+- Main branch last observed head: `3982caf5d88d6286a5567354ff52841b06348afa`.
+- Working branch: `feature/native-phone-favorites`.
+- Latest working-branch commit at this checkpoint: `75923241a314de3e496ce5b92013d9f494035352`.
+- Pull request: [#15 — encrypted native phone favourites](https://github.com/ravaunrichards/Linka-Android/pull/15), still draft/open/unmerged.
+
+### Implemented, not yet CI-verified
+
+- Added `PhoneFavoritesStoreTest.kt` with five Android instrumentation tests for ciphertext-only SharedPreferences, Android Keystore key non-exportability, tamper failure, missing-key failure and persistence of removals.
+- Added AndroidX Test stable dependencies: core 1.7.0, runner 1.7.0 and ext.junit 1.3.0.
+- Added an API 35 Google APIs emulator step to Android CI using `reactivecircus/android-emulator-runner@v2` and `gradle :app:connectedDebugAndroidTest`.
+- Documented the emulator test scope and limitations in `docs/TESTING.md`.
+- Existing evidence remains: prior PR branch debug APK build and JVM tests passed in Android CI run 42677221281 / earlier run 42676400680. Those runs predate the new instrumentation source and do not verify it.
+
+### Verification and blocker
+
+- Current branch head: `75923241a314de3e496ce5b92013d9f494035352`.
+- A pull-request workflow run for the new head has not been returned by the connected GitHub Actions read tools. The available GitHub toolset exposes workflow-run inspection and reruns of failed jobs, but no workflow-dispatch action for starting a new run. Do not count the new emulator suite as passed.
+- This is a verification blocker, not evidence that the instrumentation tests failed.
+- The code is committed to the existing draft branch; no merge, production deployment or secrets change was performed.
+
+**Last confirmed action:** Added the five-test Android Keystore/SharedPreferences instrumentation suite, added emulator CI wiring, documented it, and committed all changes to the existing feature branch.
+
+**Next action:** Trigger Android CI on this exact feature-branch head (or push a subsequent commit from the repository owner so the pull-request workflow starts), then inspect the emulator job logs, fix any failures and record the verified result. Do not merge the draft PR until the required physical-device checks and project review are complete.
+
+**Unchanged external blockers:** Render service/workspace approval, production PostgreSQL configuration, email delivery, carrier/telephone-number providers, SIP/PSTN, SMS/MMS, WebRTC/TURN media, payments, SIM/eSIM, physical multi-device field testing, independent security review and production signing.

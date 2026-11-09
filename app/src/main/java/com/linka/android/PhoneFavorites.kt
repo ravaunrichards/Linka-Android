@@ -102,8 +102,13 @@ internal class PhoneFavoritesStore(context: Context) {
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun load(): List<PhoneFavorite> {
-        val ivValue = preferences.getString(KEY_IV, null) ?: return emptyList()
-        val ciphertextValue = preferences.getString(KEY_CIPHERTEXT, null) ?: return emptyList()
+        val ivValue = preferences.getString(KEY_IV, null)
+        val ciphertextValue = preferences.getString(KEY_CIPHERTEXT, null)
+        if (ivValue == null && ciphertextValue == null) return emptyList()
+        if (ivValue == null || ciphertextValue == null) {
+            preferences.edit().remove(KEY_IV).remove(KEY_CIPHERTEXT).commit()
+            return emptyList()
+        }
         return runCatching {
             val iv = Base64.decode(ivValue, Base64.NO_WRAP)
             val ciphertext = Base64.decode(ciphertextValue, Base64.NO_WRAP)

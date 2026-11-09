@@ -9,7 +9,7 @@
 - Verified main head immediately before this checkpoint documentation refresh: 60ec4c77e938867f53e164d5e6623461ff92d397.
 - Repository ID: 1444736198.
 - Repository visibility: public.
-- Last inspected recursive tree: 139 entries, not truncated.
+- Last inspected recursive tree: 141 entries, not truncated.
 - GitHub permission snapshot during recovery: admin, maintain and push were true.
 - Recovery confidence: CONFIRMED for branch, commit ancestry, repository files, commit changes, issue records and Actions results. A local working tree is not exposed by the GitHub read APIs.
 
@@ -63,7 +63,7 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 - ce82a8b13d9f81e1d08e9a522b2ba5c61e8df737 — added tests for same-origin, allowlisted and rejected CORS origins.
 - 3995e47d3ca51df396c2d6ecb25ac4df6b33b49b — enforced CORS policy and OPTIONS preflight handling in the API server.
 - 4e0b0e90776494a22fac80612b27464bc33d7473 — added API CI preflight checks; the first run failed one wildcard-origin assertion.
-- 60ec4c77e938867f53e164d5e6623461ff92d397 — fixed explicit wildcard rejection; API CI passed all 75 tests and allowed/denied preflight checks.
+- 60ec4c77e938867f53e164d5e6623461ff92d397 — fixed explicit wildcard rejection; API CI passed all 75 tests and allowed/denied preflight checks. The repository tree now contains 141 entries, including the CORS policy module and its tests.
 
 Documentation recovery commits after that tested source revision:
 - 935080fe199b64bb1896ee125880ab451cdd5460 — corrected README account-client implementation status.

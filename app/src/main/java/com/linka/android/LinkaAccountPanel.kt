@@ -37,7 +37,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun LinkaAccountPanel(
     accountClient: LinkaAccountClient,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onProfileChanged: (LinkaAccountProfile?) -> Unit = {}
 ) {
     var serverUrl by rememberSaveable { mutableStateOf(accountClient.serverUrl()) }
     var email by rememberSaveable { mutableStateOf("") }
@@ -55,6 +56,7 @@ fun LinkaAccountPanel(
             runCatching { accountClient.restoreSession() }
                 .onSuccess { restored ->
                     profile = restored
+                    onProfileChanged(restored)
                     email = restored?.email.orEmpty()
                     if (restored == null) message = "Your saved account session has expired. Sign in again."
                 }
@@ -147,6 +149,7 @@ fun LinkaAccountPanel(
                                     }
                                 }.onSuccess { result ->
                                     profile = result
+                                    onProfileChanged(result)
                                     password = ""
                                     message = if (result.emailVerified) {
                                         "Your LINKA account is signed in."
@@ -196,6 +199,7 @@ fun LinkaAccountPanel(
                             runCatching { accountClient.logout() }
                                 .onSuccess {
                                     profile = null
+                                    onProfileChanged(null)
                                     password = ""
                                     message = "You are signed out of your LINKA account."
                                 }

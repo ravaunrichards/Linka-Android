@@ -1,5 +1,6 @@
 import {
   generateBrowserSigningIdentity,
+  shouldClearAccountSession,
   signLinkaDeviceChallenge
 } from "./auth-crypto.mjs";
 
@@ -91,7 +92,10 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
       database_not_configured: "The LINKA account service is not available on this server.",
       account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured."
     };
-    throw new Error(messages[code] || "LINKA request failed (" + code + ").");
+    const error = new Error(messages[code] || "LINKA request failed (" + code + ").");
+    error.status = response.status;
+    error.code = code;
+    throw error;
   }
   return payload;
 }
@@ -214,9 +218,14 @@ async function restoreAccountSession() {
     showProfile(profile);
     showStatus("Your LINKA account is active in this browser tab.", "success");
   } catch (error) {
-    sessionStorage.removeItem(SESSION_KEY);
-    showSignedOut();
-    showStatus(error.message || "The browser session could not be restored.", "error");
+    if (shouldClearAccountSession(error.status)) {
+      sessionStorage.removeItem(SESSION_KEY);
+      showSignedOut();
+    }
+    showStatus(
+      error.message || "The browser session could not be restored.",
+      "error"
+    );
   }
 }
 

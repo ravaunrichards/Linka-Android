@@ -53,8 +53,9 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 - The Android app exposes registration, sign-in, profile and sign-out UI. It encrypts the account bearer token with AES-GCM using a separate Android Keystore key.
 - The browser companion exposes registration, sign-in, profile and sign-out UI. It stores a non-exportable P-256 signing key in IndexedDB and keeps the account bearer token in tab-scoped session storage.
 - Browser WebCrypto ECDSA signatures are converted from P1363 to DER for compatibility with the existing Node.js verifier; API CI exercises this conversion and serves both browser modules.
+- The API supports a strict optional `CORS_ALLOWED_ORIGINS` allowlist for separately hosted browser clients. Same-origin use needs no CORS setting; cross-origin origins must be exact HTTPS origins, comma-separated, with no wildcard.
 - A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`. `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured.
-- Database CI verifies both migrations, cross-account constraints, account registration/login and multi-device linking over HTTP, durable wallet operations and schema-aware readiness. The latest PostgreSQL run passed 65 tests with zero failures.
+- Database CI verifies both migrations, cross-account constraints, account registration/login and multi-device linking over HTTP, durable wallet operations and schema-aware readiness. The latest PostgreSQL run passed 69 tests with zero failures.
 - Email verification and password recovery are not enabled: the API reports `emailVerified: false` and `POST /v1/accounts/recovery` returns `501 account_recovery_unavailable` until an email-delivery provider and secure reset/verification workflow are configured.
 - Wallet operations are server-side only. No public wallet HTTP endpoints, payment processing or customer balance UI exist yet.
 - Authentication sessions and signaling queues are separate; signaling queues and short-lived device challenge sessions remain in memory. The API carries signaling, not voice audio.
@@ -86,6 +87,7 @@ From the repository root:
 - Run backend tests: `npm --prefix backend/api test`
 - Start local backend API without PostgreSQL: `npm --prefix backend/api start`
 - Start with the migrated PostgreSQL wallet store enabled: set `DATABASE_URL` in the environment, then run `npm --prefix backend/api start`.
+- For a separately hosted browser website, set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact HTTPS origins (for example `https://app.example.com`). Do not include paths or wildcards. Same-origin browser hosting requires no CORS configuration.
 
 The Android CI workflow builds the debug APK and runs unit tests. The API CI workflow runs backend tests and checks API/browser routes. A debug APK is not a production-signed release. Keep release signing keys outside the repository and CI logs.
 

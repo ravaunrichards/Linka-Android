@@ -100,6 +100,128 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
   return payload;
 }
 
+let walletSession = null;
+let walletCursor = null;
+let walletLoadSequence = 0;
+let walletLoading = false;
+
+function setWalletStatus(message, kind = "info") {
+  const status = document.getElementById("walletStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.kind = kind;
+}
+
+function renderWalletBalances(wallet) {
+  const container = document.getElementById("walletBalances");
+  if (!container) return;
+  container.replaceChildren();
+  const values = [
+    ["Purchased", wallet.purchased],
+    ["Promotional", wallet.promotional],
+    ["Sponsored", wallet.sponsored],
+    ["Total", wallet.total, true]
+  ];
+  for (const [label, amount, isTotal] of values) {
+    const card = document.createElement("div");
+    card.className = "wallet-balance-card" + (isTotal ? " total" : "");
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const value = document.createElement("strong");
+    value.textContent = Number(amount).toLocaleString();
+    card.append(caption, value);
+    container.append(card);
+  }
+}
+
+function renderWalletEvents(events, append = false) {
+  const container = document.getElementById("walletLedger");
+  if (!container) return;
+  if (!append) container.replaceChildren();
+  if (events.length === 0 && !append) {
+    const empty = document.createElement("p");
+    empty.className = "wallet-ledger-empty";
+    empty.textContent = "No wallet activity has been recorded for this account.";
+    container.append(empty);
+    return;
+  }
+  for (const event of events) {
+    const row = document.createElement("div");
+    row.className = "wallet-ledger-row";
+    const details = document.createElement("div");
+    const heading = document.createElement("div");
+    heading.className = "wallet-ledger-title";
+    heading.textContent = String(event.eventType || "wallet activity")
+      .replaceAll("_", " ").toLowerCase();
+    const meta = document.createElement("div");
+    meta.className = "wallet-ledger-meta";
+    const time = event.createdAt ? new Date(event.createdAt).toLocaleString() : "Time unavailable";
+    meta.textContent = String(event.creditSource || "credit") + " · " + time;
+    details.append(heading, meta);
+    const amount = document.createElement("div");
+    amount.className = "wallet-ledger-amount";
+    const isDebit = ["CALL_USAGE", "MESSAGE_USAGE", "NUMBER_RENTAL", "NUMBER_RENEWAL"]
+      .includes(event.eventType);
+    amount.textContent = (isDebit ? "−" : "+") +
+      Number(event.amountCreditUnits).toLocaleString() + " credits";
+    row.append(details, amount);
+    container.append(row);
+  }
+}
+
+async function loadWallet({ reset = true } = {}) {
+  if (!walletSession || walletLoading) return;
+  const activeSession = walletSession;
+  const sequence = ++walletLoadSequence;
+  walletLoading = true;
+  const refresh = document.getElementById("walletRefresh");
+  const more = document.getElementById("walletLoadMore");
+  if (refresh) refresh.disabled = true;
+  if (more) more.disabled = true;
+  if (reset) {
+    walletCursor = null;
+    setWalletStatus("Refreshing your account balance…");
+  } else {
+    setWalletStatus("Loading more activity…");
+  }
+
+  try {
+    if (reset) {
+      const snapshot = await apiRequest(activeSession.origin, "/v1/wallet", {
+        token: activeSession.token
+      });
+      if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+      renderWalletBalances(snapshot.wallet);
+    }
+
+    const query = new URLSearchParams({ limit: "10" });
+    if (!reset && walletCursor) {
+      query.set("before", walletCursor.before);
+      query.set("beforeEventId", walletCursor.beforeEventId);
+    }
+    const page = await apiRequest(
+      activeSession.origin,
+      "/v1/wallet/ledger?" + query.toString(),
+      { token: activeSession.token }
+    );
+    if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+    renderWalletEvents(page.events || [], !reset);
+    walletCursor = page.nextCursor || null;
+    if (more) more.hidden = walletCursor === null;
+    setWalletStatus("Balances and wallet activity loaded from your authenticated LINKA account.", "success");
+  } catch (error) {
+    if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+    setWalletStatus(error.message || "Unable to load wallet information.", "error");
+    if (more) more.hidden = walletCursor === null;
+  } finally {
+    if (sequence === walletLoadSequence) {
+      walletLoading = false;
+      if (refresh) refresh.disabled = false;
+      if (more) more.disabled = false;
+    }
+  }
+}
+
 function showStatus(message, kind = "info") {
   const element = document.getElementById("accountStatus");
   element.textContent = message;
@@ -113,7 +235,7 @@ function setBusy(busy) {
   }
 }
 
-function showProfile(profile) {
+function showProfile(profile, origin, token) {
   document.getElementById("accountSignedOut").hidden = true;
   document.getElementById("accountSignedIn").hidden = false;
   document.getElementById("accountProfileName").textContent =
@@ -125,9 +247,15 @@ function showProfile(profile) {
     profile.emailVerified ? "Email verified" : "Email verification is not enabled yet.";
   document.getElementById("accountProfileExpiry").textContent =
     profile.expiresAt ? "Session expires " + new Date(profile.expiresAt).toLocaleString() : "";
+  walletSession = { origin, token };
+  void loadWallet({ reset: true });
 }
 
 function showSignedOut() {
+  walletSession = null;
+  walletCursor = null;
+  walletLoadSequence += 1;
+  walletLoading = false;
   document.getElementById("accountSignedOut").hidden = false;
   document.getElementById("accountSignedIn").hidden = true;
 }
@@ -193,7 +321,7 @@ async function authenticate(mode) {
     sessionStorage.setItem(SESSION_KEY, response.accessToken);
     document.getElementById("accountPassword").value = "";
     const profile = await apiRequest(origin, "/v1/me", { token: response.accessToken });
-    showProfile(profile);
+    showProfile(profile, origin, response.accessToken);
     showStatus(
       mode === "register"
         ? "LINKA account created and this browser device linked successfully."
@@ -215,7 +343,7 @@ async function restoreAccountSession() {
       document.getElementById("accountApiOrigin").value || location.origin
     );
     const profile = await apiRequest(origin, "/v1/me", { token });
-    showProfile(profile);
+    showProfile(profile, origin, token);
     showStatus("Your LINKA account is active in this browser tab.", "success");
   } catch (error) {
     if (shouldClearAccountSession(error.status)) {
@@ -280,6 +408,8 @@ function initializeAccountPage() {
   document.getElementById("accountLogin").addEventListener("click", () => authenticate("login"));
   document.getElementById("accountLogout").addEventListener("click", logout);
   document.getElementById("accountRecovery").addEventListener("click", requestRecovery);
+  document.getElementById("walletRefresh").addEventListener("click", () => loadWallet({ reset: true }));
+  document.getElementById("walletLoadMore").addEventListener("click", () => loadWallet({ reset: false }));
   restoreAccountSession().catch(error => showStatus(error.message, "error"));
 }
 

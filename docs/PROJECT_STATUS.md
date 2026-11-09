@@ -171,14 +171,14 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | End-to-end internet audio/video media and clients | 7% | 0% | 7% |
 | Internal chat and external SMS/MMS | 6% | 0% | 6% |
 | Payment processing, refunds and settlement reconciliation | 6% | 0% | 6% |
-| Full account-based website and browser calling | 5% | 3% | 2% |
+| Full account-based website and browser calling | 5% | 4% | 1% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **43%** | **57%** |
+| **TOTAL** | **100%** | **44%** | **56%** |
 
-**Current full-product completion: 43% | Remaining: 57%.**
+**Current full-product completion: 44% | Remaining: 56%.**
 
-The previous verified checkpoint was 41%. Two further percentage points are credited only to independently tested portions of the existing account-client milestones: one point in the Android phone milestone for injected-client session restore/logout behavior covered by seven passing JVM tests, and one point in the browser milestone for the browser-WebCrypto account lifecycle against a disposable PostgreSQL service, including second-device login, per-device revocation and CORS allow/deny. The API's no-database workflow passed 73 tests with 2 DB-only tests skipped; the PostgreSQL workflow passed all 75 tests and the E2E script. Android CI passed on the newest source commit. These are not physical-device tests or an actual Chrome/Firefox DOM+IndexedDB run. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
+The previous verified checkpoint was 43%. One additional percentage point is credited to the existing browser milestone because the previously present account UI has now passed a real Chromium DOM/IndexedDB lifecycle test against a disposable PostgreSQL-backed API: registration, non-exportable browser device identity, tab-session restoration after reload, separate browser-device login, independent logout and explicit recovery-unavailable messaging. This credit is for a tested account UI slice, not full browser calling. The CI runner setup itself is not counted as product functionality. The earlier Android and browser-WebCrypto verification remains intact. Provider-backed phone numbers, PSTN/SIP, integrated SMS/MMS, Internet media calls, payments, public wallet APIs, email recovery/verification, hosted production database and deployment health remain unfinished.
 
 ## Easy, medium and hard work remaining
 
@@ -215,3 +215,55 @@ Add two focused Android account-client edge-case tests (logout without a saved t
 - Do not deploy or change external service settings during a GitHub-only pass.
 - Do not add provider credentials, private signing keys or payment secrets to source control.
 - Do not claim physical-device tests, provider enablement, emergency calling or independent security review without evidence.
+
+
+## Latest continuation checkpoint — 2026-11-09
+
+**COMPLETION: 44% | REMAINING: 56%**
+
+- Previous verified completion: **43%**.
+- Current verified completion: **44%**.
+- Progress since previous checkpoint: **+1%**.
+- Tested source head: `b07bbb6602f80744cf2e420cbbfa02ce35cc6cc2` on `feature/chromium-account-ui-e2e`.
+- Main branch baseline remains `12221854e5991e436a40aa9f5819c93507c21866`; no main-branch change was made.
+- Draft PR #14: https://github.com/ravaunrichards/Linka-Android/pull/14 — open, unmerged.
+- Last verified milestone: real Chromium browser account UI lifecycle against PostgreSQL CI.
+- Last confirmed action: wired the existing `verify-browser-ui.e2e.mjs` into the API and PostgreSQL CI workflows using Playwright 1.65.0.
+- Recovery confidence: **PARTIALLY RECOVERED**. Repository, branch, source, commits, workflow runs and durable project checkpoint are confirmed. The separate ChatGPT conversation transcript named “Build Virtual Phone App” was not available to this session; no claim is made that its message-by-message history was read.
+
+### Verified evidence
+
+- API CI run [42674508636](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508636): **PASS**. Browser E2E syntax check, API test suite (75 total, 0 failed, 2 PostgreSQL-only skips in this no-database job) and API startup checks passed.
+- PostgreSQL Schema CI run [42674508845](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508845): **PASS**. Migrations applied twice, schema checks passed, 75 tests passed with 0 failed and 0 skipped, existing browser-WebCrypto E2E passed, and Chromium UI test printed: `PASS: Chromium browser UI registration, non-exportable IndexedDB identity, tab session restore, second-context login, independent device logout, recovery limitation and clean page execution.`
+- Android CI run [42674508842](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508842): **PASS**. Debug APK assembly and `:app:testDebugUnitTest` succeeded; artifact upload succeeded.
+- Debug APK artifact: `linka-debug-apk-05739ea1f068ff0894cbe49ac84e7a1a543b662b`, artifact ID `13698388894`, 17,845,193 bytes, expires 2026-12-09. It is a debug APK, not a production-signed release.
+- Regression: existing API, PostgreSQL, account and Android CI checks passed on the PR head. No production deployment or external service change was made.
+
+### Current unfinished work, easiest first
+
+**EASY**
+- Complete native Phone hub usability gaps against the current product requirements; first candidate is persistent user-managed Favorites with no seeded/fake contacts.
+- Keep this checkpoint and the integration matrix synchronized with verified branch changes.
+
+**MEDIUM**
+- Add hosted test-origin browser validation for strict CORS, once a controlled test origin is available.
+- Implement account-backed browser telephone experiences beyond registration/sign-in; current browser remains an account shell.
+- Connect the Android phone experience only to backend capabilities that exist and can be tested.
+
+**HARD / EXTERNAL DEPENDENCIES**
+- Confirmed Jamaican and international telephone-number inventory and provider agreements.
+- SIP/PSTN carrier calling and real inbound routing.
+- External SMS/MMS provider and delivery receipts.
+- End-to-end Internet audio/video media, WebRTC/TURN and production signaling.
+- Payment processing, signed webhooks, refunds and settlement reconciliation.
+- SIM/eSIM provisioning, physical-device calling/mesh tests, independent cryptographic review, regulatory review and production signing.
+- Production service/deployment health and secrets through an explicitly authorized hosting workflow.
+
+**BLOCKERS:** Provider-backed telephone service and live carrier inventory are not available in the verified project evidence. Physical-device tests remain unperformed. Password recovery/email verification remain unavailable because no email-delivery provider is configured.
+
+**LIVE INFORMATION STATUS:** GitHub Actions and source state were retrieved live during this checkpoint. Carrier/provider enablement, Render production health, hosted production database and device-lab status are **not verified**.
+
+**NEXT ACTION:** Inspect and implement the first missing provider-independent native Phone requirement — persistent Favorites — using user-entered records only, with focused unit tests and Android CI. Do not seed demo contacts or claim that this delivers virtual-number/carrier calling.
+
+**DEPLOYMENT STATUS:** Not deployed in this continuation. No production deployment was authorized.
+

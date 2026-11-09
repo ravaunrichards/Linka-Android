@@ -167,7 +167,10 @@ function safeErrorCode(error) {
     "invalid_conversation_members", "conversation_member_not_found", "invalid_page_limit",
     "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
     "invalid_message_attachments", "message_attachments_unavailable",
-    "invalid_message_query", "invalid_message_cursor", "conversation_not_found"
+    "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
+    "invalid_encryption_key", "invalid_encryption_key_proof", "encryption_key_conflict",
+    "device_not_active", "device_identity_invalid", "invalid_encryption_key_query",
+    "too_many_encryption_devices"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -249,6 +252,7 @@ async function handleRequest(req, res) {
           emailVerification: "not_implemented",
           walletHttpApi: "not_implemented",
           internalMessaging: postgresStore ? "available" : "database_required",
+          messageEncryptionKeyRegistry: postgresStore ? "available" : "database_required",
           encryptedAttachmentStorage: "not_implemented"
         },
         limitations: [
@@ -260,7 +264,8 @@ async function handleRequest(req, res) {
           "Password recovery and email verification require an email delivery provider that is not configured.",
           "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented.",
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
-          "Message key distribution, encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
+          "A device-bound P-256 message-encryption public-key registry is available; client-side end-to-end message encryption and decryption are still not implemented or independently verified.",
+          "Encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
         ]
       });
       return;
@@ -438,6 +443,43 @@ async function handleRequest(req, res) {
         runtime.revokeToken(session.token);
       }
       response(res, 200, { status: "signed_out" });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/me/encryption-keys") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-key-register:${session.accountId}:${session.deviceId}:${remote}`, 10, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const key = await postgresStore.registerMessageEncryptionKey({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        keyId: body.keyId,
+        publicKeyBase64: body.publicKeyBase64,
+        signatureBase64: body.signatureBase64
+      });
+      response(res, key.reused ? 200 : 201, { key });
+      return;
+    }
+
+    const conversationKeysRoute = /^\/v1\/conversations\/([^/]+)\/encryption-keys$/.exec(path);
+    if (conversationKeysRoute && req.method === "GET") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-key-list:${session.accountId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const keys = await postgresStore.listConversationEncryptionKeys({
+        accountId: session.accountId,
+        conversationId: conversationKeysRoute[1]
+      });
+      response(res, 200, { keys });
       return;
     }
 

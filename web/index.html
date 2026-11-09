@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1728">
-  <meta name="description" content="LINKA — Jamaica-first communication. View your LINKA network and offline calling roadmap.">
-  <title>LINKA — Connected, even offline</title>
+  <meta name="description" content="LINKA — Jamaica-first field validation and international calling and communication roadmap.">
+  <title>LINKA — Your number. Your choice.</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar" id="sidebar">
-      <a class="brand" href="#overview" aria-label="LINKA home"><span class="brand-mark">L</span><span>LINKA<small>JAMAICA NETWORK</small></span></a>
+      <a class="brand" href="#overview" aria-label="LINKA home"><span class="brand-mark">L</span><span>LINKA<small>JAMAICA + INTERNATIONAL</small></span></a>
       <div class="nav-label">WORKSPACE</div>
       <nav aria-label="Main navigation">
         <a class="nav-link active" href="#overview" data-view="overview"><span>⌂</span> Overview</a>
@@ -30,7 +30,7 @@
       <header class="topbar">
         <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
         <div class="breadcrumb">LINKA <span>/</span> <strong id="currentSection">Overview</strong></div>
-        <div class="top-status"><span class="status-dot"></span> Live LINKA companion</div>
+        <div class="top-status"><span class="status-dot"></span> Development status · browser companion</div>
       </header>
 
       <section class="view active" id="overview">
@@ -38,7 +38,7 @@
           <div class="hero-copy">
             <div class="eyebrow"><span class="pulse"></span> BUILT FOR JAMAICA</div>
             <h1>Stay connected.<br><em>Even offline.</em></h1>
-            <p>LINKA is being built for direct nearby communication and a longer-distance, phone-to-phone relay network — without depending on mobile data or airtime.</p>
+            <p>LINKA combines an existing Android nearby/offline voice foundation with a roadmap for Jamaican and international telephone numbers, internet calling, carrier services and messaging. Physical radio tests and provider integrations are still required.</p>
             <div class="hero-actions"><a class="button primary" href="#mesh" data-view="mesh">Explore the mesh network <span>→</span></a><a class="button secondary" href="#calls" data-view="calls">Calling status</a></div>
           </div>
           <div class="signal-art" aria-hidden="true">
@@ -91,17 +91,17 @@
           <div class="mesh-hop"><span>01</span><b>Caller</b><small>Origin phone</small></div><div class="mesh-hop"><span>02</span><b>Relay A</b><small>Forward ciphertext</small></div><div class="mesh-hop"><span>03</span><b>Relay B</b><small>Forward ciphertext</small></div><div class="mesh-hop"><span>04</span><b>Recipient</b><small>Destination phone</small></div>
         </div>
         <div class="notice warning-box"><strong>Illustration only — no live route exists</strong><p>The nodes above explain the target architecture. They are not connected devices, measured coverage or a working call route.</p></div>
-        <div class="section-heading"><div><div class="eyebrow">REQUIRED ENGINEERING</div><h2>What makes multi-hop calling real</h2></div></div>
-        <div class="requirement-list"><div><span>01</span><div><b>End-to-end encryption</b><p>Only caller and recipient can decrypt voice. Relays see ciphertext only.</p></div><span class="tag pending">Outstanding</span></div><div><span>02</span><div><b>Route discovery</b><p>Find and maintain a valid path across trusted nearby peers.</p></div><span class="tag pending">Outstanding</span></div><div><span>03</span><div><b>Relay forwarding</b><p>Forward bounded, authenticated packets with loop prevention and expiry.</p></div><span class="tag pending">Outstanding</span></div><div><span>04</span><div><b>Jamaica field tests</b><p>Measure range, latency, audio quality, battery and relay gaps in real locations.</p></div><span class="tag pending">Outstanding</span></div></div>
+        <div class="section-heading"><div><div class="eyebrow">IMPLEMENTATION AND RELEASE GATES</div><h2>What is implemented and what still needs proof</h2></div></div>
+        <div class="requirement-list"><div><span>01</span><div><b>End-to-end encryption</b><p>Caller-to-recipient encrypted routed media is implemented in Android source.</p></div><span class="tag progress">Source implemented</span></div><div><span>02</span><div><b>Route discovery</b><p>Signed route discovery, reverse paths, hop limits, expiry and loop/duplicate checks are implemented in Android source.</p></div><span class="tag progress">Source implemented</span></div><div><span>03</span><div><b>Relay forwarding</b><p>Opt-in relays forward opaque end-to-end encrypted payloads in the Android implementation.</p></div><span class="tag progress">Source implemented</span></div><div><span>04</span><div><b>Physical device and Jamaica field tests</b><p>Verify two-way audio, real multi-phone relay chains, latency, range, battery, thermal behavior and Android background operation.</p></div><span class="tag pending">Device tests required</span></div></div>
       </section>
 
       <section class="view" id="about">
-        <div class="page-heading"><div class="eyebrow">ABOUT THE PROJECT</div><h1>LINKA is being built for Jamaica.</h1><p>An Android-first communication network designed around SIM-free nearby communication and a future multi-hop offline relay system.</p></div>
+        <div class="page-heading"><div class="eyebrow">ABOUT THE PROJECT</div><h1>LINKA is being built for Jamaica and international communication.</h1><p>A Jamaica-first field-validation effort with an existing Android nearby/mesh voice foundation and a roadmap for Jamaican and international telephone numbers, carrier services and internet communication.</p></div>
         <div class="notice"><strong>Important distinction</strong><p>This browser companion is a separate web interface. It does not replace the Android app's radio access and it does not provide offline mesh coverage by itself.</p></div>
         <div class="info-row"><div><strong>No false coverage claims</strong><p>Every live route must be measured. A radio gap cannot be crossed without a relay.</p></div><div><strong>No silent carrier fallback</strong><p>Offline calling must fail clearly rather than unexpectedly using chargeable cellular service.</p></div></div>
       </section>
 
-      <footer><span>LINKA © <span id="year"></span></span><span>Jamaica-first · Android + Web companion</span><a href="https://github.com/ravaunrichards/Linka-Android">Source repository ↗</a></footer>
+      <footer><span>LINKA © <span id="year"></span></span><span>Jamaica-first validation · international number scope</span><a href="https://github.com/ravaunrichards/Linka-Android">Source repository ↗</a></footer>
     </main>
   </div>
   <script src="./app.js"></script>

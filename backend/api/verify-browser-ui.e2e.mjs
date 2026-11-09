@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 
+const browserName = (process.env.PLAYWRIGHT_BROWSER ?? "chromium").trim().toLowerCase();
+const browserType = browserName === "chromium"
+  ? chromium
+  : browserName === "firefox"
+    ? firefox
+    : null;
+if (!browserType) {
+  throw new Error('PLAYWRIGHT_BROWSER must be either "chromium" or "firefox".');
+}
 const apiOrigin = new URL(process.env.LINKA_API_URL ?? "http://127.0.0.1:8080").origin;
 const SESSION_KEY = "linka.account.session.v1";
 const browserErrors = [];
@@ -78,9 +87,9 @@ async function openAccountPage(context) {
 }
 
 async function main() {
-  const browser = await chromium.launch({
+  const browser = await browserType.launch({
     headless: true,
-    args: ["--no-sandbox"]
+    ...(browserName === "chromium" ? { args: ["--no-sandbox"] } : {})
   });
   const contexts = [];
   try {
@@ -97,9 +106,9 @@ async function main() {
     );
 
     const unique = randomUUID();
-    const email = "chromium-e2e+" + unique + "@example.test";
-    const password = "LINKA-Chromium-E2E-" + unique;
-    const displayName = "LINKA Chromium E2E";
+    const email = browserName + "-e2e+" + unique + "@example.test";
+    const password = "LINKA-" + browserName + "-E2E-" + unique;
+    const displayName = "LINKA " + browserName + " E2E";
 
     await firstPage.locator("#accountEmail").fill(email);
     await firstPage.locator("#accountDisplayName").fill(displayName);
@@ -169,7 +178,7 @@ async function main() {
     await waitForStatus(firstPage, "Password recovery is not enabled because email delivery is not configured");
 
     assert.deepEqual(browserErrors, [], "browser account page should not raise uncaught JavaScript errors");
-    console.log("PASS: Chromium browser UI registration, non-exportable IndexedDB identity, tab session restore, second-context login, independent device logout, recovery limitation and clean page execution.");
+    console.log("PASS: " + browserName.toUpperCase() + " browser UI registration, non-exportable IndexedDB identity, tab session restore, second-context login, independent device logout, recovery limitation and clean page execution.");
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     await browser.close();

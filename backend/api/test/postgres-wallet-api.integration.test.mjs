@@ -39,6 +39,7 @@ test("HTTP wallet reads are account-scoped, paginated and never accept client ba
 }, async t => {
   const pool = new Pool({ connectionString, max: 3, connectionTimeoutMillis: 5_000 });
   const store = createPostgresStore({ pool });
+  let seedPoolClosed = false;
   const suffix = randomUUID();
   const accounts = [];
 
@@ -112,6 +113,7 @@ test("HTTP wallet reads are account-scoped, paginated and never accept client ba
     });
 
     await store.close();
+    seedPoolClosed = true;
 
     const port = await availablePort();
     const origin = "http://127.0.0.1:" + port;
@@ -135,7 +137,7 @@ test("HTTP wallet reads are account-scoped, paginated and never accept client ba
         await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 2_000))]);
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       }
-      await pool.end();
+      if (!seedPoolClosed) await pool.end();
     });
 
     await waitForHealth(origin, child);
@@ -226,7 +228,7 @@ test("HTTP wallet reads are account-scoped, paginated and never accept client ba
       assert.equal(invalidCursor.body.error, "invalid_wallet_cursor");
     });
   } catch (error) {
-    if (!pool.ended) await pool.end().catch(() => {});
+    if (!seedPoolClosed) await pool.end().catch(() => {});
     throw error;
   }
 });

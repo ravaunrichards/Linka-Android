@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { LinkaRuntime } from "./runtime.mjs";
 import { createPostgresStore } from "./postgres-store.mjs";
 import { createCorsPolicy } from "./cors.mjs";
+import { normalizeE164 } from "./domain/e164.mjs";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
@@ -150,7 +151,7 @@ function safeErrorCode(error) {
     "device_identity_mismatch", "device_identity_conflict", "device_revoked",
     "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
     "authentication_store_unavailable", "account_recovery_unavailable",
-    "email_verification_unavailable"
+    "email_verification_unavailable", "invalid_e164"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -241,6 +242,25 @@ async function handleRequest(req, res) {
           "Password recovery and email verification require an email delivery provider that is not configured.",
           "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented."
         ]
+      });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/destinations/normalize") {
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`normalize-number:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const normalizedNumber = normalizeE164(body?.number);
+      response(res, 200, {
+        normalizedNumber,
+        format: "E.164",
+        validation: "syntax_only",
+        destinationResolution: "not_performed",
+        numberType: "unknown",
+        providerReachability: "not_checked"
       });
       return;
     }

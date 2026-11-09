@@ -139,6 +139,16 @@ async function requireAuth(req, res) {
   return null;
 }
 
+async function requireAccountAuth(req, res) {
+  const session = await requireAuth(req, res);
+  if (!session) return null;
+  if (session.authType !== "account" || !session.accountId) {
+    response(res, 403, { error: "account_auth_required" });
+    return null;
+  }
+  return session;
+}
+
 function safeErrorCode(error) {
   const allowed = new Set([
     "invalid_device_id", "invalid_public_key", "unsupported_public_key",
@@ -152,7 +162,12 @@ function safeErrorCode(error) {
     "device_identity_mismatch", "device_identity_conflict", "device_revoked",
     "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
     "authentication_store_unavailable", "account_recovery_unavailable",
-    "email_verification_unavailable", "invalid_e164", "invalid_destination_number"
+    "email_verification_unavailable", "invalid_e164", "invalid_destination_number",
+    "account_auth_required", "invalid_conversation", "invalid_conversation_kind",
+    "invalid_conversation_members", "conversation_member_not_found", "invalid_page_limit",
+    "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
+    "invalid_message_attachments", "message_attachments_unavailable",
+    "invalid_message_query", "invalid_message_cursor", "conversation_not_found"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -419,6 +434,79 @@ async function handleRequest(req, res) {
         runtime.revokeToken(session.token);
       }
       response(res, 200, { status: "signed_out" });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/conversations") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`conversation-list:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+      const conversations = await postgresStore.listConversations(session.accountId, limit);
+      response(res, 200, { conversations });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/conversations") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`conversation-create:${session.accountId}:${remote}`, 20, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const conversation = await postgresStore.createConversation({
+        accountId: session.accountId,
+        kind: body.kind,
+        participantAccountIds: body.participantAccountIds
+      });
+      response(res, conversation.reused ? 200 : 201, conversation);
+      return;
+    }
+
+    const messageRoute = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(path);
+    if (messageRoute && req.method === "POST") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-send:${session.accountId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const message = await postgresStore.sendInternalMessage({
+        accountId: session.accountId,
+        conversationId: messageRoute[1],
+        ciphertext: body.ciphertext,
+        encryptionVersion: body.encryptionVersion,
+        attachmentManifest: body.attachmentManifest
+      });
+      response(res, 201, { message });
+      return;
+    }
+
+    if (messageRoute && req.method === "GET") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-read:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+      const before = url.searchParams.get("before");
+      const messages = await postgresStore.listInternalMessages({
+        accountId: session.accountId,
+        conversationId: messageRoute[1],
+        limit,
+        before
+      });
+      response(res, 200, { messages });
       return;
     }
 

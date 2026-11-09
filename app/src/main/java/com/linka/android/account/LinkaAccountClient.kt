@@ -35,20 +35,54 @@ class LinkaAccountException(
     val httpStatus: Int? = null
 ) : Exception(message)
 
-private class EncryptedAccountTokenStore(context: Context) {
+internal interface AccountTokenStore {
+    fun getServerUrl(): String
+    fun saveServerUrl(value: String)
+    fun saveToken(token: String)
+    fun readToken(): String?
+    fun clearToken()
+}
+
+internal interface AccountDeviceIdentity {
+    val deviceId: String
+    val publicKeyBase64: String
+    val publicKeyFingerprint: String
+    fun sign(data: ByteArray): ByteArray
+}
+
+internal interface AccountApiTransport {
+    fun execute(
+        baseUrl: String,
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        bearerToken: String? = null
+    ): JSONObject
+}
+
+private class AndroidAccountDeviceIdentity(
+    private val identity: LocalDeviceIdentity
+) : AccountDeviceIdentity {
+    override val deviceId: String get() = identity.deviceId
+    override val publicKeyBase64: String get() = identity.publicKeyBase64
+    override val publicKeyFingerprint: String get() = identity.publicKeyFingerprint
+    override fun sign(data: ByteArray): ByteArray = identity.sign(data)
+}
+
+private class EncryptedAccountTokenStore(context: Context) : AccountTokenStore {
     private val preferences = context.applicationContext
         .getSharedPreferences("linka_account_session", Context.MODE_PRIVATE)
 
-    fun getServerUrl(): String =
+    override fun getServerUrl(): String =
         preferences.getString("api_base_url", EMULATOR_API_URL) ?: EMULATOR_API_URL
 
-    fun saveServerUrl(value: String) {
+    override fun saveServerUrl(value: String) {
         check(preferences.edit().putString("api_base_url", value.trim()).commit()) {
             "Unable to save LINKA API address."
         }
     }
 
-    fun saveToken(token: String) {
+    override fun saveToken(token: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(token.toByteArray(StandardCharsets.UTF_8))
@@ -58,7 +92,7 @@ private class EncryptedAccountTokenStore(context: Context) {
         check(editor.commit()) { "Unable to securely save the LINKA account session." }
     }
 
-    fun readToken(): String? {
+    override fun readToken(): String? {
         val ivValue = preferences.getString("token_iv", null) ?: return null
         val encryptedValue = preferences.getString("token_ciphertext", null) ?: return null
         return runCatching {
@@ -74,7 +108,7 @@ private class EncryptedAccountTokenStore(context: Context) {
         }
     }
 
-    fun clearToken() {
+    override fun clearToken() {
         check(
             preferences.edit()
                 .remove("token_iv")
@@ -110,13 +144,87 @@ private class EncryptedAccountTokenStore(context: Context) {
     }
 }
 
+private class HttpUrlConnectionAccountTransport : AccountApiTransport {
+    override fun execute(
+        baseUrl: String,
+        method: String,
+        path: String,
+        body: JSONObject?,
+        bearerToken: String?
+    ): JSONObject {
+        val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 10_000
+            readTimeout = 15_000
+            useCaches = false
+            doInput = true
+            setRequestProperty("Accept", "application/json")
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            if (bearerToken != null) setRequestProperty("Authorization", "Bearer " + bearerToken)
+        }
+
+        try {
+            if (body != null) {
+                connection.outputStream.use { output ->
+                    output.write(body.toString().toByteArray(StandardCharsets.UTF_8))
+                }
+            }
+
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val responseText = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+            val json = runCatching { JSONObject(responseText) }.getOrElse { JSONObject() }
+            if (status !in 200..299) {
+                val code = json.optString("error").ifBlank { "request_failed" }
+                throw LinkaAccountException(code, messageFor(code), status)
+            }
+            return json
+        } catch (error: LinkaAccountException) {
+            throw error
+        } catch (error: Exception) {
+            throw LinkaAccountException(
+                "network_unavailable",
+                "Cannot reach LINKA at $baseUrl. Check the server address and network."
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun messageFor(code: String): String = when (code) {
+        "invalid_credentials" -> "Email or password is incorrect."
+        "email_already_registered" -> "An account already exists for this email."
+        "device_already_linked" -> "This LINKA device is already linked to another account."
+        "device_revoked" -> "This device has been revoked. Contact LINKA support."
+        "rate_limited" -> "Too many attempts. Try again later."
+        "database_not_configured" -> "Account service is not available on this server yet."
+        "account_recovery_unavailable" -> "Password recovery is not enabled because email delivery is not configured."
+        else -> "LINKA could not complete the request ($code)."
+    }
+}
+
 /**
  * Calls the existing signed-device account API. Device signing remains in the
  * Android Keystore-backed LocalDeviceIdentity; account tokens are AES-GCM
  * encrypted with a separate Android Keystore key before SharedPreferences use.
+ *
+ * The internal constructor accepts test doubles for session storage, device
+ * identity and transport so restore/logout behavior can be tested without
+ * pretending that a local JVM has an Android Keystore.
  */
-class LinkaAccountClient(context: Context, private val identity: LocalDeviceIdentity) {
-    private val store = EncryptedAccountTokenStore(context)
+class LinkaAccountClient internal constructor(
+    private val store: AccountTokenStore,
+    private val identity: AccountDeviceIdentity,
+    private val transport: AccountApiTransport
+) {
+    constructor(context: Context, identity: LocalDeviceIdentity) : this(
+        EncryptedAccountTokenStore(context),
+        AndroidAccountDeviceIdentity(identity),
+        HttpUrlConnectionAccountTransport()
+    )
 
     fun serverUrl(): String = store.getServerUrl()
 
@@ -232,48 +340,7 @@ class LinkaAccountClient(context: Context, private val identity: LocalDeviceIden
         path: String,
         body: JSONObject? = null,
         bearerToken: String? = null
-    ): JSONObject {
-        val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 10_000
-            readTimeout = 15_000
-            useCaches = false
-            doInput = true
-            setRequestProperty("Accept", "application/json")
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-            if (bearerToken != null) setRequestProperty("Authorization", "Bearer " + bearerToken)
-        }
-
-        try {
-            if (body != null) {
-                connection.outputStream.use { output ->
-                    output.write(body.toString().toByteArray(StandardCharsets.UTF_8))
-                }
-            }
-
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val responseText = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-            val json = runCatching { JSONObject(responseText) }.getOrElse { JSONObject() }
-            if (status !in 200..299) {
-                val code = json.optString("error").ifBlank { "request_failed" }
-                throw LinkaAccountException(code, messageFor(code), status)
-            }
-            return json
-        } catch (error: LinkaAccountException) {
-            throw error
-        } catch (error: Exception) {
-            throw LinkaAccountException(
-                "network_unavailable",
-                "Cannot reach LINKA at $baseUrl. Check the server address and network."
-            )
-        } finally {
-            connection.disconnect()
-        }
-    }
+    ): JSONObject = transport.execute(baseUrl, method, path, body, bearerToken)
 
     private fun profileFrom(json: JSONObject): LinkaAccountProfile {
         val accountId = json.optString("accountId")
@@ -313,16 +380,5 @@ class LinkaAccountClient(context: Context, private val identity: LocalDeviceIden
             )
         }
         return raw
-    }
-
-    private fun messageFor(code: String): String = when (code) {
-        "invalid_credentials" -> "Email or password is incorrect."
-        "email_already_registered" -> "An account already exists for this email."
-        "device_already_linked" -> "This LINKA device is already linked to another account."
-        "device_revoked" -> "This device has been revoked. Contact LINKA support."
-        "rate_limited" -> "Too many attempts. Try again later."
-        "database_not_configured" -> "Account service is not available on this server yet."
-        "account_recovery_unavailable" -> "Password recovery is not enabled because email delivery is not configured."
-        else -> "LINKA could not complete the request ($code)."
     }
 }

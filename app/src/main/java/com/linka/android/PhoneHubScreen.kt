@@ -432,7 +432,7 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = favoriteName,
-                        onValueChange = { favoriteName = it.take(40) },
+                        onValueChange = { favoriteName = it.take(40); favoriteError = null },
                         singleLine = true,
                         label = { Text("Name") },
                         placeholder = { Text("e.g. Family") },
@@ -441,7 +441,7 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                     )
                     OutlinedTextField(
                         value = favoriteNumber,
-                        onValueChange = { favoriteNumber = it.take(24) },
+                        onValueChange = { favoriteNumber = it.take(24); favoriteError = null },
                         singleLine = true,
                         label = { Text("Phone number") },
                         placeholder = { Text("+1 876 555 0100") },

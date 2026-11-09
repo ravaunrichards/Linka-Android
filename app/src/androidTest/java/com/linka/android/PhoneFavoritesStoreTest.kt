@@ -86,6 +86,14 @@ class PhoneFavoritesStoreTest {
     }
 
     @Test
+    fun incompleteEncryptedRecordFailsClosedAndClearsBothKeys() {
+        preferences.edit().putString(KEY_IV, Base64.encodeToString(ByteArray(12), Base64.NO_WRAP)).commit()
+
+        assertTrue(PhoneFavoritesStore(context).load().isEmpty())
+        assertTrue("Partial encrypted record should be cleared", preferences.all.isEmpty())
+    }
+
+    @Test
     fun missingKeystoreKeyFailsClosedAndClearsOldCiphertext() {
         PhoneFavoritesStore(context).save(
             listOf(PhoneFavoritesCodec.createFavorite("family-1", "Family", "+18765550100")!!)

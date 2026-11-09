@@ -48,6 +48,19 @@ API CI tests the allowed-origin preflight, the rejected-origin preflight, origin
 - `GET /v1/info` — API version, signaling mode and explicit limitations.
 - `POST /v1/destinations/normalize` — rate-limited E.164 syntax normalization; this does not infer country/number type or check provider reachability.
 - `POST /v1/destinations/resolve` — rate-limited numbering-plan validation with country candidates and number type from `libphonenumber-js/max`; provider assignment and reachability remain unchecked.
+
+## Authenticated internal messaging
+
+PostgreSQL-backed account sessions can use the following routes:
+
+- `GET /v1/conversations?limit=50` — list the signed-in account's active direct and group conversations, member display names, and latest-message metadata.
+- `POST /v1/conversations` — create or reuse a direct conversation, or create a group. The request supplies `kind` (`direct` or `group`) and recipient `participantAccountIds`; the server adds the authenticated account as a member. Direct conversations are reused for the same active two-account pair. Group conversations allow up to 50 total members.
+- `POST /v1/conversations/:conversationId/messages` — send base64-encoded opaque ciphertext and an `encryptionVersion`. The sender account ID is taken from the authenticated session, never from the request body. Payload ciphertext is limited to 12 KiB.
+- `GET /v1/conversations/:conversationId/messages?limit=50` — retrieve the newest messages for a conversation. Results include sender account IDs, ciphertext, encryption version and server timestamps.
+
+All messaging routes require a persisted account session and active conversation membership. A device-challenge token without an account session is insufficient. Unknown or inaccessible conversations return the same 404 response to prevent membership enumeration. Requests are rate-limited per account and remote address.
+
+**Security boundary:** the API stores message payloads as opaque ciphertext bytes and never decrypts them. That does not independently prove that a client encrypted the payload correctly. Client key registration/distribution and audited end-to-end encryption are still required. Encrypted attachments are deliberately rejected with HTTP 501 until a secure upload, ownership validation and object-storage path exist. Delivery/read receipts, message edit/delete and client UI integration are also not complete.
 - `OPTIONS` — CORS preflight for configured cross-origin browser clients.
 
 ## Account authentication

@@ -208,7 +208,7 @@ BEGIN
 END;
 $wallet_tests$;
 
-DO DO $cross_account_tests$
+DO $cross_account_tests$
 DECLARE
     caught BOOLEAN;
 BEGIN
@@ -284,7 +284,7 @@ BEGIN
 END;
 $cross_account_tests$;
 
-$uniqueness_tests$
+DO $uniqueness_tests$
 DECLARE
     caught BOOLEAN := FALSE;
 BEGIN

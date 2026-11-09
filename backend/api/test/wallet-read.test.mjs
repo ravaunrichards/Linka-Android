@@ -118,7 +118,7 @@ test("accepts the stable cursor for the next page without exposing another accou
   assert.equal(page.events[0].eventId, "event-1");
   assert.equal(page.nextCursor, null);
   assert.deepEqual(pool.calls[0].values, [
-    ACCOUNT, 3, "2026-11-09T12:02:00.000Z", "event-2"
+    ACCOUNT, 3, new Date("2026-11-09T12:02:00.000Z"), "event-2"
   ]);
   assert.notEqual(pool.calls[0].values[0], OTHER);
 });

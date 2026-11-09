@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Current verified main is `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest functional source revision with green API/Android CI is `124cfdb60b5d24ad77576bc72bb331fb48e5f316`; subsequent commits in the checkpoint chain changed documentation only.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|

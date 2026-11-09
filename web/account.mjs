@@ -1,6 +1,7 @@
 import {
   generateBrowserSigningIdentity,
   shouldClearAccountSession,
+  signBrowserMessagingKey,
   signLinkaDeviceChallenge
 } from "./auth-crypto.mjs";
 import {
@@ -314,12 +315,20 @@ async function getOrCreateBrowserEncryptionIdentity() {
 
 async function registerBrowserEncryptionKey(origin, token) {
   browserMessagingIdentity = await getOrCreateBrowserEncryptionIdentity();
+  const signingIdentity = await getOrCreateBrowserIdentity();
+  const signatureBase64 = await signBrowserMessagingKey(
+    signingIdentity.privateKey,
+    signingIdentity.deviceId,
+    browserMessagingIdentity.algorithm,
+    browserMessagingIdentity.publicKeyBase64
+  );
   const registered = await apiRequest(origin, "/v1/me/encryption-key", {
     method: "PUT",
     token,
     body: {
       algorithm: browserMessagingIdentity.algorithm,
-      publicKeyBase64: browserMessagingIdentity.publicKeyBase64
+      publicKeyBase64: browserMessagingIdentity.publicKeyBase64,
+      signatureBase64
     }
   });
   return registered;

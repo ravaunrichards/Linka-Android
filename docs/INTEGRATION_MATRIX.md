@@ -39,15 +39,16 @@ This matrix separates repository evidence from device, provider and production p
 
 ## CI and repository evidence recovered
 
-- Latest Android-tested main revision: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`.
-- LINKA API CI run 42665527245 passed on `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`: 75 tests total, 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and CORS preflight checks passed.
-- PostgreSQL Schema CI run 42665527585 passed on `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`: 75 tests passed, 0 failed, 0 skipped; migrations, schema checks, account HTTP integration, readiness and browser-WebCrypto account E2E all passed.
-- Android CI run 42665968552 passed on `ebe1490459da2b758cb7f08d9012fea425ecb1aa`: Gradle 8.14.4 debug APK assembly, `:app:testDebugUnitTest`, source revision metadata, artifact upload and cleanup all succeeded.
-- Latest debug APK artifact `linka-debug-apk-ebe1490459da2b758cb7f08d9012fea425ecb1aa` (GitHub artifact ID `13696198097`; 17,845,189 bytes; expires 2026-12-09). It is a debug APK, not a production-signed release.
-- The browser-WebCrypto E2E creates an account, authenticates a second signed browser identity on the same account, tests CORS allow/deny, checks the explicitly unavailable password recovery route, revokes one account session without invalidating the other device, then revokes the remaining session.
+- Latest Android-tested main source revision: `800fa72e422bc8855912fa31d44e65a5623bda40`.
+- LINKA API CI run 42677946243 passed on `814be0cd77904872e941133a76d9830dc7ba9b97`: 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; browser module syntax, asset routes, API startup and CORS checks passed.
+- PostgreSQL Schema CI run 42677952248 passed on `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`: 75 passed, 0 failed, 0 skipped; migrations, schema/wallet checks, account API integration and readiness passed. Both the Node WebCrypto/PostgreSQL account E2E and the real Chromium DOM/IndexedDB account UI E2E printed PASS.
+- Android account edge-case CI run 42670913670 passed on `472a590500e19f657746db77a0d15f5bac36ad07`: debug APK assembly and Android JVM unit tests passed.
+- Latest main checkpoint Android CI run 42678530091 passed on `800fa72e422bc8855912fa31d44e65a5623bda40`: Gradle 8.14.4 debug APK assembly, `:app:testDebugUnitTest`, source revision metadata and artifact upload passed.
+- Latest debug APK artifact `linka-debug-apk-800fa72e422bc8855912fa31d44e65a5623bda40` (GitHub artifact ID `13701836521`; 17,845,187 bytes; SHA-256 `7eb20593c9f861db534ba7a1233f0b41387d999449714717da6ed201b3262333`; expires 2026-12-09). It is a debug APK, not a production-signed release.
+- The Chromium browser UI E2E creates an account, persists a non-exportable P-256 private key in IndexedDB, restores the tab-scoped session after reload, signs into the same account in a separate browser context with a distinct device identity/token, revokes one device independently, verifies the recovery-unavailable message and detects uncaught page errors.
 - Account integration verifies signed-device registration/login, duplicate device/email rejection, persistent token hashes, second-device login and logout revocation.
 - Password reset/email verification are not live-enabled; no email provider is configured.
-- Render, carrier, payment, tariff and device-lab services have not been live-verified.
+- Render, carrier, payment, tariff and physical-device services have not been live-verified.
 
 ## Status update rule
 

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,10 +35,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import java.util.UUID
 
 /**
  * Premium LINKA phone hub.
@@ -56,7 +61,13 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun PhoneHubScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val favoritesStore = remember(context) { PhoneFavoritesStore(context) }
+    var favorites by remember { mutableStateOf(favoritesStore.load()) }
     var number by rememberSaveable { mutableStateOf("") }
+    var showFavoriteEditor by rememberSaveable { mutableStateOf(false) }
+    var favoriteName by rememberSaveable { mutableStateOf("") }
+    var favoriteNumber by rememberSaveable { mutableStateOf("") }
+    var favoriteError by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun launchSystemIntent(intent: Intent, unavailableMessage: String) {
         try {
@@ -70,6 +81,40 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
 
     fun normalizedNumber(): String =
         number.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+
+    fun persistFavorites(updated: List<PhoneFavorite>): Boolean {
+        return runCatching { favoritesStore.save(updated) }
+            .onSuccess { favorites = updated }
+            .onFailure {
+                Toast.makeText(
+                    context,
+                    "LINKA could not securely save favourites on this device.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            .isSuccess
+    }
+
+    fun openFavoriteEditor(prefillNumber: String = "") {
+        favoriteName = ""
+        favoriteNumber = prefillNumber
+        favoriteError = null
+        showFavoriteEditor = true
+    }
+
+    fun dialFavorite(favorite: PhoneFavorite) {
+        launchSystemIntent(
+            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", favorite.number, null)),
+            "No compatible phone dialer is installed."
+        )
+    }
+
+    fun messageFavorite(favorite: PhoneFavorite) {
+        launchSystemIntent(
+            Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", favorite.number, null)),
+            "No SMS app is available on this phone."
+        )
+    }
 
     LazyColumn(
         modifier = modifier,
@@ -223,6 +268,90 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                    OutlinedButton(
+                        onClick = { openFavoriteEditor(normalizedNumber()) },
+                        enabled = PhoneFavoritesCodec.normalizePhoneNumber(normalizedNumber()) != null,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Save number to favourites")
+                    }
+                }
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "FAVOURITES",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { openFavoriteEditor() }) {
+                        Text("Add favourite")
+                    }
+                }
+                if (favorites.isEmpty()) {
+                    Text(
+                        "No favourites saved. Add a number you use often; LINKA stores favourites securely on this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        items(favorites, key = { favorite -> "favorite-${favorite.id}" }) { favorite ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(favorite.name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        favorite.number,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { dialFavorite(favorite) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Outlined.Phone, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text("Dial")
+                        }
+                        OutlinedButton(
+                            onClick = { messageFavorite(favorite) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text("Message")
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            persistFavorites(favorites.filterNot { it.id == favorite.id })
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Remove")
+                    }
                 }
             }
         }
@@ -293,6 +422,71 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+
+    if (showFavoriteEditor) {
+        AlertDialog(
+            onDismissRequest = { showFavoriteEditor = false },
+            title = { Text("Add phone favourite") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = favoriteName,
+                        onValueChange = { favoriteName = it.take(40) },
+                        singleLine = true,
+                        label = { Text("Name") },
+                        placeholder = { Text("e.g. Family") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = favoriteError != null
+                    )
+                    OutlinedTextField(
+                        value = favoriteNumber,
+                        onValueChange = { favoriteNumber = it.take(24) },
+                        singleLine = true,
+                        label = { Text("Phone number") },
+                        placeholder = { Text("+1 876 555 0100") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = favoriteError != null
+                    )
+                    favoriteError?.let { error ->
+                        Text(
+                            error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        "Saved encrypted on this Android device. No contacts are uploaded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val favorite = PhoneFavoritesCodec.createFavorite(
+                            id = UUID.randomUUID().toString(),
+                            name = favoriteName,
+                            number = favoriteNumber
+                        )
+                        if (favorite == null) {
+                            favoriteError = "Enter a name and a valid phone number."
+                        } else if (persistFavorites(PhoneFavoritesCodec.add(favorites, favorite))) {
+                            showFavoriteEditor = false
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFavoriteEditor = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

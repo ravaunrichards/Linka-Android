@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign as signSignature } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,17 @@ function p256PublicKey() {
     format: "der",
     type: "spki"
   });
+}
+
+function signEncryptionKey(device, publicKeyDer) {
+  const fingerprint = createHash("sha256").update(publicKeyDer).digest("hex").toUpperCase();
+  const statement = Buffer.from([
+    "LINKA-MESSAGING-KEY-V1",
+    device.deviceId,
+    "ECDH-P256",
+    fingerprint
+  ].join("\\n"), "utf8");
+  return signSignature("sha256", statement, device.signingPrivateKey).toString("base64");
 }
 
 function makeEnvelope(deviceId, keyVersion) {
@@ -84,7 +95,8 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
     for (const [index, item] of deviceRows.entries()) {
       const account = accounts[item.accountIndex];
       const deviceId = randomUUID();
-      const signingPublicKey = Buffer.alloc(64, index + 31);
+      const signingPair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const signingPublicKey = signingPair.publicKey.export({ format: "der", type: "spki" });
       const fingerprint = createHash("sha256").update(signingPublicKey).digest("hex").toUpperCase();
       const token = randomBytes(32).toString("base64url");
       await pool.query(
@@ -99,7 +111,14 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
         "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, now(), now() + interval '1 hour')",
         [randomUUID(), account.accountId, deviceId, createHash("sha256").update(token).digest()]
       );
-      devices.push({ deviceId, accountId: account.accountId, token, encryptionPublicKey: null, keyVersion: null });
+      devices.push({
+        deviceId,
+        accountId: account.accountId,
+        token,
+        signingPrivateKey: signingPair.privateKey,
+        encryptionPublicKey: null,
+        keyVersion: null
+      });
     }
 
     const port = await availablePort();
@@ -145,7 +164,8 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
         device.encryptionPublicKey = p256PublicKey();
         const result = await request(device, "/v1/me/encryption-key", "PUT", {
           algorithm: "ECDH-P256",
-          publicKeyBase64: device.encryptionPublicKey.toString("base64")
+          publicKeyBase64: device.encryptionPublicKey.toString("base64"),
+          signatureBase64: signEncryptionKey(device, device.encryptionPublicKey)
         });
         assert.ok([200, 201].includes(result.status));
         assert.equal(result.body.deviceId, device.deviceId);
@@ -249,7 +269,8 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
       const rotated = p256PublicKey();
       const response = await request(devices[1], "/v1/me/encryption-key", "PUT", {
         algorithm: "ECDH-P256",
-        publicKeyBase64: rotated.toString("base64")
+        publicKeyBase64: rotated.toString("base64"),
+        signatureBase64: signEncryptionKey(devices[1], rotated)
       });
       assert.equal(response.status, 201);
       assert.equal(response.body.keyVersion, 2);
@@ -270,7 +291,8 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
 
     await t.test("refuses sends until a newly active device has registered an encryption key", async () => {
       const extraDeviceId = randomUUID();
-      const signingPublicKey = Buffer.alloc(64, 49);
+      const extraSigningPair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const signingPublicKey = extraSigningPair.publicKey.export({ format: "der", type: "spki" });
       const token = randomBytes(32).toString("base64url");
       const fingerprint = createHash("sha256").update(signingPublicKey).digest("hex").toUpperCase();
       await pool.query(

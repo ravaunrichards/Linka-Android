@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
 import { Pool } from "pg";
 import {
   createAccessToken,
@@ -414,6 +414,180 @@ export function createPostgresStore({
     return result.rows[0] ?? null;
   }
 
+  async function registerMessageEncryptionKey(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_encryption_key");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const deviceId = requireUuid(input.deviceId, "deviceId");
+    const keyId = requireUuid(input.keyId, "keyId");
+    if (typeof input.publicKeyBase64 !== "string" ||
+        input.publicKeyBase64.length < 80 || input.publicKeyBase64.length > 1024 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.publicKeyBase64)) {
+      fail("invalid_encryption_key");
+    }
+    const publicKeyDer = Buffer.from(input.publicKeyBase64, "base64");
+    if (publicKeyDer.length < 64 || publicKeyDer.length > 512 ||
+        publicKeyDer.toString("base64") !== input.publicKeyBase64) {
+      fail("invalid_encryption_key");
+    }
+    let encryptionPublicKey;
+    try {
+      encryptionPublicKey = createPublicKey({
+        key: publicKeyDer,
+        format: "der",
+        type: "spki"
+      });
+    } catch {
+      fail("invalid_encryption_key");
+    }
+    if (encryptionPublicKey.asymmetricKeyType !== "ec" ||
+        encryptionPublicKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
+      fail("invalid_encryption_key", "Message encryption keys must use P-256 ECDH.", 400);
+    }
+
+    if (typeof input.signatureBase64 !== "string" ||
+        input.signatureBase64.length < 80 || input.signatureBase64.length > 1024 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.signatureBase64)) {
+      fail("invalid_encryption_key_proof");
+    }
+    const signature = Buffer.from(input.signatureBase64, "base64");
+    if (signature.length < 64 || signature.length > 128 ||
+        signature.toString("base64") !== input.signatureBase64) {
+      fail("invalid_encryption_key_proof");
+    }
+
+    const fingerprint = createHash("sha256").update(publicKeyDer).digest("hex").toUpperCase();
+    const statement = [
+      "LINKA-MESSAGE-ENCRYPTION-KEY-V1",
+      accountId,
+      deviceId,
+      keyId,
+      fingerprint
+    ].join("\n");
+
+    return transaction(async client => {
+      const device = await client.query(
+        "SELECT signing_public_key_der, revoked_at FROM linka_private.user_devices " +
+        "WHERE account_id = $1::uuid AND device_id = $2::uuid FOR UPDATE",
+        [accountId, deviceId]
+      );
+      if (device.rows.length === 0 || device.rows[0].revoked_at != null) {
+        fail("device_not_active", "The authenticated device is not active.", 403);
+      }
+      let signingPublicKey;
+      try {
+        signingPublicKey = createPublicKey({
+          key: device.rows[0].signing_public_key_der,
+          format: "der",
+          type: "spki"
+        });
+      } catch {
+        fail("device_identity_invalid", "The registered device signing key is invalid.", 403);
+      }
+      if (!verify("sha256", Buffer.from(statement, "utf8"), signingPublicKey, signature)) {
+        fail("invalid_encryption_key_proof", "The message encryption key is not signed by this device identity.", 403);
+      }
+
+      const prior = await client.query(
+        "SELECT public_key_der, is_current, created_at " +
+        "FROM linka_private.message_encryption_keys " +
+        "WHERE key_id = $1::uuid AND account_id = $2::uuid AND device_id = $3::uuid FOR UPDATE",
+        [keyId, accountId, deviceId]
+      );
+      const priorRow = prior.rows[0] ?? null;
+      if (priorRow && !Buffer.from(priorRow.public_key_der).equals(publicKeyDer)) {
+        fail("encryption_key_conflict", "This key ID is already bound to different public-key bytes.", 409);
+      }
+
+      await client.query(
+        "UPDATE linka_private.message_encryption_keys " +
+        "SET is_current = FALSE, retired_at = COALESCE(retired_at, now()) " +
+        "WHERE device_id = $1::uuid AND account_id = $2::uuid AND is_current = TRUE AND key_id <> $3::uuid",
+        [deviceId, accountId, keyId]
+      );
+
+      let createdAt;
+      if (priorRow) {
+        const activated = await client.query(
+          "UPDATE linka_private.message_encryption_keys " +
+          "SET is_current = TRUE, retired_at = NULL " +
+          "WHERE key_id = $1::uuid AND account_id = $2::uuid AND device_id = $3::uuid " +
+          "RETURNING created_at",
+          [keyId, accountId, deviceId]
+        );
+        createdAt = activated.rows[0].created_at;
+      } else {
+        const inserted = await client.query(
+          "INSERT INTO linka_private.message_encryption_keys " +
+          "(key_id, account_id, device_id, public_key_der, key_fingerprint, is_current) " +
+          "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, $5::char(64), TRUE) " +
+          "RETURNING created_at",
+          [keyId, accountId, deviceId, publicKeyDer, fingerprint]
+        );
+        createdAt = inserted.rows[0].created_at;
+      }
+
+      return Object.freeze({
+        keyId,
+        accountId,
+        deviceId,
+        publicKeyBase64: input.publicKeyBase64,
+        fingerprint,
+        isCurrent: true,
+        createdAt: isoDate(createdAt, "message encryption key creation"),
+        reused: Boolean(priorRow)
+      });
+    });
+  }
+
+  async function listConversationEncryptionKeys(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_encryption_key_query");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+
+    const access = await pool.query(
+      "SELECT 1 FROM linka_private.conversation_members " +
+      "WHERE conversation_id = $1::uuid AND account_id = $2::uuid AND left_at IS NULL",
+      [conversationId, accountId]
+    );
+    if (access.rows.length === 0) {
+      fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+    }
+
+    const result = await pool.query(
+      "SELECT k.key_id, k.account_id, k.device_id, " +
+      "encode(k.public_key_der, 'base64') AS public_key_base64, " +
+      "k.key_fingerprint, k.created_at, a.display_name, d.platform " +
+      "FROM linka_private.conversation_members cm " +
+      "JOIN linka_private.message_encryption_keys k " +
+      "ON k.account_id = cm.account_id AND k.is_current = TRUE " +
+      "JOIN linka_private.user_devices d " +
+      "ON d.device_id = k.device_id AND d.account_id = k.account_id " +
+      "JOIN linka_private.accounts a ON a.account_id = k.account_id " +
+      "WHERE cm.conversation_id = $1::uuid AND cm.left_at IS NULL AND d.revoked_at IS NULL " +
+      "ORDER BY k.account_id, k.device_id LIMIT 101",
+      [conversationId]
+    );
+    if (result.rows.length > 100) {
+      fail("too_many_encryption_devices", "This conversation has too many active encryption devices.", 409);
+    }
+    return Object.freeze(result.rows.map(row => Object.freeze({
+      keyId: row.key_id,
+      accountId: row.account_id,
+      deviceId: row.device_id,
+      publicKeyBase64: row.public_key_base64,
+      fingerprint: row.key_fingerprint,
+      displayName: row.display_name,
+      platform: row.platform,
+      createdAt: isoDate(row.created_at, "message encryption key creation")
+    })));
+  }
+
   async function createConversation(input) {
     assertStoreOpen();
     if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -677,6 +851,8 @@ export function createPostgresStore({
     authenticateAccountSession,
     revokeAccountSession,
     getAccountProfile,
+    registerMessageEncryptionKey,
+    listConversationEncryptionKeys,
     createConversation,
     listConversations,
     sendInternalMessage,

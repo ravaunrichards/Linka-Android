@@ -5,6 +5,7 @@ import {
   bytesToBase64,
   generateBrowserSigningIdentity,
   p1363ToDer,
+  shouldClearAccountSession,
   signLinkaDeviceChallenge
 } from "../../../web/auth-crypto.mjs";
 
@@ -47,4 +48,11 @@ test("rejects malformed P1363 signature sizes", () => {
 
 test("encodes public-key bytes as base64 without Node-specific globals", () => {
   assert.equal(bytesToBase64(new Uint8Array([1, 2, 3])), "AQID");
+});
+
+test("clears a browser account token only when the API rejects it with 401", () => {
+  assert.equal(shouldClearAccountSession(401), true);
+  for (const status of [0, 403, 404, 429, 500, 503, undefined]) {
+    assert.equal(shouldClearAccountSession(status), false);
+  }
 });

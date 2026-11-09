@@ -17,6 +17,7 @@
         <a class="nav-link active" href="#overview" data-view="overview"><span>⌂</span> Overview</a>
         <a class="nav-link" href="#nearby" data-view="nearby"><span>⌁</span> Nearby network</a>
         <a class="nav-link" href="#identity" data-view="identity"><span>◎</span> My identity</a>
+        <a class="nav-link" href="#account" data-view="account"><span>♙</span> LINKA account</a>
         <a class="nav-link" href="#calls" data-view="calls"><span>◖</span> Calling</a>
         <a class="nav-link" href="#mesh" data-view="mesh"><span>⌘</span> Mesh network</a>
       </nav>
@@ -75,6 +76,46 @@
         <div class="notice"><strong>Identity stays under your control</strong><p>The Android implementation stores its signing key in Android Keystore. A future web sign-in and device-linking flow must be added before this page can display synced identity data.</p></div>
       </section>
 
+      <section class="view" id="account">
+        <div class="page-heading"><div class="eyebrow">ACCOUNT</div><h1>Your LINKA account</h1><p>Create an account or sign in from this browser after its separate P-256 device identity is verified by LINKA.</p></div>
+        <div class="account-layout">
+          <article class="mode-panel" id="accountSignedOut">
+            <span class="tag progress">Real API sign-in</span>
+            <h2>Create account or sign in</h2>
+            <p>This browser creates its own non-exportable P-256 key in IndexedDB. It is not the same identity as your Android phone.</p>
+            <label class="account-label" for="accountApiOrigin">LINKA API address</label>
+            <input id="accountApiOrigin" type="url" inputmode="url" autocomplete="url" placeholder="https://your-linka-api.example">
+            <p class="account-help">The same-origin API is used by default. A separately hosted website needs a reachable HTTPS API origin and matching CORS configuration.</p>
+            <label class="account-label" for="accountEmail">Email address</label>
+            <input id="accountEmail" type="email" autocomplete="email" maxlength="320">
+            <label class="account-label" for="accountDisplayName">Display name (for new accounts)</label>
+            <input id="accountDisplayName" type="text" autocomplete="name" maxlength="100">
+            <label class="account-label" for="accountPassword">Password</label>
+            <input id="accountPassword" type="password" autocomplete="current-password" minlength="12" maxlength="256">
+            <div class="account-actions">
+              <button class="button primary" id="accountRegister" type="button">Create account</button>
+              <button class="button secondary" id="accountLogin" type="button">Sign in</button>
+            </div>
+            <button class="account-link" id="accountRecovery" type="button">Forgot password?</button>
+          </article>
+          <article class="mode-panel" id="accountSignedIn" hidden>
+            <span class="tag progress">Signed in</span>
+            <h2 id="accountProfileName">LINKA account</h2>
+            <p id="accountProfileEmail"></p>
+            <p id="accountProfileDevice"></p>
+            <p id="accountProfileVerification"></p>
+            <p id="accountProfileExpiry"></p>
+            <button class="button secondary" id="accountLogout" type="button">Sign out</button>
+          </article>
+          <article class="notice" id="accountNotice">
+            <strong>Secure browser session</strong>
+            <p>The browser private key stays in IndexedDB and is not exported. The account bearer token is held in session storage for this tab only. Sign out to revoke it on the server.</p>
+          </article>
+        </div>
+        <p class="account-status" id="accountStatus" role="status" aria-live="polite">Not signed in.</p>
+        <div class="notice warning-box"><strong>Email verification and password recovery are not enabled</strong><p>LINKA currently cannot send verification or password-reset email. The recovery action will show this limitation instead of pretending an email was sent.</p></div>
+      </section>
+
       <section class="view" id="calls">
         <div class="page-heading"><div class="eyebrow">VOICE</div><h1>Calling</h1><p>LINKA separates local offline calls from optional internet and carrier calling.</p></div>
         <div class="call-mode-grid">
@@ -105,5 +146,6 @@
     </main>
   </div>
   <script src="./app.js"></script>
+  <script type="module" src="./account.mjs"></script>
 </body>
 </html>

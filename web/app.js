@@ -3,7 +3,7 @@
   const views = Array.from(document.querySelectorAll(".view"));
   const title = document.getElementById("currentSection");
   const sidebar = document.getElementById("sidebar");
-  const names = {overview:"Overview",nearby:"Nearby network",identity:"My identity",calls:"Calling",mesh:"Mesh network",about:"About LINKA"};
+  const names = {overview:"Overview",nearby:"Nearby network",identity:"My identity",account:"LINKA account",calls:"Calling",mesh:"Mesh network",about:"About LINKA"};
   function showView(id) {
     if (!names[id]) id = "overview";
     views.forEach(view => view.classList.toggle("active", view.id === id));

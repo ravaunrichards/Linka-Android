@@ -41,5 +41,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:8080/ | grep -q "LINKA"
           curl --fail --silent http://127.0.0.1:8080/styles.css | grep -q ":root"
           curl --fail --silent http://127.0.0.1:8080/app.js | grep -q "showView"
+          curl --fail --silent http://127.0.0.1:8080/account.mjs | grep -q "createDeviceSession"
+          curl --fail --silent http://127.0.0.1:8080/auth-crypto.mjs | grep -q "p1363ToDer"
           curl --fail --silent --head http://127.0.0.1:8080/ | grep -qi "content-type: text/html"
           cat /tmp/linka-api.log | tail -n 30

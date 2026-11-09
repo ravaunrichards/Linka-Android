@@ -14,7 +14,9 @@ const WEB_ASSETS = new Map([
   ["/", { file: "index.html", contentType: "text/html; charset=utf-8" }],
   ["/index.html", { file: "index.html", contentType: "text/html; charset=utf-8" }],
   ["/styles.css", { file: "styles.css", contentType: "text/css; charset=utf-8" }],
-  ["/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }]
+  ["/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }],
+  ["/account.mjs", { file: "account.mjs", contentType: "text/javascript; charset=utf-8" }],
+  ["/auth-crypto.mjs", { file: "auth-crypto.mjs", contentType: "text/javascript; charset=utf-8" }]
 ]);
 
 const rateBuckets = new Map();

@@ -118,6 +118,40 @@ class LinkaAccountClientTest {
         assertTrue(transport.calls.isEmpty())
     }
 
+    @Test
+    fun logoutWithoutLocalSessionDoesNotMakeNetworkRequest() = runBlocking {
+        val store = FakeTokenStore(token = null)
+        val transport = FakeTransport()
+        val client = client(store, transport)
+
+        client.logout()
+
+        assertTrue(transport.calls.isEmpty())
+        assertEquals(0, store.clearCount)
+    }
+
+    @Test
+    fun apiOriginRequiresHttpsExceptForLocalDevelopment() {
+        val store = FakeTokenStore(token = null)
+        val client = client(store, FakeTransport())
+
+        assertThrows(LinkaAccountException::class.java) {
+            client.setServerUrl("http://api.linka.test")
+        }
+        assertThrows(LinkaAccountException::class.java) {
+            client.setServerUrl("https://api.linka.test/v1")
+        }
+        assertThrows(LinkaAccountException::class.java) {
+            client.setServerUrl("https://api.linka.test?debug=true")
+        }
+
+        client.setServerUrl("https://api.linka.test/")
+        assertEquals("https://api.linka.test", client.serverUrl())
+
+        client.setServerUrl("http://localhost:8080")
+        assertEquals("http://localhost:8080", client.serverUrl())
+    }
+
     private fun client(store: FakeTokenStore, transport: FakeTransport) =
         LinkaAccountClient(store, FakeIdentity(), transport)
 

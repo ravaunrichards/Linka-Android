@@ -64,7 +64,7 @@ test("signs ECDH key registration with the linked non-exportable device identity
     device.deviceId,
     "ECDH-P256",
     fingerprint
-  ].join("\\n");
+  ].join("\n");
   assert.equal(
     verify("sha256", Buffer.from(statement), publicKey, Buffer.from(signatureBase64, "base64")),
     true

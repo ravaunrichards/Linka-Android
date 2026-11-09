@@ -73,7 +73,7 @@ export function validateRateRecord(input) {
   if (!/^[A-Z]{2}$/.test(rate.destinationCountryIso2)) {
     fail("invalid_rate_record", "destinationCountryIso2 must be a two-letter uppercase country code.");
   }
-  if (!/^\+[1-9]\d{1,14}$/.test(rate.destinationPrefix)) {
+  if (!/^\+[1-9]\d{0,14}$/.test(rate.destinationPrefix)) {
     fail("invalid_rate_record", "destinationPrefix must be an international E.164 prefix.");
   }
   if (!NUMBER_TYPES.has(rate.numberType)) {

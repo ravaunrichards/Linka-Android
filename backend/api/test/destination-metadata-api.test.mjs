@@ -90,17 +90,18 @@ test("HTTP destination resolution returns numbering metadata without claiming pr
     }
   });
 
-  await t.test("does not guess a country for ambiguous shared +1 numbers", async () => {
-    const response = await resolve("+1 800 555 0123");
+  await t.test("reports non-geographic +800 numbers without inventing a country", async () => {
+    const response = await resolve("+800 1234 5678");
     assert.equal(response.status, 200);
     const body = await response.json();
+    assert.equal(body.normalizedNumber, "+80012345678");
     assert.equal(body.countryIso2, null);
-    assert.notEqual(body.countryResolution, "resolved");
+    assert.equal(body.countryResolution, "unresolved");
     assert.equal(body.providerReachability, "not_checked");
   });
 
   await t.test("rejects invalid or national-format numbers", async () => {
-    for (const number of ["8765551234", "+1 234 567 8900", "+44 123"]) {
+    for (const number of ["8765551234", "+123", "+999123456789"]) {
       const response = await resolve(number);
       assert.equal(response.status, 400, number);
       const body = await response.json();

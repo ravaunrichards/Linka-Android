@@ -77,3 +77,8 @@ export async function signLinkaDeviceChallenge(privateKey, {
   );
   return bytesToBase64(p1363ToDer(new Uint8Array(rawSignature)));
 }
+
+/** Clear a cached bearer token only when the API explicitly rejects it. */
+export function shouldClearAccountSession(status) {
+  return status === 401;
+}

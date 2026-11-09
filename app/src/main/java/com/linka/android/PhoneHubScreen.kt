@@ -19,10 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Backspace
+import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Message
+import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -136,7 +136,7 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                                 contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
                                 Icon(
-                                    Icons.Outlined.Backspace,
+                                    Icons.AutoMirrored.Outlined.Backspace,
                                     contentDescription = "Delete last digit",
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -213,7 +213,7 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
                             shape = RoundedCornerShape(18.dp),
                             contentPadding = PaddingValues(vertical = 14.dp)
                         ) {
-                            Icon(Icons.Outlined.Message, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null)
                             Spacer(Modifier.size(8.dp))
                             Text("Message")
                         }

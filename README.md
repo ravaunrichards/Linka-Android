@@ -75,7 +75,7 @@ See [Repository structure](docs/REPOSITORY_STRUCTURE.md) before adding modules. 
 Requirements for the current Android build:
 - JDK 17.
 - Android SDK 35.
-- CI currently installs Gradle 8.9 directly. A Gradle wrapper is not yet checked into this repository.
+- CI currently installs Gradle 8.14.3 directly. A Gradle wrapper is not yet checked into this repository.
 
 For account registration and login, first complete `/v1/auth/challenge` and `/v1/auth/verify` using the device's P-256 signing key, then use the returned short-lived device token with `/v1/accounts/register` or `/v1/accounts/login`. Store the returned account token in platform-secure storage. See [Account authentication](docs/ACCOUNT_AUTH.md) for request/response and security details.
 

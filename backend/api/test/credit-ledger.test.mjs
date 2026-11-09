@@ -174,7 +174,19 @@ test("combined wallet balance cannot overflow the safe integer range", () => {
     source: "promotional",
     amount: 1
   })), { code: "wallet_balance_overflow" });
-  assert.throws(() => getWalletBalances(state), { code: "wallet_balance_overflow" });
+
+  // A balance exactly at MAX_SAFE_INTEGER is valid. The read guard should
+  // reject only a genuinely corrupted/imported snapshot whose buckets overflow.
+  assert.equal(getWalletBalances(state).total, Number.MAX_SAFE_INTEGER);
+  assert.throws(() => getWalletBalances({
+    accountId: "account-1",
+    balances: {
+      purchased: Number.MAX_SAFE_INTEGER,
+      promotional: 1,
+      sponsored: 0
+    },
+    events: []
+  }), { code: "wallet_balance_overflow" });
 });
 
 test("wallet snapshots and stored ledger events are immutable", () => {

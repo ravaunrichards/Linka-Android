@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { LinkaRuntime } from "./runtime.mjs";
 import { createPostgresStore } from "./postgres-store.mjs";
+import { createCorsPolicy } from "./cors.mjs";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
@@ -9,6 +10,7 @@ const API_VERSION = "0.1.0";
 const MAX_BODY_BYTES = 20 * 1024;
 const runtime = new LinkaRuntime();
 const postgresStore = createPostgresStore();
+const corsPolicy = createCorsPolicy(process.env.CORS_ALLOWED_ORIGINS ?? "");
 const WEB_ROOT = new URL("../../../web/", import.meta.url);
 const WEB_ASSETS = new Map([
   ["/", { file: "index.html", contentType: "text/html; charset=utf-8" }],
@@ -157,6 +159,20 @@ function safeErrorCode(error) {
 async function handleRequest(req, res) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
+
+  const cors = corsPolicy(req);
+  if (!cors.allowed) {
+    response(res, 403, { error: "origin_not_allowed" });
+    return;
+  }
+  for (const [name, value] of Object.entries(cors.headers)) {
+    res.setHeader(name, value);
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, { "cache-control": "no-store" });
+    res.end();
+    return;
+  }
 
   try {
     if (await serveWebAsset(req, res, path)) return;

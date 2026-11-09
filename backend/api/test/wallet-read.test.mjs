@@ -14,7 +14,8 @@ function ledgerRows() {
       amount_credit_units: "12",
       reference_id: "call-3",
       reverses_event_id: null,
-      created_at: new Date("2026-11-09T12:03:00.000Z")
+      created_at: new Date("2026-11-09T12:03:00.000Z"),
+      cursor_created_at: "2026-11-09T12:03:00.000123Z"
     },
     {
       event_id: "event-2",
@@ -23,7 +24,8 @@ function ledgerRows() {
       amount_credit_units: "100",
       reference_id: "payment-2",
       reverses_event_id: null,
-      created_at: new Date("2026-11-09T12:02:00.000Z")
+      created_at: new Date("2026-11-09T12:02:00.000Z"),
+      cursor_created_at: "2026-11-09T12:02:00.000456Z"
     },
     {
       event_id: "event-1",
@@ -32,7 +34,8 @@ function ledgerRows() {
       amount_credit_units: "25",
       reference_id: null,
       reverses_event_id: null,
-      created_at: new Date("2026-11-09T12:01:00.000Z")
+      created_at: new Date("2026-11-09T12:01:00.000Z"),
+      cursor_created_at: "2026-11-09T12:01:00.000789Z"
     }
   ];
 }
@@ -93,7 +96,7 @@ test("returns bounded ledger pages with a stable timestamp plus event-ID cursor"
   assert.equal(page.events[0].amountCreditUnits, 12);
   assert.equal(page.events[1].eventId, "event-2");
   assert.deepEqual(page.nextCursor, {
-    before: "2026-11-09T12:02:00.000Z",
+    before: "2026-11-09T12:02:00.000456Z",
     beforeEventId: "event-2"
   });
   assert.deepEqual(pool.calls[0].values, [ACCOUNT, 3, null, null]);
@@ -110,7 +113,7 @@ test("accepts the stable cursor for the next page without exposing another accou
   const page = await store.listWalletLedgerEvents({
     accountId: ACCOUNT,
     limit: 2,
-    before: "2026-11-09T12:02:00.000Z",
+    before: "2026-11-09T12:02:00.000456Z",
     beforeEventId: "event-2"
   });
 
@@ -118,7 +121,7 @@ test("accepts the stable cursor for the next page without exposing another accou
   assert.equal(page.events[0].eventId, "event-1");
   assert.equal(page.nextCursor, null);
   assert.deepEqual(pool.calls[0].values, [
-    ACCOUNT, 3, new Date("2026-11-09T12:02:00.000Z"), "event-2"
+    ACCOUNT, 3, "2026-11-09T12:02:00.000456Z", "event-2"
   ]);
   assert.notEqual(pool.calls[0].values[0], OTHER);
 });

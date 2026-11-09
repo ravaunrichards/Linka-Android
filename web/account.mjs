@@ -90,7 +90,10 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
       device_already_linked: "This browser identity is already linked to another account.",
       rate_limited: "Too many attempts. Try again later.",
       database_not_configured: "The LINKA account service is not available on this server.",
-      account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured."
+      account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured.",
+      wallet_not_found: "A LINKA wallet has not been provisioned for this account yet.",
+      invalid_wallet_cursor: "Wallet activity pagination could not be continued. Refresh the activity list.",
+      database_not_configured: "LINKA wallet services are unavailable on this server."
     };
     const error = new Error(messages[code] || "LINKA request failed (" + code + ").");
     error.status = response.status;

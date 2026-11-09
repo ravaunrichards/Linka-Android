@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest Android-tested main revision is `312aa4677baab63d3677b3d73718e97d3847eb2e`; latest API-tested revision is `76401c9311a25a64beec974a10794df3edaf5f49`. Android CI passed on main with Gradle 8.14.4.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest Android-tested main revision is `312aa4677baab63d3677b3d73718e97d3847eb2e`; latest API-tested main revision is `812fa3982b235fb79397f4e2281685f734a97cd6`. Android CI passed with Gradle 8.14.4; the latest change is browser-only and its Android workflow is queued.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|
@@ -40,8 +40,8 @@ This matrix separates repository evidence from device, provider and production p
 
 - Latest Android-tested source revision: `312aa4677baab63d3677b3d73718e97d3847eb2e`.
 - PostgreSQL Schema CI run 42659791482 passed on `3ddd892181f13de5fa5edb13d6df6b9c9af36572`: migrations, constraints, account integration and readiness passed; 69 passed, 0 failed, 0 skipped.
-- LINKA API CI run 42660318140 passed on `76401c9311a25a64beec974a10794df3edaf5f49`: browser module syntax and account-form checks passed; 67 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API startup and browser asset routes passed.
-- Android CI run 42661787677 passed on `312aa4677baab63d3677b3d73718e97d3847eb2e`: Gradle 8.14.4, `:app:assembleDebug`, `:app:testDebugUnitTest`, source revision metadata and APK artifact upload all succeeded.
+- LINKA API CI run 42662700808 passed on `812fa3982b235fb79397f4e2281685f734a97cd6`: browser module syntax, account-form and session-policy checks passed; 68 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API startup and browser asset routes passed.
+- Android CI run 42661787677 passed on `312aa4677baab63d3677b3d73718e97d3847eb2e`: Gradle 8.14.4, `:app:assembleDebug`, `:app:testDebugUnitTest`, source revision metadata and APK artifact upload all succeeded. The latest Android workflow run for the subsequent web-only commit is queued.
 - Debug APK artifact `linka-debug-apk-312aa4677baab63d3677b3d73718e97d3847eb2e` (GitHub artifact ID `13693714374`; expires 2026-12-09). It is not a production-signed release.
 - Android CI run 42661787677 passed on `312aa4677baab63d3677b3d73718e97d3847eb2e`: Gradle 8.14.4, debug APK build, unit tests, revision metadata, artifact upload and cleanup all succeeded. The Kotlin Gradle Plugin minimum-version warning seen on 8.14.3 is absent.
 - Account integration verifies signed-device registration/login, duplicate device/email rejection, persistent token hashes, second-device login and logout revocation.

@@ -6,7 +6,7 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified main head at checkpoint: `800fa72e422bc8855912fa31d44e65a5623bda40` (main); latest functional implementation commit verified by PostgreSQL/Chromium CI: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`.
+- Verified main head at checkpoint: `3982caf5d88d6286a5567354ff52841b06348afa` (main); latest browser test/workflow code verified by PostgreSQL/Chromium/Firefox CI: `81f0d0eb4903787ba2e91395013eb9f765991f88`.
 - Repository ID: 1444736198.
 - Repository visibility: public.
 - Last inspected recursive tree: 145 entries, not truncated.
@@ -24,13 +24,27 @@
 
 ## Continuation update — 2026-11-09
 
-The following changes were recovered from and committed to the existing `main` branch:
-- `472a590500e19f657746db77a0d15f5bac36ad07` adds two Android account-client tests: logout with no local token makes no request, and production API origins require HTTPS while local development addresses remain allowed. The Android account-client test file now contains nine test cases. The new cases are SOURCE PRESENT; their CI result has not been independently retrieved in this continuation.
-- `12221854e5991e436a40aa9f5819c93507c21866` adds a real Chromium/Playwright browser account UI lifecycle test for IndexedDB key persistence, tab session restore, second-device login, independent logout, recovery messaging and uncaught page errors.
-- `814be0cd77904872e941133a76d9830dc7ba9b97` pins Playwright 1.65.0 and adds the `test:browser-ui` package command.
-- `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7` installs Chromium in PostgreSQL CI, adds the browser UI test to workflow path filters and runs it after the existing API/database browser E2E.
+This continuation resumed directly from the existing LINKA repository; no earlier chat transcript was required. Changes were made on the existing `main` branch and verified against GitHub Actions:
 
-The repository files and commits are independently verified. The GitHub connector available in this continuation does not expose push-triggered workflow-run listing; combined commit status currently returns no status contexts. Therefore the Android and PostgreSQL CI results for these newest commits remain UNVERIFIED here. Do not credit the new tests toward weighted product completion until the corresponding workflow runs pass. Current verified product progress remains 43% complete / 57% remaining.
+- `472a590500e19f657746db77a0d15f5bac36ad07` adds two Android account-client edge-case tests: logout with no local token makes no network request, and non-local API origins require HTTPS. The account-client test file now contains nine test cases.
+- `12221854e5991e436a40aa9f5819c93507c21866` adds the real Playwright browser UI lifecycle test for IndexedDB device-key persistence, tab-session restore, second-device login, independent logout, recovery messaging and uncaught page errors.
+- `814be0cd77904872e941133a76d9830dc7ba9b97` pins Playwright 1.65.0 and adds the browser UI test command.
+- `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7` wires Chromium UI automation into the disposable-PostgreSQL workflow.
+- `ccae0c1a0b86c0a39ed71d68b3743766ed67e293` makes the browser lifecycle test selectable between Chromium and Firefox.
+- `81f0d0eb4903787ba2e91395013eb9f765991f88` installs both browsers and runs both lifecycle tests in PostgreSQL CI.
+- `b49a89a4214c87400da65a54c9c3aff9f52f7d36` documents the Chromium/Firefox browser test commands.
+- `3982caf5d88d6286a5567354ff52841b06348afa` records the latest continuation checkpoint.
+
+Independent verification:
+- Android CI run [#42670913670](https://github.com/ravaunrichards/Linka-Android/actions/runs/42670913670) passed on the two new account-client edge cases.
+- PostgreSQL/Chromium/Firefox CI run [#42680769129](https://github.com/ravaunrichards/Linka-Android/actions/runs/42680769129) passed on `81f0d0eb4903787ba2e91395013eb9f765991f88`: migrations were applied twice; 75 backend/database tests passed, 0 failed; Node WebCrypto account E2E, Chromium UI E2E and Firefox UI E2E each printed PASS.
+- LINKA API CI run [#42680765486](https://github.com/ravaunrichards/Linka-Android/actions/runs/42680765486) passed on `ccae0c1a0b86c0a39ed71d68b3743766ed67e293`: 73 passed, 0 failed and 2 PostgreSQL-only tests skipped in the no-database workflow.
+- Android CI run [#42680782249](https://github.com/ravaunrichards/Linka-Android/actions/runs/42680782249) passed on `3982caf5d88d6286a5567354ff52841b06348afa`: debug APK assembly and Android unit-test task succeeded and the build artifact was uploaded.
+- Current weighted product progress is 44% complete / 56% remaining. One point was credited when the real Chromium browser UI account lifecycle test passed; Firefox is additional compatibility evidence within that same browser milestone and does not add duplicate credit.
+
+The browser tests verify account registration, non-exportable IndexedDB P-256 key persistence, tab-scoped session restoration across reload, isolated second-device login with a distinct identity/token, independent per-device logout, the explicit password-recovery limitation and zero uncaught browser page errors. They do not verify hosted production origins, complete web calling or physical Android behavior.
+
+Render remains unverified because no workspace has been selected; the only returned workspace is named "My Workspace", and user confirmation is still required before inspecting or modifying it. Physical radio/audio tests, provider integrations, production signing and production release remain open.
 
 
 ## Recovery from the prior checkpoint
@@ -129,18 +143,19 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Latest Android-tested main revision: `800fa72e422bc8855912fa31d44e65a5623bda40`.
-- Latest API-tested revision: `814be0cd77904872e941133a76d9830dc7ba9b97`; latest PostgreSQL + Chromium browser UI E2E-tested functional revision: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`.
+- Latest Android-tested main revision: `3982caf5d88d6286a5567354ff52841b06348afa`.
+- Latest API-tested revision: `ccae0c1a0b86c0a39ed71d68b3743766ed67e293`; latest PostgreSQL + Chromium/Firefox browser UI E2E-tested workflow revision: `81f0d0eb4903787ba2e91395013eb9f765991f88`.
 - Full-product progress: **44% complete | 56% remaining**.
 - Latest inspected repository tree: 145 entries, recursive tree not truncated.
 - Render workspace inspection is blocked pending explicit workspace confirmation; no live Render configuration or deployment health is claimed.
-- PostgreSQL Schema CI run 42677952248 passed on `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`: 75 passed, 0 failed, 0 skipped; migrations ran twice, schema/wallet checks passed, API readiness passed, and both Node WebCrypto and Chromium UI browser account E2E printed PASS.
-- LINKA API CI run 42677946243 passed on `814be0cd77904872e941133a76d9830dc7ba9b97`: 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and browser asset checks passed.
-- Android CI run 42670913670 passed on `472a590500e19f657746db77a0d15f5bac36ad07`, including `:app:assembleDebug` and `:app:testDebugUnitTest` with the no-session logout and HTTPS API-origin edge-case tests.
-- Latest debug APK artifact `linka-debug-apk-800fa72e422bc8855912fa31d44e65a5623bda40` (artifact ID `13701836521`, 17,845,187 bytes, SHA-256 `7eb20593c9f861db534ba7a1233f0b41387d999449714717da6ed201b3262333`) expires 2026-12-09. It is a debug APK, not a production-signed release.
-- Latest main checkpoint Android CI run 42678530091 passed on `800fa72e422bc8855912fa31d44e65a5623bda40`; debug APK assembly, `:app:testDebugUnitTest`, revision metadata and artifact upload passed.
-- Password recovery and email verification remain unavailable pending a configured email-delivery provider. Render, carrier, payment, tariff and physical-device status have not been live-verified.
-- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout and API-origin validation behavior has nine JVM test cases; Chromium verifies actual account DOM, non-exportable IndexedDB device key persistence, tab-scoped session restoration, second-context login and independent logout.
+- PostgreSQL Schema CI run 42680769129 passed on `81f0d0eb4903787ba2e91395013eb9f765991f88`: 75 passed, 0 failed, 0 skipped; migrations ran twice, schema/wallet checks and API readiness passed, and Node WebCrypto, Chromium UI and Firefox UI account E2E each printed PASS.
+- LINKA API CI run 42680765486 passed on `ccae0c1a0b86c0a39ed71d68b3743766ed67e293`: 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and browser asset checks passed.
+- Android account edge-case CI run 42670913670 passed on `472a590500e19f657746db77a0d15f5bac36ad07`, including `:app:assembleDebug` and `:app:testDebugUnitTest`.
+- Latest main checkpoint Android CI run 42680782249 passed on `3982caf5d88d6286a5567354ff52841b06348afa`; debug APK assembly, `:app:testDebugUnitTest`, revision metadata and artifact upload passed.
+- Latest debug APK artifact `linka-debug-apk-3982caf5d88d6286a5567354ff52841b06348afa` (artifact ID `13702851282`, 17,845,192 bytes, GitHub ZIP SHA-256 `e035a6d3a59fe77d11321a86e42f3e70542cb04e3411bab98af6b0c66d915773`) expires 2026-12-09. It is a debug APK, not a production-signed release.
+- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout and API-origin validation behavior has nine JVM test cases; Chromium and Firefox both verify actual account DOM, non-exportable IndexedDB device-key persistence, tab-scoped session restoration, second-context login and independent logout.
+- Password recovery and email verification remain unavailable pending a configured email-delivery provider. Carrier, payment, tariff and physical-device status have not been live-verified.
+- Current verified CI state: Android runs 42670913670 and 42680782249 PASS; API run 42680765486 PASS; PostgreSQL/Chromium/Firefox run 42680769129 PASS (75/75 tests and all three browser E2E confirmation lines).
 
 ## Current CI and failure recovery
 
@@ -200,7 +215,7 @@ The previous verified checkpoint was 43%. One additional percentage point is now
 - Continue focused API negative-path tests where no external provider is required.
 
 ### Medium
-- Verify the new Firefox browser UI E2E run; the Chromium equivalent is already green.
+- Verify the separately hosted HTTPS browser companion and its explicit production CORS allowlist after the deployment workspace is confirmed.
 - Run browser registration/login on a separately hosted test origin using the explicit CORS configuration; do not treat the current Node WebCrypto E2E as browser-rendering proof.
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.
@@ -216,7 +231,7 @@ The previous verified checkpoint was 43%. One additional percentage point is now
 
 ## Exact next action
 
-Verify the Firefox browser UI lifecycle run and resolve any browser-specific failure. Then continue with provider-independent integration work; Render inspection remains blocked until the user confirms the intended workspace. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
+Verify the separately hosted HTTPS browser origin and explicit CORS allowlist once a Render workspace is confirmed; continue provider-independent integration work while provider access is unavailable. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
 
 ## Execution boundaries
 

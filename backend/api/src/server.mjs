@@ -4,6 +4,7 @@ import { LinkaRuntime } from "./runtime.mjs";
 import { createPostgresStore } from "./postgres-store.mjs";
 import { createCorsPolicy } from "./cors.mjs";
 import { normalizeE164 } from "./domain/e164.mjs";
+import { resolveDestinationNumber } from "./domain/destination-metadata.mjs";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
@@ -151,7 +152,7 @@ function safeErrorCode(error) {
     "device_identity_mismatch", "device_identity_conflict", "device_revoked",
     "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
     "authentication_store_unavailable", "account_recovery_unavailable",
-    "email_verification_unavailable", "invalid_e164"
+    "email_verification_unavailable", "invalid_e164", "invalid_destination_number"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -262,6 +263,18 @@ async function handleRequest(req, res) {
         numberType: "unknown",
         providerReachability: "not_checked"
       });
+      return;
+    }
+
+    if (req.method === "POST" && path === "/v1/destinations/resolve") {
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`resolve-number:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const destination = resolveDestinationNumber(body?.number);
+      response(res, 200, destination);
       return;
     }
 

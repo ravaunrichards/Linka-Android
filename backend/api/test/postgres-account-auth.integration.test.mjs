@@ -145,6 +145,17 @@ test("account registration, persistent login sessions and multi-device binding w
     assert.equal(deviceReused.status, 409, JSON.stringify(deviceReused.body));
     assert.equal(deviceReused.body.error, "device_already_linked");
 
+    const duplicateEmailDevice = createIdentity();
+    const duplicateEmailDeviceToken = await getDeviceToken(baseUrl, duplicateEmailDevice);
+    const duplicateEmailRegistration = await postJson(baseUrl, "/v1/accounts/register", {
+      email,
+      password,
+      displayName: "Duplicate Email Attempt",
+      platform: "android"
+    }, duplicateEmailDeviceToken);
+    assert.equal(duplicateEmailRegistration.status, 409, JSON.stringify(duplicateEmailRegistration.body));
+    assert.equal(duplicateEmailRegistration.body.error, "email_already_registered");
+
     const recovery = await postJson(baseUrl, "/v1/accounts/recovery", { email });
     assert.equal(recovery.status, 501);
     assert.equal(recovery.body.error, "account_recovery_unavailable");

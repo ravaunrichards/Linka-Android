@@ -212,8 +212,11 @@ export function quoteVoiceCall(rate, { durationSeconds }) {
 
 /** Estimate external SMS or MMS charges by provider-billable message count. */
 export function quoteMessages(rate, { messageCount }) {
+  if (!rate || !["sms", "mms"].includes(rate.service)) {
+    throw new TypeError("An SMS or MMS rate is required.");
+  }
   if (!Number.isSafeInteger(messageCount) || messageCount <= 0) {
     throw new TypeError("messageCount must be a positive safe integer.");
   }
-  return buildQuote(rate, messageCount, rate?.service);
+  return buildQuote(rate, messageCount, rate.service);
 }

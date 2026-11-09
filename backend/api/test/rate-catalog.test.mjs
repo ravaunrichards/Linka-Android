@@ -166,7 +166,8 @@ test("quotes SMS and MMS from the provider's message tariff", () => {
   assert.equal(quoteMessages(mmsRate, { messageCount: 2 }).creditUnits, 16);
 });
 
-test("rejects zero usage and quote arithmetic overflow", () => {
+test("rejects zero usage, wrong message-rate type and quote arithmetic overflow", () => {
   assert.throws(() => quoteVoiceCall(rate(), { durationSeconds: 0 }), TypeError);
+  assert.throws(() => quoteMessages(rate(), { messageCount: 1 }), TypeError);
   assert.throws(() => quoteMessages(rate({ service: "sms", billingUnit: "message", creditUnitsPerIncrement: Number.MAX_SAFE_INTEGER }), { messageCount: 2 }), { code: "rate_quote_overflow" });
 });

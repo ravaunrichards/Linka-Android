@@ -60,6 +60,14 @@ Password reset and verification must not be implemented as a fake success respon
 - The account token is separate from the short-lived signed-device challenge token. The browser signing identity is browser-specific and is not shared with the Android Keystore identity.
 - Password recovery returns an explicit unavailable response until a real email delivery provider and reset-token workflow are configured.
 
+## Browser API origin and CORS
+
+- The browser companion uses the same-origin API by default; no CORS environment setting is needed when the API serves the web assets.
+- If the browser website is hosted on a separate domain, add that exact HTTPS origin to `CORS_ALLOWED_ORIGINS` on the API server. Multiple origins are comma-separated; wildcards, URL paths and insecure remote HTTP origins are rejected.
+- Local HTTP origins are allowed only for `localhost` and `127.0.0.1` development.
+- Cross-origin preflight supports the API's `GET`/`POST` requests and the `Authorization` and `Content-Type` headers. The API does not enable credentialed cookie sharing; account bearer tokens are sent explicitly.
+- Unlisted cross-origin requests and preflights are rejected with HTTP 403. API CI tests both an allowed browser origin and an untrusted origin.
+
 ## Security boundaries
 
 - Registration/login never trust a client-supplied account ID, device UUID or public key. Device identity is taken from the successfully verified challenge session.

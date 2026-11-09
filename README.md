@@ -85,7 +85,8 @@ From the repository root:
 - Run Android unit tests: `gradle :app:testDebugUnitTest`
 - Install the pinned backend dependency: `npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund`
 - Run backend tests: `npm --prefix backend/api test`
-- Install Chromium for the browser UI test: `cd backend/api && npx playwright install chromium`.
+- Install Chromium and Firefox for the browser UI tests: `cd backend/api && npx playwright install chromium firefox`.
+- Run Firefox browser UI coverage with `PLAYWRIGHT_BROWSER=firefox LINKA_API_URL=http://127.0.0.1:8080 npm --prefix backend/api run test:browser-ui`; Chromium is the default.
 - Run the Chromium account UI end-to-end test against a running API backed by a migrated PostgreSQL database: `LINKA_API_URL=http://127.0.0.1:8080 npm --prefix backend/api run test:browser-ui`.
 - Start local backend API without PostgreSQL: `npm --prefix backend/api start`
 - Start with the migrated PostgreSQL wallet store enabled: set `DATABASE_URL` in the environment, then run `npm --prefix backend/api start`.

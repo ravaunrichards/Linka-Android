@@ -63,16 +63,18 @@ Repeat across multiple handset manufacturers, Android versions, low-cost devices
 For every physical run, retain the commit SHA, APK version, device models, Android and Play services versions, radio/permission state, terrain/environment, exact test steps, observed results, audio/latency metrics and pass/fail. Redact identity authentication codes, private key material, media keys and personal data.
 
 
-## PostgreSQL schema CI
+## PostgreSQL schema and Node adapter CI
 
-The database workflow uses PostgreSQL 17 and runs:
+The database workflow uses PostgreSQL 17 and performs these checks:
 
-```sh
-psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
-psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
-psql -v ON_ERROR_STOP=1 -f backend/api/db/checks/verify_core_schema.sql
-```
+1. Installs the pinned `pg` dependency.
+2. Applies every migration under `backend/api/db/migrations/` twice.
+3. Executes `backend/api/db/checks/verify_core_schema.sql`, testing wallet purchase/idempotency/usage/refund/overdraft/append-only behavior, active-number uniqueness and cross-account ownership constraints.
+4. Runs the real Node/PostgreSQL integration test in `backend/api/test/postgres-integration.test.mjs`.
+5. Starts the Node API with `DATABASE_URL` and confirms that `/readyz` advertises `postgres-wallet-ledger`.
 
-The migration is applied twice to verify safe reapplication. The SQL check validates core tables, the wallet function and append-only trigger, then exercises a temporary account/device/session, provider number and rate, wallet purchase, duplicate idempotency, usage deduction, partial refund, insufficient-credit rejection, append-only ledger enforcement and active-number uniqueness. Test rows are rolled back.
+The ordinary API CI runs the same test suite without a database. In that context, the PostgreSQL integration test is explicitly skipped because `DATABASE_URL` is absent. PostgreSQL Schema CI runs it against a disposable database service.
 
-Latest verified result: PostgreSQL Schema CI run 42612753799 on commit 03d07a2 completed successfully on 2026-11-09. This verifies the schema and SQL domain operation in CI; it does not prove the Node API is connected to PostgreSQL or that a production database is provisioned.
+Latest verified database run: **42615498199**, commit `08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e`, completed successfully on 2026-11-09. The database-backed test run reports 58 passed, 0 failed, including durable wallet grant, idempotency, usage deduction, partial refund, snapshot read and overdraft rejection.
+
+This verifies the Node-to-PostgreSQL wallet-store integration in CI. It does not verify production database hosting, real customer accounts, authentication-to-account linking, public wallet endpoints, payment processing or live carrier services.

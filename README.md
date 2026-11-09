@@ -47,12 +47,14 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 
 ### Backend and browser companion
 - backend/api contains a Node.js signed-device challenge and ephemeral call-signaling API.
-- The signaling runtime still holds sessions and queues in memory; it is not yet connected to the PostgreSQL persistence schema.
-- A PostgreSQL 17 migration, atomic wallet-ledger SQL function and schema verification workflow now exist under `backend/api/db/`. GitHub Actions has verified migration reapplication, wallet operations and core constraints.
-- The API carries signaling, not voice audio.
-- Pure backend domain modules now cover E.164 syntax normalization, free-first route options, provider-fed rate validation/matching/credit estimates, and an immutable purchased/promotional/sponsored wallet ledger.
-- Those domain modules have automated tests but are not yet connected to provider tariff imports, a durable database, payment webhooks, authenticated billing endpoints, Android screens or website wallet/rate screens.
-- web contains a static responsive browser companion. It cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
+- The signaling runtime still holds authentication sessions and signaling queues in memory; durable account/device/session linking has not yet been implemented.
+- A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`.
+- `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured. It checks the required schema, creates/reads wallet snapshots and calls the SQL wallet function with parameterized values.
+- The API reports PostgreSQL readiness only when the wallet function and migration `0002_cross_account_integrity` are present. Without `DATABASE_URL`, it retains the existing in-memory signaling mode.
+- Database CI verifies both migrations, cross-account constraints and real Node/PostgreSQL wallet operations. The latest database run passed 58 tests with zero failures.
+- Wallet operations are server-side only. No authenticated account-linking flow or public wallet HTTP endpoint exists yet.
+- The API carries signaling, not voice audio. The browser companion is static; it cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
+- E.164 normalization, free-first route selection and provider-fed rate matching have tested domain foundations; live provider tariff import, number inventory, SIP/PSTN calling, payment webhooks and client billing screens are not integrated.
 
 ## Current repository layout
 - app/ — Android application and native functionality.
@@ -73,8 +75,10 @@ Requirements for the current Android build:
 From the repository root:
 - Build Android debug APK: `gradle :app:assembleDebug`
 - Run Android unit tests: `gradle :app:testDebugUnitTest`
+- Install the pinned backend dependency: `npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund`
 - Run backend tests: `npm --prefix backend/api test`
-- Start local backend API: `npm --prefix backend/api start`
+- Start local backend API without PostgreSQL: `npm --prefix backend/api start`
+- Start with the migrated PostgreSQL wallet store enabled: set `DATABASE_URL` in the environment, then run `npm --prefix backend/api start`.
 
 The Android CI workflow builds the debug APK and runs unit tests. The API CI workflow runs backend tests and checks API/browser routes. A debug APK is not a production-signed release. Keep release signing keys outside the repository and CI logs.
 

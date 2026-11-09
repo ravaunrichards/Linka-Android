@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Status reflects the last GitHub repository inspection during the 2026-11-09 recovery, not a live provider check.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions results retrieved on 2026-11-09; provider and deployment status has not been live-verified.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|
@@ -31,17 +31,18 @@ This matrix separates repository evidence from device, provider and production p
 | E.164 destination normalization | backend/api/src/domain/e164.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED for international-format canonicalization | Country/number-type resolution, number assignment and provider availability still require numbering metadata and provider inventory |
 | Provider-fed rate catalog and usage quotes | backend/api/src/domain/rate-catalog.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED as a tariff validation/matching/quote core | No live provider tariff import, current LINKA prices, API endpoint, wallet deduction or client display is integrated |
 | Wallet credit-ledger domain | backend/api/src/domain/credit-ledger.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED as an immutable in-memory reducer | Durable database transactions, authenticated provider events, concurrency control, API endpoints, payment reconciliation and client UI are not yet integrated |
-| PostgreSQL persistence adapter | backend/api/src/postgres-store.mjs, readiness integration and real PostgreSQL integration tests | SOURCE IMPLEMENTED; API/DB INTEGRATION CI PENDING | No account-linked auth flow or wallet HTTP endpoint; production DB credentials/hosting remain unconfigured |
+| PostgreSQL persistence adapter | backend/api/src/postgres-store.mjs, schema-aware API readiness, Node integration test and PostgreSQL 17 CI | SOURCE IMPLEMENTED; API/DB INTEGRATION CI VERIFIED | No account-linked auth flow or public wallet HTTP endpoint; production DB credentials/hosting remain unconfigured |
 | Automatic route switching | Pure policy allows free-to-free switching; paid fallback requires exact-quote preauthorization and a spend cap | PARTIAL FOUNDATION; AUTOMATED TESTED at policy level | Provider route discovery, user preference persistence and end-to-end route switching tests |
 | Emergency calling | Not implemented; README states LINKA is not an emergency service | NOT IMPLEMENTED | Specialist provider, regulatory approval, location and emergency-service validation |
 
 ## CI and repository evidence recovered
 
-- Default branch main was at commit a14baf36ac90dfb1f78324cccaf7e1a26180e81d.
-- Android CI run 41781000834 for that commit completed successfully. Its build-and-test job concluded success at 2026-11-04T05:46:12Z.
-- LINKA API CI run 41780783071 for commit aaeacf7d225f315c55d7b0aaeceac3fd3ed905ca completed successfully on 2026-11-04.
-- GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; upload and deploy were skipped. Repository history later removed that Pages workflow and documented a single Render origin.
-- These are historical GitHub Actions results. This recovery did not rerun CI or access external service dashboards.
+- Current verified main: `08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e` — PostgreSQL workflow trigger coverage for persistence-adapter changes.
+- PostgreSQL Schema CI run 42615498199 passed for this main commit on 2026-11-09: both migrations reapplied twice, database invariants passed, Node/PostgreSQL integration tests passed (58/58), and API PostgreSQL readiness passed.
+- LINKA API CI run 42615391308 passed for the adapter readiness source commit `b60e0ae63eb47729573244fd2ccb37cc7bd4e6cd`.
+- Android CI run 42615498191 for current main was pending when this matrix update was prepared; verify before calling it passed.
+- Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; upload and deploy were skipped. Repository history later removed that Pages workflow and documented a single Render origin.
+- Render, carrier, payment, tariff and device-lab services have not been live-verified in this GitHub-only pass.
 
 ## Status update rule
 

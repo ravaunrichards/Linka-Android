@@ -6,10 +6,10 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified source baseline before this checkpoint update: a230d168de391b3d209865eb8c51bbbc3c5aa03c.
+- Verified current main head at this checkpoint update: 08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e.
 - Repository ID: 1444736198.
 - Repository visibility: public.
-- Last inspected recursive tree: 122 entries, not truncated.
+- Last inspected recursive tree: 126 entries, not truncated.
 - GitHub permission snapshot during recovery: admin, maintain and push were true.
 - Recovery confidence: CONFIRMED for branch, commit ancestry, repository files, commit changes, issue records and Actions results. A local working tree is not exposed by the GitHub read APIs.
 
@@ -35,6 +35,12 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 
 - 98e8eda41d0689e296169ffc5c971a34660286eb — added the PostgreSQL core schema, atomic wallet ledger function, SQL checks and PostgreSQL 17 CI workflow.
 - 03d07a2cb3ca921e4c2922a3146d8312ac87129a — corrected the SQL CI device public-key fixture to the schema's minimum byte length; PostgreSQL and API CI passed.
+
+- 8f62f1d978da81c16fbc13a5fc597c05d06e48e7 — added composite foreign keys to bind wallet ledger events, call devices, internal-message senders and outbound sender numbers to the correct account.
+- 770bcd04e2b95390903a3bb32c12980ba88f1bf9 — fixed the PostgreSQL verification script's cross-account SQL block boundaries; API, Android and PostgreSQL CI passed.
+- cecf5b4ee9f3c2ca3239e92f85e55710eca0fb80 — added the optional Node `pg` pool/store, wallet integration tests, API readiness and PostgreSQL integration workflow.
+- b60e0ae63eb47729573244fd2ccb37cc7bd4e6cd — made readiness verify that migration 0002 is recorded as well as the wallet function.
+- 08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e — extended PostgreSQL CI path filters to cover persistence-adapter changes, tests and package updates.
 
 No source from those commits was discarded. All are ancestors of the verified main branch baseline.
 
@@ -71,22 +77,30 @@ The backend now includes:
 - `backend/api/db/migrations/0001_core_schema.sql` — PostgreSQL core tables for accounts, devices, sessions, providers, telephone-number inventory, rate versions, wallets, ledger events, payments/webhooks, calls and messaging.
 - `backend/api/db/checks/verify_core_schema.sql` and `.github/workflows/database-ci.yml` — PostgreSQL 17 workflow that reapplies the migration and tests schema/wallet transaction invariants.
 
-The PostgreSQL schema and SQL wallet function are now DATABASE CI VERIFIED. They are not yet connected to a PostgreSQL pool in the Node API; authenticated account/wallet endpoints, payment processing and provider feeds remain unfinished.
+The PostgreSQL schema, cross-account constraints and Node PostgreSQL adapter are now API/DB CI VERIFIED. The adapter supports schema-aware readiness, wallet creation/snapshot reads and parameterized wallet events through the atomic SQL function. The API deliberately does not expose wallet HTTP routes because signed devices are not yet linked to authenticated accounts. Durable account registration, account/device/session binding, payment processing and provider feeds remain unfinished.
 
-These are provider-independent, tested domain foundations. They do not provide a live provider tariff feed, actual number inventory, persistence, concurrent database transactions, payment authorization/webhooks, user wallet APIs, Android/web UI or operational carrier routes. No LINKA customer prices are set by these modules.
+These are provider-independent, tested foundations. They do not provide a live provider tariff feed, actual number inventory, production database hosting, authenticated account recovery, payment authorization/webhooks, public wallet APIs, Android/web wallet UI or operational carrier routes. No LINKA customer prices are set by these modules.
+
+## Latest verified checkpoint summary
+
+- Current main: `08d8d95b1c5ddeb86b33e798b4cfa39fcefc611e`.
+- Full-product progress: **38% complete | 62% remaining**.
+- Latest PostgreSQL integration: run 42615498199, passed 58/58 on PostgreSQL 17.
+- Latest API regression: run 42615391308, passed for the Postgres adapter/readiness source.
+- Latest Android CI for current main (run 42615498191) was pending when this checkpoint was prepared.
+- Next action: durable account registration/authentication and account/device/session binding.
 
 ## Current CI and failure recovery
 
-- API CI run 42611442996 for commit a230d168de391b3d209865eb8c51bbbc3c5aa03c completed successfully. Its test log reports 49 tests passed, 0 failed; API start/readiness and browser route checks also passed.
-- Android CI run 42611442986 was queued/pending when this checkpoint was prepared; do not report it as passed until GitHub confirms its conclusion.
-- Historical API CI run 42610320645 failed because an overflow test expected a valid MAX_SAFE_INTEGER balance to fail. The implementation was retained; the test was corrected in commit f647d7267432c89bc355e4008c12343093393100, whose API CI passed.
+- PostgreSQL Schema CI run 42615498199 for main commit 08d8d95 completed successfully on 2026-11-09. It applied migrations 0001 and 0002 twice, passed schema, wallet and cross-account constraint checks, ran 58 Node/PostgreSQL tests with 58 passed and 0 failed, and confirmed `/readyz` reports PostgreSQL readiness.
+- LINKA API CI run 42615391308 for source commit b60e0ae completed successfully; API test suite and no-database server startup/readiness checks passed.
+- Android CI run 42615498191 for main commit 08d8d95 was pending at checkpoint time; do not count it as passed until GitHub confirms the conclusion.
+- Prior PostgreSQL Schema CI run 42615244252 for commit cecf5b4 also passed its real Node/PostgreSQL integration and readiness checks.
+- Historical API CI run 42610320645 failed because an overflow test expected a valid MAX_SAFE_INTEGER balance to fail. The test was corrected in commit f647d7267432c89bc355e4008c12343093393100, whose API CI passed.
 - Historical API CI run 42611182288 failed because the rate-prefix validator rejected the bare +1 calling-code prefix. The validator was corrected in commit 53772274ae6b4389ec60fcf00c4174c8e450c293, whose API CI passed.
-- These failures and fixes are retained in history; they are not hidden or counted as successful runs.
+- Historical PostgreSQL run 42613752681 failed because its cross-account test block was inserted with malformed `DO DO` syntax. Commit 770bcd0 corrected the SQL block; later run 42613856798 passed all ownership tests.
+- Historical PostgreSQL run 42612619048 failed because the CI device public-key fixture was shorter than the schema's declared minimum. Commit 03d07a2 corrected it; run 42612753799 then passed.
 - Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; its upload/deploy steps were skipped. The Pages workflow was later removed and the repository documents a single Render origin.
-- PostgreSQL Schema CI run 42612753799 for commit 03d07a2 completed successfully on 2026-11-09. It applied the migration twice and passed schema, wallet purchase/idempotency/usage/refund/overdraft/append-only and active-number uniqueness checks; temporary test rows were rolled back.
-- LINKA API CI run 42612753732 for commit 03d07a2 completed successfully on 2026-11-09.
-- Android CI run 42612753713 for commit 03d07a2 completed the debug APK build, unit tests, source metadata and artifact upload successfully; post-job cleanup was still running at the time this checkpoint was drafted.
-- The first PostgreSQL run 42612619048 failed because the CI device public-key fixture was shorter than the schema's declared minimum. Commit 03d07a2 corrected the fixture; the succeeding PostgreSQL run passed.
 - No external Render dashboard, carrier account, payment account, tariff feed or device lab was accessed during this GitHub-only pass.
 
 ## Full LINKA product progress tracker
@@ -98,7 +112,7 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | Repository organization, requirements and engineering documentation | 10% | 10% | 0% |
 | Existing Android offline direct/mesh source and automated verification | 12% | 8% | 4% |
 | Complete Android phone experience and native system integration | 9% | 2% | 7% |
-| Backend identity/signaling and durable schema foundation | 8% | 5% | 3% |
+| Backend identity/signaling, schema integrity and PostgreSQL adapter | 8% | 7% | 1% |
 | Free-first route policy and international number normalization | 6% | 3% | 3% |
 | Wallet credit-ledger domain | 8% | 4% | 4% |
 | Provider-fed rate catalog and usage estimation | 6% | 3% | 3% |
@@ -109,11 +123,11 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | Full account-based website and browser calling | 5% | 1% | 4% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **36%** | **64%** |
+| **TOTAL** | **100%** | **38%** | **62%** |
 
-**Current full-product completion: 36% | Remaining: 64%.**
+**Current full-product completion: 38% | Remaining: 62%.**
 
-The initial scope-wide weighted baseline was 35%. One additional point is now credited in the backend milestone because the durable PostgreSQL schema and atomic wallet function were executed successfully in PostgreSQL 17 CI, including migration reapplication and wallet/constraint checks. The Node API is not yet connected to the database, so no further database-runtime credit is claimed. Partial credit remains limited to source and automated-test evidence; provider integrations, physical-device verification and production release require separate proof.
+The scope-wide full-product baseline was 35%; the prior checkpoint was 36% after migration 0001 passed. Two additional verified backend parts now credit two points: (1) migration 0002 enforces account ownership through composite foreign keys and PostgreSQL CI passes negative cross-account tests; (2) the Node API uses a bounded PostgreSQL pool for wallet operations and passed real PostgreSQL integration tests plus schema-aware readiness. The backend milestone is now 7/8 points; its remaining point covers durable account registration/linking and authenticated persistent sessions. No credit is claimed for public wallet endpoints, payment settlement, live carrier/number providers, physical-device validation or production release.
 
 ## Easy, medium and hard work remaining
 
@@ -124,8 +138,8 @@ The initial scope-wide weighted baseline was 35%. One additional point is now cr
 - Add missing API contract tests and negative-path validation where no external provider is required.
 
 ### Medium
-- Connect domain policy to authenticated backend services.
-- Connect the verified PostgreSQL schema and wallet SQL function to the Node API using a pooled, authenticated database adapter and transaction-safe service methods.
+- Implement account registration/login/recovery and bind signed device identities to accounts and durable PostgreSQL sessions before exposing account-scoped wallet services.
+
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.
 
@@ -139,7 +153,7 @@ The initial scope-wide weighted baseline was 35%. One additional point is now cr
 
 ## Exact next action
 
-After the latest Android CI conclusion is recorded, continue with the next medium backend step: connect the already-tested PostgreSQL schema to Node API services using a pooled connection, authenticated wallet/account operations and integration tests. Keep runtime credentials out of Git and do not claim real provider availability.
+After the latest Android CI conclusion is recorded, continue with the next medium backend step: implement account registration/authentication and securely bind signed device identities to durable account/session records. Keep passwords hashed, bearer tokens hashed at rest, use transaction-safe account/device/session writes, and do not expose wallet HTTP routes until the caller's account is cryptographically bound.
 
 ## Execution boundaries
 

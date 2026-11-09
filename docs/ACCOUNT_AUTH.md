@@ -48,9 +48,16 @@ The API verifies the scrypt password hash and then links the signing device to t
 - Email verification is not enabled. New accounts report `emailVerified: false`.
 - No email-delivery provider or provider credentials are configured in this repository.
 - No public wallet HTTP API is exposed yet. Wallet operations remain a server-side store capability; a request must never choose its own account ID for wallet access.
-- The Android app and website do not yet expose these account routes with complete user-facing registration/login/profile screens.
+- Android and browser registration/login/profile/sign-out screens are now present in source. Android uses `LinkaAccountClient` with an AES-GCM encrypted account token protected by a separate Android Keystore key. The browser uses a non-exportable P-256 WebCrypto key persisted in IndexedDB and a tab-scoped account token in `sessionStorage`. Android CI and API CI passed for the current UI integration commit; browser crypto and API asset-serving checks are included in API CI. A real browser-to-hosted-PostgreSQL end-to-end run and physical Android device test remain outstanding.
 
 Password reset and verification must not be implemented as a fake success response. Add a verified email-provider adapter, time-limited one-use hashed tokens, generic request responses, rate limits, token invalidation and delivery tests before enabling those routes.
+
+## Client session behavior
+
+- Android stores the API origin in app preferences and stores only the encrypted account token ciphertext and IV; the AES key remains in Android Keystore. A 401 during session restore clears the local token.
+- The browser stores the non-exportable device private key in IndexedDB and keeps the account bearer token in `sessionStorage`, so closing the tab ends the locally restored browser session. This is intentionally not cross-tab persistent token storage.
+- The account token is separate from the short-lived signed-device challenge token. The browser signing identity is browser-specific and is not shared with the Android Keystore identity.
+- Password recovery returns an explicit unavailable response until a real email delivery provider and reset-token workflow are configured.
 
 ## Security boundaries
 

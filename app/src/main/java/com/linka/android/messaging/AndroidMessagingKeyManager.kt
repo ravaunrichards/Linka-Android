@@ -24,7 +24,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-internal data class MessagingDevicePublicKey(
+data class MessagingDevicePublicKey(
     val deviceId: String,
     val accountId: String,
     val keyVersion: Int?,
@@ -116,7 +116,7 @@ internal class AndroidMessagingKeyManager(
                 val ephemeralPair = generateEphemeralPair()
                 val salt = randomBytes(HKDF_SALT_BYTES)
                 val wrapNonce = randomBytes(GCM_NONCE_BYTES)
-                val info = envelopeInfo(conversationId, device.deviceId, device.keyVersion)
+                val info = envelopeInfo(conversationId, device.deviceId, device.keyVersion!!)
                 val sharedSecret = deriveSharedSecret(ephemeralPair.private, recipientPublic)
                 val wrappingKey = hkdfSha256(sharedSecret, salt, info, CONTENT_KEY_BYTES)
                 sharedSecret.fill(0)

@@ -1,0 +1,72 @@
+name: LINKA PostgreSQL Schema CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/api/db/**"
+      - ".github/workflows/database-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/api/db/**"
+      - ".github/workflows/database-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linka-database-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-postgresql-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: linka_ci
+          POSTGRES_USER: linka_ci
+          POSTGRES_PASSWORD: linka_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U linka_ci -d linka_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGPASSWORD: linka_ci_password
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: linka_ci
+      PGDATABASE: linka_ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Wait for PostgreSQL
+        run: |
+          for attempt in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready." >&2
+          exit 1
+
+      - name: Apply core migration twice (idempotency check)
+        run: |
+          psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
+          psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
+
+      - name: Verify schema, wallet transactions and constraints
+        run: psql -v ON_ERROR_STOP=1 -f backend/api/db/checks/verify_core_schema.sql

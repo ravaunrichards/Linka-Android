@@ -21,6 +21,8 @@ The inspected main-branch tree contains 85 entries and is not an empty starter:
 - app/src/main/java/com/linka/android/core/security/ — peer session security.
 - app/src/test/ — unit tests for codec, call control/state, mesh routing and security.
 - backend/api/ — Node.js signaling API and automated tests.
+- backend/api/db/migrations/ — versioned PostgreSQL schema migrations.
+- backend/api/db/checks/ — SQL schema and wallet invariant checks executed by database CI.
 - web/ — static responsive browser companion.
 - docs/ — architecture, security, compatibility, testing, mesh and service documentation.
 - README.md and LICENSE — repository entry point and license.

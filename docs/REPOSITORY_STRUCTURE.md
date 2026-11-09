@@ -10,7 +10,7 @@
 
 ## 2. Current verified source tree
 
-The recursive GitHub tree contains 139 entries and is not truncated. The repository is an existing product codebase, not an empty starter.
+The recursive GitHub tree contains 141 entries and is not truncated. The repository is an existing product codebase, not an empty starter.
 
 - `.github/` — CODEOWNERS, issue and pull-request templates, Dependabot configuration and workflows.
 - `.github/workflows/android-ci.yml` — Android debug build, unit tests, source revision metadata and APK artifact.
@@ -30,7 +30,8 @@ The recursive GitHub tree contains 139 entries and is not truncated. The reposit
 - `backend/api/db/migrations/` — ordered PostgreSQL schema migrations.
 - `backend/api/db/checks/` — schema, wallet and integrity checks used by database CI.
 - `backend/api/src/domain/` — E.164 normalization, free-first route policy, wallet ledger and provider-fed rate catalog.
-- `backend/api/test/` — API, domain, PostgreSQL integration and browser-crypto tests.
+- `backend/api/src/cors.mjs` — strict exact-origin CORS allowlist for separately hosted browser clients.
+- `backend/api/test/` — API, domain, PostgreSQL integration, browser-crypto, browser-session policy and CORS policy tests.
 - `web/` — responsive browser companion, account UI, WebCrypto device identity and browser API client.
 - `docs/` — requirements, architecture, decisions, repository map, account authentication, database schema, integration matrix, roadmap, security, testing and recovery checkpoint.
 - Root files — README, license, contributing guide, security policy, editor settings, git attributes and ignore rules.

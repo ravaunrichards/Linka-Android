@@ -191,7 +191,7 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | Existing Android offline direct/mesh source and automated verification | 12% | 8% | 4% |
 | Complete Android phone experience and native system integration | 9% | 4% | 5% |
 | Backend identity/signaling, schema integrity, PostgreSQL adapter and account authentication | 8% | 8% | 0% |
-| Free-first route policy and international number normalization | 6% | 3% | 3% |
+| Free-first route policy and international number normalization | 6% | 3.5% | 2.5% |
 | Wallet credit-ledger domain | 8% | 4% | 4% |
 | Provider-fed rate catalog and usage estimation | 6% | 3% | 3% |
 | Provider-backed Jamaican/international number inventory and SIP/PSTN | 10% | 0% | 10% |
@@ -201,11 +201,11 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | Full account-based website and browser calling | 5% | 4% | 1% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **44%** | **56%** |
+| **TOTAL** | **100%** | **44.5%** | **55.5%** |
 
-**Previous verified completion: 43% | Current verified completion: 44% | Remaining: 56% | Progress since checkpoint: +1 percentage point.**
+**Previous verified completion: 44% | Current verified completion: 44.5% | Remaining: 55.5% | Progress since checkpoint: +0.5 percentage points.**
 
-The previous verified checkpoint was 43%. One additional percentage point is now credited to the browser milestone because PostgreSQL CI run 42677952248 passed the real headless Chromium UI lifecycle test against a disposable PostgreSQL-backed API: account creation, non-exportable IndexedDB P-256 key persistence, tab-session reload restoration, second-context login with a distinct device key/token, independent per-device logout, explicit recovery limitation and zero uncaught page errors. The new Android account edge-case tests also passed in run 42670913670; the Android account-client suite now contains nine test cases. Android CI run 42678530091 passed the debug APK build and unit-test task on the current main documentation checkpoint. These are automated checks, not physical radio/audio tests, hosted-origin deployment proof or Firefox coverage. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
+The previous verified checkpoint was 44%. A further 0.5 percentage point is credited to the E.164/API integration milestone: POST /v1/destinations/normalize is merged to main at 776f9c1890ace342d00ac35d10981d93e0a226ff; API CI passed on the merge commit (run 42699519290), and the pull-request test launched the real API process to verify + and 00 prefix normalization, rejection of national-format input, missing-number handling, JSON content-type enforcement and GET rejection. The response explicitly says syntax-only, destination resolution not performed, number type unknown and provider reachability not checked. Prior browser verification also includes both Chromium and Firefox DOM/IndexedDB lifecycle passes in PostgreSQL CI run 42680769129. Android CI passed on PR run 42699002701 for the same code change; the post-merge main Android workflow run 42699519172 must still be confirmed. These checks do not establish physical radio/audio behavior, hosted-origin deployment, provider inventory or commercial carrier routes. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, WebRTC media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
 
 ## Easy, medium and hard work remaining
 
@@ -242,3 +242,86 @@ Verify the separately hosted HTTPS browser origin and explicit CORS allowlist on
 - Do not deploy or change external service settings during a GitHub-only pass.
 - Do not add provider credentials, private signing keys or payment secrets to source control.
 - Do not claim physical-device tests, provider enablement, emergency calling or independent security review without evidence.
+
+
+## Authoritative continuation checkpoint — 2026-11-09
+
+**Project:** LINKA Android and browser calling platform  
+**Repository:** ravaunrichards/Linka-Android  
+**Main branch:** main  
+**Latest confirmed main commit:** 776f9c1890ace342d00ac35d10981d93e0a226ff  
+**Last previous verified score:** 44.0%  
+**Current verified score:** 44.5%  
+**Remaining:** 55.5%  
+**Progress since previous checkpoint:** +0.5 percentage points  
+**Current task lock:** No source task in progress; next task is R008 destination metadata resolution  
+**Latest merged feature:** PR #16, E.164 normalization HTTP endpoint
+
+### Verified milestone evidence
+
+- API CI run [42699002990](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699002990): PASS on PR head 3ee3b8bd43847699045eda9d51217aad65a3f449; real-server HTTP tests passed, as did API startup, CORS and browser asset checks.
+- Android CI run [42699002701](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699002701): PASS on the same PR head; debug APK build, unit tests and artifact upload succeeded.
+- API CI run [42699519290](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699519290): PASS on merged main commit 776f9c1890ace342d00ac35d10981d93e0a226ff.
+- Browser UI: Chromium and Firefox account lifecycle runs PASS in PostgreSQL CI run [42680769129](https://github.com/ravaunrichards/Linka-Android/actions/runs/42680769129), including non-exportable IndexedDB identity, tab session restore, second browser context, per-device logout and zero uncaught browser errors.
+- Earlier main Android CI run [42682256606](https://github.com/ravaunrichards/Linka-Android/actions/runs/42682256606): PASS on main commit 8fcd0be34829c61c335376454ad1302b8e17b5d8.
+- Post-merge Android CI run [42699519172](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699519172): was in progress at checkpoint creation; do not count as a completed main-branch run until rechecked.
+- The API merge commit is verified in main; PR #16 is closed and merged.
+- POST /v1/destinations/normalize validates explicit international E.164 syntax only. It does not infer a country, identify mobile/landline type, prove number assignment or provider reachability, return provider pricing or place a call.
+- The native phone favourites change remains isolated on draft PR #15 / feature/native-phone-favorites; the instrumentation suite and emulator CI wiring are committed but no CI result exists for its latest branch head. This work is not counted in the main-branch score.
+
+### Master requirement register
+
+| ID | Requirement / acceptance result | Priority | Dependency | Initial state | Implementation / affected files | Test and evidence | Result / status |
+|---|---|---|---|---|---|---|---|
+| R001 | Independent LINKA repo, organized architecture, requirements, security and recovery documentation | Easy | None | Existing product source needed consolidation | Root docs, docs/*, GitHub templates and CI workflows | Main repository tree and CI reviewed; docs/link checks recorded in prior checkpoints | PASS / Verified |
+| R002 | Android app shell, phone hub, dial pad, contacts/recent-call handoffs and favourites | Medium | Android build; device/system handlers | Android Compose shell and system-app handoffs existed; favourites added separately | app/src/main/java/com/linka/android/PhoneHubScreen.kt and PhoneFavorites.kt on draft PR #15 | JVM codec tests/build passed on earlier PR CI; latest Keystore instrumentation run not available | PARTIAL / In progress |
+| R003 | Trusted two-device direct offline encrypted voice call with bidirectional audible audio and lifecycle proof | Hard | Two physical Android devices and device lab | Security/audio source and automated protocol tests existed | app/src/main/java/com/linka/android/core/audio/* and core/security/* | JVM and protocol tests previously passed; no two-phone RF/audio result | PARTIAL / Blocked on physical devices |
+| R004 | Four-or-more-device opt-in encrypted offline mesh voice routing | Hard | Four physical Android devices and field test | Mesh source, relay consent and automated route tests existed | app/src/main/java/com/linka/android/core/mesh/* and routed voice/call source | Automated route tests in CI; no field call/latency/range result | PARTIAL / Blocked on physical devices |
+| R005 | Signed device auth, account registration/login, multi-device sessions, logout and PostgreSQL account integrity | Medium | PostgreSQL schema and signed device identity | Backend and account foundation partially implemented | backend/api/src/account-auth.mjs, postgres-store.mjs, server routes and migrations 0001/0002 | PostgreSQL CI and earlier account CI; Android and browser account UI tests | PASS for scoped account/session foundation / Verified; recovery is R006 |
+| R006 | Secure email verification and one-use password recovery | Medium | Email-delivery provider, verified domain, token lifecycle | Recovery route deliberately returns 501; no mail provider configured | Not implemented; no sender configured | Browser tests verify explicit unavailable message/501 rather than simulated delivery | BLOCKED / External email provider required |
+| R007 | E.164 syntax normalization exposed through a rate-limited API route | Easy | None | Helper existed without HTTP endpoint | backend/api/src/server.mjs, backend/api/test/e164-api.test.mjs, docs/RENDER_API_SERVICE.md | API CI 42699002990 and post-merge API CI 42699519290; real HTTP tests PASS | PASS / Verified |
+| R008 | Resolve destination country/region and number type correctly, including Jamaica +1 876/+1 658 versus US/Canada +1 | Medium | Current numbering-plan metadata/library and update process | E.164 canonicalization does not infer geography or number type | Not yet implemented | Existing domain tests deliberately avoid guessing from shared +1; metadata tests required | NOT TESTED / Remaining |
+| R009 | Provider-confirmed number search, acquisition/rental, renewal, release, inbound routing and caller-ID control | Hard | Carrier/virtual-number provider contracts, credentials, inventory and regulatory eligibility | Schema foundation exists; no live inventory/provider connection | telephone_numbers schema and provider roadmap; no connected operational adapter | No provider account, inventory query or lifecycle test available | BLOCKED / External provider and regulatory eligibility |
+| R010 | Free-first availability, provider tariffs, service eligibility and destination usage estimates | Medium | Trusted provider routes, funding/allowance information and active tariff feed | Pure route policy, E.164 helper and tariff validation/quote domains exist | backend/api/src/domain/route-options.mjs, rate-catalog.mjs and tests | Unit tests cover free-first, quote consent, effective rates and rounding; no live provider feed | PARTIAL / Provider/API/client integration remains |
+| R011 | Server-authoritative wallet, immutable ledger, idempotent atomic credit/refund operations and user-facing history | Medium | PostgreSQL and authenticated payment/provider events | In-memory reducer and SQL ledger function/schema foundations exist | credit-ledger.mjs, PostgreSQL schema and apply_wallet_event | PostgreSQL CI schema/transaction checks and unit tests passed; no public wallet endpoints or client UI | PARTIAL / API, reconciliation and UI remain |
+| R012 | Real payment methods, signed provider webhooks, refunds, disputes and settlement reconciliation | Hard | Payment provider onboarding, merchant approval and secrets | No payment integration | Tables/design only; no processor adapter | No sandbox/live payment test or webhook verification | BLOCKED / External payment onboarding |
+| R013 | Internal end-to-end encrypted one-to-one/group messaging, attachments and cross-device history | Medium | Account membership, client encryption/key distribution and durable Postgres store | Schema tables exist; complete API/client implementation absent | conversations, conversation_members and internal_messages schema only | No end-to-end send/read UI or delivery test | NOT IMPLEMENTED / Remaining |
+| R014 | External SMS/MMS with delivery reports, rates and explicit paid-send consent | Hard | SMS/MMS provider, sender registration and country coverage | Android system SMS handoff only | External message schema/design only | No provider delivery receipt or end-to-end send test | BLOCKED / External provider |
+| R015 | LINKA-to-LINKA internet audio/video calls on Android and supported browsers with WebRTC/TURN media | Hard | WebRTC clients, signaling integration, TURN and network test | Ephemeral signaling API exists; media relay/client not verified | backend/api/src/runtime.mjs and signaling routes; no operational media path | API signaling CI only; no audible/video call test | PARTIAL / Major implementation remaining |
+| R016 | Full account-based browser product: number management, call UI, messaging, wallet and settings | Medium | R007-R015 backend/service capabilities | Browser companion and account shell exist | web/* and backend/api/verify-browser-ui.e2e.mjs | Chromium + Firefox account lifecycle in PostgreSQL CI 42680769129 | PARTIAL / Full telephone-client work remains |
+| R017 | SIM/eSIM support and automatic connectivity switching with paid-route consent | Hard | Android role/API support, compatible devices and operator/eSIM partner | No SIM/eSIM provisioning implementation | Architecture/product docs only | No operator/device test | BLOCKED / External carrier/device support |
+| R018 | Physical Android tests: direct two-phone, four-device mesh, background/audio lifecycle and handset compatibility | Hard | Physical phones, test SIMs and test environment | Automated tests only | Issue #2 device acceptance tracker | No physical device-lab evidence | BLOCKED / Physical hardware required |
+| R019 | Independent cryptographic/security review, abuse controls, telecom/privacy compliance and release approval | Hard | Independent reviewer and relevant market/provider/legal approvals | Source security design and automated tests exist | SECURITY.md, docs/SECURITY.md and issue #2 | No independent cryptographic audit, external regulatory sign-off or release review | BLOCKED / Qualified external review |
+| R020 | Production Render/PostgreSQL deployment, HTTPS origin/CORS, monitoring/backup and verified signed Android release | Hard | Confirmed Render workspace/service, production DB secrets and protected signing key | Historical Render instructions only; no live health evidence | docs/RENDER_API_SERVICE.md and CI debug APK artifact | CI artifacts are debug builds; production endpoint/workspace not checked | BLOCKED / Workspace selection and production credentials/approval |
+| R021 | Phone favourites securely saved/loaded/deleted and system dial/SMS intents open on device | Easy | Android Keystore emulator/handset and system handlers | Source, UI and JVM codec tests exist on draft PR #15 | PhoneFavorites.kt, PhoneHubScreen.kt and PhoneFavoritesStoreTest.kt on feature/native-phone-favorites | Five Android instrumentation tests and emulator CI wiring committed; no run for latest branch head | NOT VERIFIED / Emulator workflow result required |
+
+### Remaining work groups
+
+**EASY**
+- R008: add maintained numbering-plan/region and number-type resolution without guessing from shared +1.
+- R021: verify Android Keystore persistence/tamper behavior and actual dial/SMS handoffs on emulator or handset.
+- Add focused negative-path API tests where they cover an unmet acceptance criterion.
+
+**MEDIUM**
+- R010: wire trusted server-side provider/rate/allowance data into route options and quote API; keep routes unavailable where no verified data exists.
+- R011: expose authenticated customer wallet snapshot/history endpoints and explicit ledger actions without allowing clients to set balances.
+- R013: build the internal encrypted messaging API and client key/session flow.
+- R016: complete actual browser telephone-client areas beyond account registration/sign-in.
+
+**HARD / EXTERNAL DEPENDENCIES**
+- R006 email sender and recovery verification.
+- R009/R014 carrier number and external messaging provider contracts, inventory, credentials and compliance.
+- R012 payment processor approval and webhook secrets.
+- R015 WebRTC/TURN media infrastructure and client implementations.
+- R017 SIM/eSIM operator partnership and device coverage.
+- R018 physical phones/device lab and field testing.
+- R019 independent security and telecom/privacy review.
+- R020 explicit Render workspace/service confirmation, production environment and protected signing.
+
+### Exact next action
+
+Implement R008 using a maintained numbering-plan metadata package with tested support for JM, US, CA and GB; retain POST /v1/destinations/normalize as syntax-only and add a separate resolved-metadata endpoint rather than changing the existing contract. Verify using Jamaican +1 876/+1 658, US +1, Canada +1, UK +44 and invalid/unresolved examples. Then implement the internal authenticated messaging backend (R013) while leaving provider-blocked work accurately classified.
+
+### Latest confirmed action
+
+Merged PR #16 after API and Android PR CI succeeded; post-merge API CI also passed. Main branch head is 776f9c1890ace342d00ac35d10981d93e0a226ff. No production service or database was modified.

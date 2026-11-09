@@ -23,7 +23,7 @@ function signEncryptionKey(device, publicKeyDer) {
     device.deviceId,
     "ECDH-P256",
     fingerprint
-  ].join("\\n"), "utf8");
+  ].join("\n"), "utf8");
   return signSignature("sha256", statement, device.signingPrivateKey).toString("base64");
 }
 

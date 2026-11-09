@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install API dependencies
+        run: npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund
       - name: Run API tests
         run: npm --prefix backend/api test
       - name: Verify API starts

@@ -67,4 +67,4 @@ The CI verification workflow applies all migrations twice, then inserts temporar
 
 **Database verification: PASSED.** PostgreSQL Schema CI run 42612753799 completed successfully on 2026-11-09 against PostgreSQL 17. It applied the migration twice and passed schema, wallet purchase/idempotency/usage/refund/overdraft/append-only and number-uniqueness checks.
 
-The migration and CI exercise establish a verified PostgreSQL schema and SQL wallet primitive. They do not connect the existing in-memory API runtime to PostgreSQL, provision real numbers, process carrier usage, receive real payment webhooks or enable live telephony services.
+The Node API now has an optional pooled PostgreSQL adapter for readiness checks, wallet creation/snapshot reads and parameterized calls to the atomic wallet SQL function. The API checks the migrated schema before reporting readiness when DATABASE_URL is configured. Authentication sessions and signaling queues remain in memory; there is not yet an authenticated account-linking flow or public wallet HTTP API. Provider number inventory, carrier usage, payment webhooks and live telephony remain unintegrated.

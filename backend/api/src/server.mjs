@@ -1,12 +1,14 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { LinkaRuntime } from "./runtime.mjs";
+import { createPostgresStore } from "./postgres-store.mjs";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 const API_VERSION = "0.1.0";
 const MAX_BODY_BYTES = 20 * 1024;
 const runtime = new LinkaRuntime();
+const postgresStore = createPostgresStore();
 const WEB_ROOT = new URL("../../../web/", import.meta.url);
 const WEB_ASSETS = new Map([
   ["/", { file: "index.html", contentType: "text/html; charset=utf-8" }],
@@ -147,10 +149,28 @@ async function handleRequest(req, res) {
     }
 
     if (req.method === "GET" && path === "/readyz") {
+      if (postgresStore) {
+        try {
+          await postgresStore.checkReady();
+        } catch {
+          response(res, 503, {
+            status: "not_ready",
+            service: "linka-api",
+            dependencies: { postgres: "unavailable" }
+          });
+          return;
+        }
+      }
+
       response(res, 200, {
         status: "ready",
         service: "linka-api",
-        capabilities: ["signed-device-auth", "ephemeral-call-signaling"]
+        capabilities: [
+          "signed-device-auth",
+          "ephemeral-call-signaling",
+          ...(postgresStore ? ["postgres-wallet-ledger"] : [])
+        ],
+        dependencies: { postgres: postgresStore ? "ready" : "not_configured" }
       });
       return;
     }
@@ -165,11 +185,18 @@ async function handleRequest(req, res) {
           internetCallSignaling: "enabled",
           serverMediaRelay: false
         },
+        persistence: {
+          postgres: postgresStore ? "configured" : "not_configured",
+          walletSqlFunction: postgresStore ? "available_when_ready" : "not_configured",
+          accountLinking: "not_implemented",
+          walletHttpApi: "not_implemented"
+        },
         limitations: [
           "This service carries call-control and WebRTC signaling only.",
           "It does not carry voice audio.",
           "Nearby SIM-free calls do not depend on this service.",
-          "Authentication sessions and signal queues are in-memory and expire."
+          "Authentication sessions and signal queues remain in-memory and expire.",
+          "PostgreSQL wallet operations are server-side only; account authentication and wallet HTTP endpoints are not implemented."
         ]
       });
       return;
@@ -288,7 +315,14 @@ server.listen(PORT, "0.0.0.0", () => {
 function shutdown(signal) {
   console.log(JSON.stringify({ level: "info", event: "shutdown", signal }));
   clearInterval(cleanupTimer);
-  server.close(() => process.exit(0));
+  server.close(async () => {
+    try {
+      await postgresStore?.close();
+      process.exit(0);
+    } catch {
+      process.exit(1);
+    }
+  });
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 

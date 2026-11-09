@@ -6,11 +6,11 @@
 - Product: LINKA
 - Scope: one independent product across Android, browser, backend, database migrations, CI and documentation.
 - Do not create a duplicate LINKA repository.
-- Latest verified main at this inventory: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
+- Latest Android-tested main at this inventory: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`.
 
 ## 2. Current verified source tree
 
-The recursive GitHub tree contains 141 entries and is not truncated. The repository is an existing product codebase, not an empty starter.
+The recursive GitHub tree contains 144 entries and is not truncated. The repository is an existing product codebase, not an empty starter.
 
 - `.github/` — CODEOWNERS, issue and pull-request templates, Dependabot configuration and workflows.
 - `.github/workflows/android-ci.yml` — Android debug build, unit tests, source revision metadata and APK artifact.
@@ -25,13 +25,14 @@ The recursive GitHub tree contains 141 entries and is not truncated. The reposit
 - `app/src/main/java/com/linka/android/core/mesh/` — packet routing, relay consent and routed payload handling.
 - `app/src/main/java/com/linka/android/core/nearby/` — nearby radio connections.
 - `app/src/main/java/com/linka/android/core/security/` — peer session security and encrypted call primitives.
-- `app/src/test/` — Android unit tests for audio, call control/state, mesh routing and security.
+- `app/src/test/` — Android unit tests for audio, call control/state, mesh routing, security and account-session restore/logout (`account/LinkaAccountClientTest.kt`).
 - `backend/api/` — Node.js API, domain modules, persistence adapter and automated tests.
 - `backend/api/db/migrations/` — ordered PostgreSQL schema migrations.
 - `backend/api/db/checks/` — schema, wallet and integrity checks used by database CI.
 - `backend/api/src/domain/` — E.164 normalization, free-first route policy, wallet ledger and provider-fed rate catalog.
 - `backend/api/src/cors.mjs` — strict exact-origin CORS allowlist for separately hosted browser clients.
 - `backend/api/test/` — API, domain, PostgreSQL integration, browser-crypto, browser-session policy and CORS policy tests.
+- `backend/api/verify-browser-account.e2e.mjs` — browser-WebCrypto account lifecycle test executed against the API and a disposable PostgreSQL database in CI.
 - `web/` — responsive browser companion, account UI, WebCrypto device identity and browser API client.
 - `docs/` — requirements, architecture, decisions, repository map, account authentication, database schema, integration matrix, roadmap, security, testing and recovery checkpoint.
 - Root files — README, license, contributing guide, security policy, editor settings, git attributes and ignore rules.
@@ -86,7 +87,7 @@ Verified root governance files now include:
 - `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`.
 - `.github/dependabot.yml`.
 
-A Gradle wrapper is still not checked into the repository. Android CI is configured to install Gradle 8.14.4 directly; the current Android CI run is verifying this version. Add a wrapper only after generating and verifying the official wrapper scripts and JAR; do not fabricate a wrapper binary.
+A Gradle wrapper is still not checked into the repository. Android CI installs Gradle 8.14.4 directly; Android CI run 42665968552 passed on the latest Android-tested main commit. Add a wrapper only after generating and verifying the official wrapper scripts and JAR; do not fabricate a wrapper binary.
 
 ## 7. Rules for structural changes
 

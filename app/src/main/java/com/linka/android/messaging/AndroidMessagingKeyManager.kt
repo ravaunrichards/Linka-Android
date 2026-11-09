@@ -27,9 +27,9 @@ import javax.crypto.spec.SecretKeySpec
 internal data class MessagingDevicePublicKey(
     val deviceId: String,
     val accountId: String,
-    val keyVersion: Int,
-    val algorithm: String,
-    val publicKeyBase64: String
+    val keyVersion: Int?,
+    val algorithm: String?,
+    val publicKeyBase64: String?
 )
 
 internal data class MessagingDecryptedMessage(
@@ -88,8 +88,8 @@ internal class AndroidMessagingKeyManager(
             "The conversation contains duplicate device identities."
         }
         devices.forEach { device ->
-            require(device.algorithm == ALGORITHM && device.keyVersion > 0 &&
-                device.deviceId.isNotBlank() && device.publicKeyBase64.isNotBlank()) {
+            require(device.algorithm == ALGORITHM && (device.keyVersion ?: 0) > 0 &&
+                device.deviceId.isNotBlank() && !device.publicKeyBase64.isNullOrBlank()) {
                 "Every active conversation device must register an ECDH P-256 key before sending."
             }
         }
@@ -112,7 +112,7 @@ internal class AndroidMessagingKeyManager(
 
             val envelopes = JSONArray()
             devices.forEach { device ->
-                val recipientPublic = parseP256PublicKey(decodeBase64(device.publicKeyBase64))
+                val recipientPublic = parseP256PublicKey(decodeBase64(device.publicKeyBase64!!))
                 val ephemeralPair = generateEphemeralPair()
                 val salt = randomBytes(HKDF_SALT_BYTES)
                 val wrapNonce = randomBytes(GCM_NONCE_BYTES)

@@ -106,6 +106,29 @@
             <p id="accountProfileVerification"></p>
             <p id="accountProfileExpiry"></p>
             <button class="button secondary" id="accountLogout" type="button">Sign out</button>
+            <section class="chat-workspace" id="messagingPanel" aria-labelledby="messagingHeading">
+              <div class="chat-heading">
+                <div><div class="eyebrow">PRIVATE MESSAGING</div><h3 id="messagingHeading">Encrypted LINKA messages</h3></div>
+                <span class="tag progress">Device-key E2EE</span>
+              </div>
+              <p class="account-help">Each browser device creates its own non-exportable ECDH P-256 key. Messages are encrypted in this browser and a separate content key is wrapped for every active conversation device. LINKA's server stores ciphertext and wrapped keys only.</p>
+              <label class="account-label" for="chatParticipantIds">Other LINKA account ID(s) — comma separated for a group</label>
+              <input id="chatParticipantIds" type="text" autocomplete="off" maxlength="1800" placeholder="Account UUID, or several UUIDs for a group">
+              <button class="button secondary" id="chatCreateConversation" type="button">Create / open conversation</button>
+              <div class="chat-toolbar">
+                <label class="account-label" for="chatConversationSelect">Your conversations</label>
+                <button class="button secondary" id="chatRefreshConversations" type="button">Refresh</button>
+              </div>
+              <select id="chatConversationSelect" aria-label="Select a LINKA conversation"></select>
+              <div class="chat-messages" id="chatMessages" aria-live="polite">
+                <p class="chat-empty">Your encrypted messages will appear here.</p>
+              </div>
+              <label class="account-label" for="chatMessageDraft">Message</label>
+              <textarea id="chatMessageDraft" rows="3" maxlength="6000" placeholder="Write an encrypted message…"></textarea>
+              <button class="button primary" id="chatSendMessage" type="button">Encrypt and send</button>
+              <p class="chat-status" id="chatStatus" role="status" aria-live="polite">Messaging keys are registered for this browser after sign-in.</p>
+              <p class="account-help">Attachments, delivery/read receipts and Android chat UI are not enabled yet. Every active device in the conversation must register its encryption key before sending.</p>
+            </section>
           </article>
           <article class="notice" id="accountNotice">
             <strong>Secure browser session</strong>

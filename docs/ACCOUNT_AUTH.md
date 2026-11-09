@@ -56,6 +56,7 @@ Password reset and verification must not be implemented as a fake success respon
 
 - Android stores the API origin in app preferences and stores only the encrypted account token ciphertext and IV; the AES key remains in Android Keystore. A 401 during session restore clears the local token.
 - The browser stores the non-exportable device private key in IndexedDB and keeps the account bearer token in `sessionStorage`, so closing the tab ends the locally restored browser session. This is intentionally not cross-tab persistent token storage.
+- Browser session restoration clears the token only when `/v1/me` explicitly returns HTTP 401. Network failures and server errors retain the tab-scoped token so a temporary outage does not force the user to sign in again. The status policy is unit-tested.
 - The account token is separate from the short-lived signed-device challenge token. The browser signing identity is browser-specific and is not shared with the Android Keystore identity.
 - Password recovery returns an explicit unavailable response until a real email delivery provider and reset-token workflow are configured.
 

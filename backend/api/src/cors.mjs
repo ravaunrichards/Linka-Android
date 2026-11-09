@@ -5,6 +5,9 @@ function parseAllowedOrigins(value) {
   for (const entry of String(value).split(",")) {
     const candidate = entry.trim();
     if (!candidate) continue;
+    if (candidate.includes("*")) {
+      throw new TypeError("CORS_ALLOWED_ORIGINS accepts exact HTTPS origins and localhost HTTP origins only.");
+    }
 
     let url;
     try {

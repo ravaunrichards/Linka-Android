@@ -63,10 +63,14 @@ jobs:
           echo "PostgreSQL did not become ready." >&2
           exit 1
 
-      - name: Apply core migration twice (idempotency check)
+      - name: Apply all migrations twice (idempotency check)
         run: |
-          psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
-          psql -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_schema.sql
+          for migration in backend/api/db/migrations/*.sql; do
+            psql -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in backend/api/db/migrations/*.sql; do
+            psql -v ON_ERROR_STOP=1 -f "$migration"
+          done
 
       - name: Verify schema, wallet transactions and constraints
         run: psql -v ON_ERROR_STOP=1 -f backend/api/db/checks/verify_core_schema.sql

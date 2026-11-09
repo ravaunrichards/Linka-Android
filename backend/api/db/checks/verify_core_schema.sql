@@ -43,7 +43,9 @@ END;
 $checks$;
 
 INSERT INTO linka_private.accounts (account_id, email_normalized, display_name)
-VALUES ('00000000-0000-4000-8000-000000000001', 'schema-test@example.invalid', 'Schema Test');
+VALUES
+    ('00000000-0000-4000-8000-000000000001', 'schema-test@example.invalid', 'Schema Test'),
+    ('00000000-0000-4000-8000-000000000007', 'schema-test-2@example.invalid', 'Schema Test 2');
 
 INSERT INTO linka_private.user_devices (
     device_id, account_id, device_fingerprint, signing_public_key_der, platform
@@ -111,8 +113,21 @@ INSERT INTO linka_private.provider_rates (
 );
 
 INSERT INTO linka_private.wallet_accounts (wallet_id, account_id)
+VALUES
+    ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-000000000001'),
+    ('00000000-0000-4000-8000-000000000008', '00000000-0000-4000-8000-000000000007');
+
+INSERT INTO linka_private.conversations (
+    conversation_id, conversation_kind, created_by_account_id
+) VALUES (
+    '00000000-0000-4000-8000-000000000009',
+    'direct',
+    '00000000-0000-4000-8000-000000000001'
+);
+
+INSERT INTO linka_private.conversation_members (conversation_id, account_id)
 VALUES (
-    '00000000-0000-4000-8000-000000000005',
+    '00000000-0000-4000-8000-000000000009',
     '00000000-0000-4000-8000-000000000001'
 );
 
@@ -193,7 +208,83 @@ BEGIN
 END;
 $wallet_tests$;
 
-DO $uniqueness_tests$
+DO DO $cross_account_tests$
+DECLARE
+    caught BOOLEAN;
+BEGIN
+    caught := FALSE;
+    BEGIN
+        INSERT INTO linka_private.wallet_ledger_events (
+            event_id, wallet_id, account_id, idempotency_key,
+            event_type, credit_source, amount_credit_units
+        ) VALUES (
+            'cross-wallet-event',
+            '00000000-0000-4000-8000-000000000005',
+            '00000000-0000-4000-8000-000000000007',
+            'cross-wallet-idem',
+            'PURCHASE_CONFIRMED',
+            'purchased',
+            1
+        );
+    EXCEPTION WHEN foreign_key_violation THEN
+        caught := TRUE;
+    END;
+    IF NOT caught THEN RAISE EXCEPTION 'cross_account_wallet_event_was_not_blocked'; END IF;
+
+    caught := FALSE;
+    BEGIN
+        INSERT INTO linka_private.call_sessions (
+            call_id, account_id, device_id, call_mode, call_status
+        ) VALUES (
+            '00000000-0000-4000-8000-000000000010',
+            '00000000-0000-4000-8000-000000000007',
+            '00000000-0000-4000-8000-000000000002',
+            'internal',
+            'initiated'
+        );
+    EXCEPTION WHEN foreign_key_violation THEN
+        caught := TRUE;
+    END;
+    IF NOT caught THEN RAISE EXCEPTION 'cross_account_call_device_was_not_blocked'; END IF;
+
+    caught := FALSE;
+    BEGIN
+        INSERT INTO linka_private.internal_messages (
+            message_id, conversation_id, sender_account_id, ciphertext, encryption_version
+        ) VALUES (
+            '00000000-0000-4000-8000-000000000011',
+            '00000000-0000-4000-8000-000000000009',
+            '00000000-0000-4000-8000-000000000007',
+            decode('01', 'hex'),
+            'ci-v1'
+        );
+    EXCEPTION WHEN foreign_key_violation THEN
+        caught := TRUE;
+    END;
+    IF NOT caught THEN RAISE EXCEPTION 'non_member_message_sender_was_not_blocked'; END IF;
+
+    caught := FALSE;
+    BEGIN
+        INSERT INTO linka_private.external_message_jobs (
+            message_job_id, account_id, provider_id, sender_number_id,
+            destination_e164, message_type, delivery_status
+        ) VALUES (
+            '00000000-0000-4000-8000-000000000012',
+            '00000000-0000-4000-8000-000000000007',
+            'ci-message-provider',
+            '00000000-0000-4000-8000-000000000004',
+            '+18765550199',
+            'sms',
+            'queued'
+        );
+    EXCEPTION WHEN foreign_key_violation THEN
+        caught := TRUE;
+    END;
+    IF NOT caught THEN RAISE EXCEPTION 'other_account_sender_number_was_not_blocked'; END IF;
+END;
+$cross_account_tests$;
+
+$uniqueness_tests$
 DECLARE
     caught BOOLEAN := FALSE;
 BEGIN

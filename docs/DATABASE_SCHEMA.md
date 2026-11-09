@@ -8,7 +8,9 @@ The application supplies UUIDs and authentication token hashes. The migration do
 
 ## Initial migration
 
-File: `backend/api/db/migrations/0001_core_schema.sql`
+Initial migrations:
+- `backend/api/db/migrations/0001_core_schema.sql` — core account, device, provider, number, rate, wallet, payment, call and messaging schema.
+- `backend/api/db/migrations/0002_cross_account_integrity.sql` — composite ownership constraints that bind ledger events to their wallet/account, call devices to their account, message senders to conversation membership, and outbound sender numbers to their account.
 
 It creates durable structures for:
 - Accounts, registered devices and hashed authentication sessions.
@@ -49,12 +51,12 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/api/db/migrations/0001_core_s
 
 The migration is designed to be safely reapplied: it uses idempotent table/index creation, replaces its functions, recreates its trigger and records the migration version once.
 
-The CI verification script runs the migration twice, then inserts temporary test records and checks wallet purchase, duplicate idempotency, usage deduction, partial refund, overdraft rejection, append-only enforcement and active-number uniqueness. Its test data is rolled back.
+The CI verification workflow applies all migrations twice, then inserts temporary test records and checks wallet purchase, duplicate idempotency, usage deduction, partial refund, overdraft rejection, append-only enforcement, active-number uniqueness and cross-account isolation for wallets, call devices, conversation senders and outbound sender numbers. Its test data is rolled back.
 
 ## Migration rules
 
 - Never edit an already-applied migration to change an existing database. Add a forward migration.
-- Keep schema changes in `backend/api/db/migrations/`.
+- Keep schema changes in `backend/api/db/migrations/`. Once a migration has been applied, add a forward migration instead of editing it.
 - Add assertions and transactional behavior checks under `backend/api/db/checks/`.
 - Do not add real provider credentials, raw payment details or customer data to migrations or fixtures.
 - Use database transactions and row locking for balances, number assignment and payment reconciliation.

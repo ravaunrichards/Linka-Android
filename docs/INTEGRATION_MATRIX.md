@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions results retrieved on 2026-11-09; provider and deployment status has not been live-verified.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Current verified main is `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|
@@ -12,11 +12,11 @@ This matrix separates repository evidence from device, provider and production p
 | Android system dialer handoff | Phone hub uses ACTION_DIAL | SOURCE IMPLEMENTED | Physical device/handler checks; not an in-app carrier stack |
 | Android SMS handoff | ACTION_SENDTO to installed SMS app | SOURCE IMPLEMENTED | Physical device/handler checks; not integrated SMS/MMS |
 | Contacts/recent-call handoff | Intents to Android system apps | SOURCE IMPLEMENTED | Device/system-handler checks |
-| Backend signed device challenge | backend/api source | SOURCE IMPLEMENTED; API CI previously passed | Durable accounts and Android client integration |
-| Account registration and persistent login | `POST /v1/accounts/register`, `POST /v1/accounts/login`, `/v1/me`, logout, scrypt password hashes, DB-backed device/session integration test | SOURCE IMPLEMENTED; POSTGRESQL HTTP CI VERIFIED | Password recovery/email verification need a configured mail provider; Android and full website account UI remain to be integrated |
+| Backend signed device challenge | backend/api source | SOURCE IMPLEMENTED; API CI PASSED on current main | Production TLS/domain, persistent challenge design and external abuse monitoring |
+| Account registration and persistent login | `POST /v1/accounts/register`, `POST /v1/accounts/login`, `/v1/me`, logout, scrypt password hashes, DB-backed device/session integration test | SOURCE IMPLEMENTED; POSTGRESQL HTTP CI VERIFIED; ANDROID + BROWSER UI SOURCE IMPLEMENTED; ANDROID/API CI PASSED | Real browser/Android-to-hosted-PostgreSQL end-to-end verification; password recovery/email verification need a configured mail provider |
 | Backend call signaling queue | In-memory runtime and signaling routes | SOURCE IMPLEMENTED; API CI previously passed | Durable presence/queue design, client integration and real call tests |
 | WebRTC media/TURN | No operational media relay verified | NOT IMPLEMENTED | Media topology, provider/infrastructure choice and network tests |
-| Browser companion | Static source under web/ served by the API application | SOURCE IMPLEMENTED as a companion | Full account-based calling/messaging web app is NOT IMPLEMENTED |
+| Browser companion | Responsive source under web/, including `account.mjs` and `auth-crypto.mjs`, served through the API asset allowlist | ACCOUNT REGISTRATION/SIGN-IN SOURCE IMPLEMENTED; API CI PASSED; FULL WEB TELEPHONE CLIENT NOT IMPLEMENTED | Real browser end-to-end account test against hosted PostgreSQL; full calling, messaging, number and wallet experiences |
 | Render deployment | Historical details in docs/RENDER_API_SERVICE.md | HISTORICALLY DOCUMENTED; NOT LIVE VERIFIED IN THIS GITHUB-ONLY RECOVERY | Check dashboard, health, environment and current provider status before relying on it |
 | Jamaican number provisioning | Product requirement and compatibility plan | NOT IMPLEMENTED | Real number inventory, agreements, eligibility and regulatory review |
 | International number provisioning | Product scope documented | NOT IMPLEMENTED | Provider country coverage, number types, local-presence rules and contracts |
@@ -38,10 +38,11 @@ This matrix separates repository evidence from device, provider and production p
 
 ## CI and repository evidence recovered
 
-- Current verified main: `4633d10c307fce56f1458f5ffef7e01571f84ab9`.
-- PostgreSQL Schema CI run 42617603718 passed on 2026-11-09: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, account HTTP integration passed, and API PostgreSQL readiness passed; test summary 65 passed, 0 failed.
-- LINKA API CI run 42617603655 passed: 63 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL.
-- Android CI run 42617603672 passed: debug APK build, Android unit tests, source metadata and artifact upload succeeded.
+- Current verified main: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
+- PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, account HTTP integration passed, API PostgreSQL readiness passed; 65 passed, 0 failed.
+- LINKA API CI run 42619263365 passed: browser module syntax checks passed, 67 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API startup and both browser-module asset routes passed.
+- Android CI run 42619263339 passed: `:app:assembleDebug`, `:app:testDebugUnitTest`, source revision metadata and APK artifact upload all succeeded.
+- Debug APK artifact `linka-debug-apk-124cfdb60b5d24ad77576bc72bb331fb48e5f316` (GitHub artifact ID `13675156323`; expires 2026-12-09). It is not a production-signed release.
 - Account integration verifies signed-device registration/login, duplicate device/email rejection, persistent token hashes, second-device login and logout revocation.
 - Password reset/email verification are not live-enabled; no email provider is configured.
 - Render, carrier, payment, tariff and device-lab services have not been live-verified.

@@ -51,7 +51,7 @@ INSERT INTO linka_private.user_devices (
     '00000000-0000-4000-8000-000000000002',
     '00000000-0000-4000-8000-000000000001',
     repeat('A', 64),
-    decode(repeat('AB', 32), 'hex'),
+    decode(repeat('AB', 64), 'hex'),
     'android'
 );
 

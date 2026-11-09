@@ -2,6 +2,7 @@
 -- The API stores public keys and wrapped content keys only; private keys and
 -- message decryption remain on the member devices.
 BEGIN;
+SET LOCAL search_path = linka_private, public;
 
 CREATE TABLE IF NOT EXISTS device_encryption_keys (
     device_id UUID NOT NULL,

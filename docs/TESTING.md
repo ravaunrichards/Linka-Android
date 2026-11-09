@@ -92,3 +92,18 @@ The account HTTP integration test verifies:
 The ordinary API CI run **42617603655** on 2026-11-09 reports 63 passed, 0 failed and 2 PostgreSQL-only tests skipped because `DATABASE_URL` is absent.
 
 These tests verify account registration/login and persistent account/device/session integration in a disposable CI database. They do not verify production database hosting, email verification, password-reset delivery, public wallet endpoints, payment processing or live carrier services.
+
+
+## Native phone favourites
+
+On an Android device:
+1. Open the Phone destination and tap **Add favourite**.
+2. Enter a display name and a valid telephone number, then save.
+3. Confirm the favourite appears in the Favourites list after leaving and reopening the Phone destination.
+4. Use **Dial** and confirm Android opens the system dialler with the saved number; LINKA must not place the call automatically.
+5. Use **Message** and confirm Android opens the system SMS composer addressed to the saved number.
+6. Remove the favourite and confirm it disappears and stays removed after reopening the screen.
+7. Save the same number with a different display name and confirm the existing number is replaced rather than duplicated.
+8. Review the app's private preferences only in a controlled test build: the stored favourites payload must be ciphertext, not readable names/numbers.
+
+The current implementation uses an Android Keystore AES-GCM key and local encrypted preferences. Favourites are device-local; cloud sync, import from Android Contacts and cross-device synchronization are not implemented by this feature. The JVM codec tests validate number normalization, input validation, JSON round-trip, malformed stored-data handling, duplicate replacement and the 50-entry cap. They do not replace a physical-device Keystore and UI handoff test.

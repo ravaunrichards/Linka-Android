@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest functional source revision with green API/Android CI is `124cfdb60b5d24ad77576bc72bb331fb48e5f316`; subsequent commits in the checkpoint chain changed documentation only.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest Android-tested source revision is `94b69d192ba720f805657f8b83b3120f960899f4`; latest API-tested revision is `76401c9311a25a64beec974a10794df3edaf5f49`. Current main `68813c280a5ff8679aa5f4508f92d75a91edcc20` contains a Gradle 8.14.3 workflow upgrade awaiting Android CI.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|
@@ -38,11 +38,12 @@ This matrix separates repository evidence from device, provider and production p
 
 ## CI and repository evidence recovered
 
-- Current verified main: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
-- PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, account HTTP integration passed, API PostgreSQL readiness passed; 65 passed, 0 failed.
-- LINKA API CI run 42619263365 passed: browser module syntax checks passed, 67 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API startup and both browser-module asset routes passed.
-- Android CI run 42619263339 passed: `:app:assembleDebug`, `:app:testDebugUnitTest`, source revision metadata and APK artifact upload all succeeded.
-- Debug APK artifact `linka-debug-apk-124cfdb60b5d24ad77576bc72bb331fb48e5f316` (GitHub artifact ID `13675156323`; expires 2026-12-09). It is not a production-signed release.
+- Latest Android-tested source revision: `94b69d192ba720f805657f8b83b3120f960899f4`.
+- PostgreSQL Schema CI run 42659791482 passed on `3ddd892181f13de5fa5edb13d6df6b9c9af36572`: migrations, constraints, account integration and readiness passed; 69 passed, 0 failed, 0 skipped.
+- LINKA API CI run 42660318140 passed on `76401c9311a25a64beec974a10794df3edaf5f49`: browser module syntax and account-form checks passed; 67 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API startup and browser asset routes passed.
+- Android CI run 42660779368 passed on `94b69d192ba720f805657f8b83b3120f960899f4`: `:app:assembleDebug`, `:app:testDebugUnitTest`, source revision metadata and APK artifact upload all succeeded.
+- Debug APK artifact `linka-debug-apk-94b69d192ba720f805657f8b83b3120f960899f4` (GitHub artifact ID `13694630902`; expires 2026-12-09). It is not a production-signed release.
+- Current main `68813c280a5ff8679aa5f4508f92d75a91edcc20` updates the Android CI Gradle distribution to 8.14.3. Run 42661065189 is still in progress at `Build debug APK`; do not count the Gradle update as verified yet.
 - Account integration verifies signed-device registration/login, duplicate device/email rejection, persistent token hashes, second-device login and logout revocation.
 - Password reset/email verification are not live-enabled; no email provider is configured.
 - Render, carrier, payment, tariff and device-lab services have not been live-verified.

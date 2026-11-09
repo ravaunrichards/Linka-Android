@@ -5,11 +5,17 @@ on:
     branches: [main]
     paths:
       - "backend/api/db/**"
+      - "backend/api/src/postgres-store.mjs"
+      - "backend/api/test/postgres-*.test.mjs"
+      - "backend/api/package.json"
       - ".github/workflows/database-ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/api/db/**"
+      - "backend/api/src/postgres-store.mjs"
+      - "backend/api/test/postgres-*.test.mjs"
+      - "backend/api/package.json"
       - ".github/workflows/database-ci.yml"
   workflow_dispatch:
 

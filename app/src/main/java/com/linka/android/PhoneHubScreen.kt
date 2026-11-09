@@ -103,17 +103,21 @@ fun PhoneHubScreen(modifier: Modifier = Modifier) {
     }
 
     fun dialFavorite(favorite: PhoneFavorite) {
-        launchSystemIntent(
-            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", favorite.number, null)),
-            "No compatible phone dialer is installed."
-        )
+        val intent = PhoneFavoriteIntents.dial(favorite.number)
+        if (intent == null) {
+            Toast.makeText(context, "This favourite has an invalid phone number.", Toast.LENGTH_SHORT).show()
+        } else {
+            launchSystemIntent(intent, "No compatible phone dialer is installed.")
+        }
     }
 
     fun messageFavorite(favorite: PhoneFavorite) {
-        launchSystemIntent(
-            Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", favorite.number, null)),
-            "No SMS app is available on this phone."
-        )
+        val intent = PhoneFavoriteIntents.message(favorite.number)
+        if (intent == null) {
+            Toast.makeText(context, "This favourite has an invalid phone number.", Toast.LENGTH_SHORT).show()
+        } else {
+            launchSystemIntent(intent, "No SMS app is available on this phone.")
+        }
     }
 
     LazyColumn(

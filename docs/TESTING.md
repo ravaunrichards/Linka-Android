@@ -59,6 +59,24 @@ Use at least four physical Android phones for the two-relay chain:
 
 Repeat across multiple handset manufacturers, Android versions, low-cost devices and realistic Jamaican urban, suburban and rural environments. A single chain test is not an island-wide coverage demonstration.
 
+## Chromium browser account UI end-to-end test
+
+The browser UI test is `backend/api/verify-browser-ui.e2e.mjs` and uses the repository-pinned Playwright library (1.65.0). It must target a running LINKA API backed by a migrated PostgreSQL database.
+
+The test launches real headless Chromium and exercises the served account page. It verifies:
+- Same-origin API address defaults correctly and secure WebCrypto/IndexedDB are available.
+- Registration creates a real account and signed browser-device session.
+- The P-256 private key remains non-exportable in IndexedDB.
+- Tab-scoped account session and browser device identity survive page reload.
+- A second isolated browser context can log into the same account using a distinct device identity and receives its own session token.
+- Signing out one browser context revokes only that device session; the other remains active until its own logout.
+- Password recovery reports the current unavailable state without pretending an email was sent.
+- No uncaught browser page errors occur during the flow.
+
+To run locally, install backend dependencies, install Chromium with `cd backend/api && npx playwright install chromium`, start the API with `DATABASE_URL` pointing at a migrated PostgreSQL database, then run `LINKA_API_URL=http://127.0.0.1:8080 npm --prefix backend/api run test:browser-ui`.
+
+The PostgreSQL CI workflow installs Chromium with the required Linux dependencies and runs this browser UI test after the existing API/database account end-to-end test. A committed test and workflow definition are not themselves a passing CI result; record the workflow's actual run evidence separately.
+
 ## Evidence to retain
 For every physical run, retain the commit SHA, APK version, device models, Android and Play services versions, radio/permission state, terrain/environment, exact test steps, observed results, audio/latency metrics and pass/fail. Redact identity authentication codes, private key material, media keys and personal data.
 

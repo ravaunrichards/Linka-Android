@@ -2,7 +2,7 @@
 
 LINKA is an independent Android and web communication product planned for Jamaican and international telephone numbers, free and credit-based services, internet calling, supported cellular/SIM/eSIM integration, messaging and nearby offline voice.
 
-**Important implementation status:** The current repository already contains a substantial Android nearby/offline voice and multi-hop mesh source foundation, automated protocol tests, a small Node.js signaling API and a static browser companion. It is **not yet** a complete TextNow/2ndLine-style cloud telephone service. Provider-backed numbers, SIP/PSTN calls, integrated SMS/MMS, complete internet media calling, a durable account system, credit wallet, payment processing, destination rate catalog and SIM/eSIM provisioning are not verified as implemented.
+**Important implementation status:** The repository contains a substantial Android nearby/offline voice and multi-hop mesh foundation, a Node.js API, PostgreSQL-backed account/device/session authentication, Android and browser registration/sign-in interfaces, and automated CI. It is **not yet** a complete TextNow/2ndLine-style cloud telephone service. Provider-backed numbers, SIP/PSTN calls, integrated SMS/MMS, end-to-end internet media calling, public wallet APIs, payment processing, live provider rates and SIM/eSIM provisioning are not verified as operational.
 
 ## Start here
 - [Documentation index](docs/INDEX.md)
@@ -50,12 +50,15 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 - `POST /v1/accounts/register` and `POST /v1/accounts/login` require a currently authenticated signed device. They store account credentials and registered device identity in PostgreSQL and return a separate persistent account bearer token.
 - Passwords are stored as versioned salted scrypt hashes; account bearer tokens are stored in PostgreSQL only as SHA-256 hashes. Device public keys are fingerprinted and a signed device can be linked to only one account.
 - Account sessions persist with a 30-day expiry, are bound to a registered account/device pair and are checked for account/device/session revocation. `/v1/me` and logout accept the persistent account token.
+- The Android app exposes registration, sign-in, profile and sign-out UI. It encrypts the account bearer token with AES-GCM using a separate Android Keystore key.
+- The browser companion exposes registration, sign-in, profile and sign-out UI. It stores a non-exportable P-256 signing key in IndexedDB and keeps the account bearer token in tab-scoped session storage.
+- Browser WebCrypto ECDSA signatures are converted from P1363 to DER for compatibility with the existing Node.js verifier; API CI exercises this conversion and serves both browser modules.
 - A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`. `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured.
 - Database CI verifies both migrations, cross-account constraints, account registration/login and multi-device linking over HTTP, durable wallet operations and schema-aware readiness. The latest PostgreSQL run passed 65 tests with zero failures.
 - Email verification and password recovery are not enabled: the API reports `emailVerified: false` and `POST /v1/accounts/recovery` returns `501 account_recovery_unavailable` until an email-delivery provider and secure reset/verification workflow are configured.
 - Wallet operations are server-side only. No public wallet HTTP endpoints, payment processing or customer balance UI exist yet.
 - Authentication sessions and signaling queues are separate; signaling queues and short-lived device challenge sessions remain in memory. The API carries signaling, not voice audio.
-- The browser companion is static; it cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
+- The browser companion now includes account registration and sign-in, but remains an account shell rather than a full web telephone client. It cannot access Android Nearby Connections or Android Keystore.
 - E.164 normalization, free-first route selection and provider-fed rate matching have tested domain foundations; live provider tariff import, number inventory, SIP/PSTN calling, payment webhooks and client billing screens are not integrated.
 
 ## Current repository layout

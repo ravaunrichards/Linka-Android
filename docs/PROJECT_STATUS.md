@@ -162,7 +162,7 @@ This is the weighted tracker for the full LINKA product and its repository imple
 |---|---:|---:|---:|
 | Repository organization, requirements and engineering documentation | 10% | 10% | 0% |
 | Existing Android offline direct/mesh source and automated verification | 12% | 8% | 4% |
-| Complete Android phone experience and native system integration | 9% | 4% | 5% |
+| Complete Android phone experience and native system integration | 9% | 4.5% | 4.5% |
 | Backend identity/signaling, schema integrity, PostgreSQL adapter and account authentication | 8% | 8% | 0% |
 | Free-first route policy and international number normalization | 6% | 3% | 3% |
 | Wallet credit-ledger domain | 8% | 4% | 4% |
@@ -171,12 +171,12 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | End-to-end internet audio/video media and clients | 7% | 0% | 7% |
 | Internal chat and external SMS/MMS | 6% | 0% | 6% |
 | Payment processing, refunds and settlement reconciliation | 6% | 0% | 6% |
-| Full account-based website and browser calling | 5% | 3% | 2% |
+| Full account-based website and browser calling | 5% | 4% | 1% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **43%** | **57%** |
+| **TOTAL** | **100%** | **44.5%** | **55.5%** |
 
-**Current full-product completion: 43% | Remaining: 57%.**
+**Current full-product completion: 44.5% | Remaining: 55.5%.**
 
 The previous verified checkpoint was 41%. Two further percentage points are credited only to independently tested portions of the existing account-client milestones: one point in the Android phone milestone for injected-client session restore/logout behavior covered by seven passing JVM tests, and one point in the browser milestone for the browser-WebCrypto account lifecycle against a disposable PostgreSQL service, including second-device login, per-device revocation and CORS allow/deny. The API's no-database workflow passed 73 tests with 2 DB-only tests skipped; the PostgreSQL workflow passed all 75 tests and the E2E script. Android CI passed on the newest source commit. These are not physical-device tests or an actual Chrome/Firefox DOM+IndexedDB run. Provider-backed phone numbers, PSTN/SIP, SMS/MMS, media relay, payments, public wallet APIs, email recovery/verification, hosted production DB and deployment health remain unfinished.
 
@@ -215,3 +215,83 @@ Add two focused Android account-client edge-case tests (logout without a saved t
 - Do not deploy or change external service settings during a GitHub-only pass.
 - Do not add provider credentials, private signing keys or payment secrets to source control.
 - Do not claim physical-device tests, provider enablement, emergency calling or independent security review without evidence.
+
+
+## Latest continuation checkpoint — 2026-11-09
+
+**COMPLETION: 44.5% | REMAINING: 55.5%**
+
+- Previous verified completion: **43%**.
+- Current verified completion: **44.5%**.
+- Progress since previous checkpoint: **+1.5 percentage points**.
+- Repository: `ravaunrichards/Linka-Android`.
+- Current implementation branch: `feature/native-phone-favorites`.
+- Implementation branch head: `8eb8b6ee74d892c92fabaf0fe25469452e8f96ca`.
+- Android CI tested merge revision: `facd9ae4ce309a325face0a1ce358b564cc72509`.
+- Main branch remains at its recovered baseline; neither PR has been merged.
+- PR #14 — browser UI automation and CI integration: https://github.com/ravaunrichards/Linka-Android/pull/14 (draft, open, unmerged).
+- PR #15 — encrypted native phone favourites: https://github.com/ravaunrichards/Linka-Android/pull/15 (draft, open, unmerged).
+- Recovery confidence: **PARTIALLY RECOVERED**. GitHub source, commits, branches, test runs, APK artifact and durable project checkpoint are confirmed. The separate ChatGPT conversation transcript titled “Build Virtual Phone App” was not directly available to this session, so no claim is made that its exact message-by-message history was read.
+
+### Newly verified implementation
+
+**Browser account UI (PR #14)**
+- Added Playwright 1.65.0 to the API development dependencies and wired the existing 182-line Chromium account lifecycle test into PostgreSQL CI.
+- API CI run [42674508636](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508636): **PASS** — dependency installation, browser-test syntax check, API tests and API start checks.
+- PostgreSQL Schema CI run [42674508845](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508845): **PASS** — migrations applied twice, schema/ledger checks passed, 75 tests passed, 0 failed, 0 skipped, browser-WebCrypto E2E passed, and real Chromium UI lifecycle test passed.
+- Android CI run [42674508842](https://github.com/ravaunrichards/Linka-Android/actions/runs/42674508842): **PASS** — debug APK build and Android unit tests.
+- One additional percentage point is credited to the account UI portion of the website milestone because a real Chromium page run verified registration, non-exportable IndexedDB identity, session restore after reload, separate browser-device login, per-device logout and the explicit recovery limitation. Full browser calling is still unfinished.
+
+**Native Phone favourites (PR #15)**
+- Added `PhoneFavorites.kt`: phone number/name validation, canonical number normalization, JSON codec, 50-entry bound, duplicate-number replacement and AES-GCM local persistence through a non-exportable Android Keystore key.
+- Integrated add, display, dial, message and remove actions into `PhoneHubScreen.kt`; the Android system dialler and SMS app still require user confirmation and operator service.
+- Added six `PhoneFavoritesCodecTest` cases and physical-device acceptance steps in `docs/TESTING.md`.
+- Android CI run [42676400680](https://github.com/ravaunrichards/Linka-Android/actions/runs/42676400680): **PASS** — `:app:assembleDebug` and `:app:testDebugUnitTest` both succeeded; APK artifact upload succeeded.
+- A half percentage point is credited for the compiled native UI and passing codec/validation tests. Actual Android Keystore runtime, local encrypted-preferences inspection and system-app dial/SMS handoff still require emulator or physical-device acceptance; those checks are not claimed complete.
+
+### Debug APK artifact
+
+- Artifact: `linka-debug-apk-facd9ae4ce309a325face0a1ce358b564cc72509`.
+- GitHub artifact ID: `13699983271`.
+- Download: https://github.com/ravaunrichards/Linka-Android/actions/runs/42676400680/artifacts/13699983271
+- APK filename: `LINKA-Android-debug.apk`.
+- Size: 18,466,905 bytes.
+- SHA-256: `6cb6b5b150c58bcd19bc1d55f66e5e1e2f5986a3b75147537e3bab6703574fd6`.
+- Build commit metadata: `facd9ae4ce309a325face0a1ce358b564cc72509`.
+- This is an unsigned-by-production debug APK build artifact, not a Play Store release or production-signed build.
+
+### Remaining work — easiest first
+
+**EASY**
+- Verify encrypted favourites save/load and delete behavior on an Android emulator or handset; inspect that preferences store ciphertext, not phone numbers.
+- Verify dial and SMS intents open the system handlers with the selected favourite and do not place calls/send messages automatically.
+- Continue small provider-independent account, phone-number and UI negative-path tests.
+
+**MEDIUM**
+- Extend automated Android UI/instrumentation coverage for native Phone and account screens, including app recreation and persisted favourites.
+- Complete account-based web dashboard and actual browser telephone-client UI.
+- Implement authenticated internal LINKA messaging and synchronize it across supported devices.
+- Connect client features to the existing server-backed account/device/session foundation.
+- Verify a separately hosted browser origin and Render preview using exact CORS allowlisting when the hosting workspace is accessible.
+
+**HARD / EXTERNAL DEPENDENCIES**
+- Real Jamaican and international number inventory, carrier contracts, SIP/PSTN inbound/outbound calling and number rental.
+- Actual external SMS/MMS delivery, billing rates and delivery receipts.
+- WebRTC audio/video media path and TURN integration.
+- Payment provider onboarding, payments, signed webhooks, refunds and settlement reconciliation.
+- SIM/eSIM operator provisioning and supported connection switching.
+- Physical two-device and multi-hop offline voice validation, Android background/audio lifecycle, independent cryptographic audit and telecom/regulatory review.
+- Production database/Render configuration and production-signed release.
+
+**BLOCKERS:** Physical handset/emulator test results are not available from this execution. Carrier, number-inventory, SMS/MMS, payment and SIM/eSIM providers are not verified as connected. Password recovery/email verification remain disabled because email delivery is not configured. Render production health is not verified.
+
+**LIVE INFORMATION STATUS:** GitHub source, PR state, GitHub Actions results and artifact metadata were retrieved live during this execution. Provider operational status, actual carrier rates, Render deployment health and physical-device radio/audio behavior remain unavailable/unverified.
+
+**LAST VERIFIED MILESTONE:** Chromium browser account UI lifecycle and native Phone favourites source build/unit tests.
+
+**LAST CONFIRMED ACTION:** Saved the native favourites implementation, added six codec/validation tests, documented device acceptance and verified Android CI plus debug APK artifact upload.
+
+**NEXT ACTION:** Add Android emulator/instrumentation coverage for favourites save/load, Keystore encryption, add/remove persistence and system intent handoffs, then run the emulator workflow. Continue toward the provider-backed phone-service requirements; do not claim those are operational until real provider accounts and tests exist.
+
+**DEPLOYMENT STATUS:** Not deployed. No production service changes were made.
+

@@ -47,6 +47,7 @@ API CI tests the allowed-origin preflight, the rejected-origin preflight, origin
 - `GET /readyz` — readiness and configured capabilities.
 - `GET /v1/info` — API version, signaling mode and explicit limitations.
 - `POST /v1/destinations/normalize` — rate-limited E.164 syntax normalization; this does not infer country/number type or check provider reachability.
+- `POST /v1/destinations/resolve` — rate-limited numbering-plan validation with country candidates and number type from `libphonenumber-js/max`; provider assignment and reachability remain unchecked.
 - `OPTIONS` — CORS preflight for configured cross-origin browser clients.
 
 ## Account authentication

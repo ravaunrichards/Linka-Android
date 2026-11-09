@@ -454,6 +454,10 @@ async function handleRequest(req, res) {
         return;
       }
       const body = await readJson(req);
+      if (body.algorithm !== "ECDH-P256") {
+        response(res, 400, { error: "invalid_encryption_key" });
+        return;
+      }
       if (typeof body.publicKeyBase64 !== "string" ||
           body.publicKeyBase64.length < 4 ||
           body.publicKeyBase64.length > 1024 ||

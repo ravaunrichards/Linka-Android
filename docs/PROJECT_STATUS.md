@@ -249,25 +249,31 @@ Verify the separately hosted HTTPS browser origin and explicit CORS allowlist on
 **Project:** LINKA Android and browser calling platform  
 **Repository:** ravaunrichards/Linka-Android  
 **Main branch:** main  
-**Latest confirmed main commit:** 776f9c1890ace342d00ac35d10981d93e0a226ff  
-**Last previous verified score:** 44.0%  
-**Current verified score:** 44.5%  
-**Remaining:** 55.5%  
-**Progress since previous checkpoint:** +0.5 percentage points  
-**Current task lock:** No source task in progress; next task is R008 destination metadata resolution  
-**Latest merged feature:** PR #16, E.164 normalization HTTP endpoint
+**Latest confirmed main commit:** b706a50d5236651dac7a6ced836f7e17edf2ad88  
+**Last previous verified score:** 44.5%  
+**Current verified score:** 47%  
+**Remaining:** 53%  
+**Progress since previous checkpoint:** +2.5 percentage points  
+**Current task lock:** R013 partially complete; next task is client key registration/distribution and chat UI. R021 remains an Easy verification task.  
+**Latest merged features:** PR #16 E.164 normalization; PR #17 destination metadata resolution; R013 messaging backend/API on main.
 
 ### Verified milestone evidence
 
+- Destination metadata PR #17: API, Android and PostgreSQL CI runs [42702448111](https://github.com/ravaunrichards/Linka-Android/actions/runs/42702448111), [42702447887](https://github.com/ravaunrichards/Linka-Android/actions/runs/42702447887) and [42702447908](https://github.com/ravaunrichards/Linka-Android/actions/runs/42702447908): PASS on the same feature head; metadata tests cover Jamaica +1 876/+1 658, US, Canada, UK and non-geographic +800.
+- Messaging API CI run [42705294415](https://github.com/ravaunrichards/Linka-Android/actions/runs/42705294415): PASS; 100 passed, 0 failed, 2 skipped.
+- Messaging PostgreSQL CI run [42705294354](https://github.com/ravaunrichards/Linka-Android/actions/runs/42705294354): PASS; 110 passed, 0 failed, 0 skipped, including direct/group database persistence and live HTTP/account-session messaging acceptance.
+- Messaging Android CI run [42705294360](https://github.com/ravaunrichards/Linka-Android/actions/runs/42705294360): PASS; debug APK build and JVM unit tests.
+- API capability/limitation CI run [42705516620](https://github.com/ravaunrichards/Linka-Android/actions/runs/42705516620): PASS.
 - API CI run [42699002990](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699002990): PASS on PR head 3ee3b8bd43847699045eda9d51217aad65a3f449; real-server HTTP tests passed, as did API startup, CORS and browser asset checks.
 - Android CI run [42699002701](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699002701): PASS on the same PR head; debug APK build, unit tests and artifact upload succeeded.
 - API CI run [42699519290](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699519290): PASS on merged main commit 776f9c1890ace342d00ac35d10981d93e0a226ff.
 - Browser UI: Chromium and Firefox account lifecycle runs PASS in PostgreSQL CI run [42680769129](https://github.com/ravaunrichards/Linka-Android/actions/runs/42680769129), including non-exportable IndexedDB identity, tab session restore, second browser context, per-device logout and zero uncaught browser errors.
 - Earlier main Android CI run [42682256606](https://github.com/ravaunrichards/Linka-Android/actions/runs/42682256606): PASS on main commit 8fcd0be34829c61c335376454ad1302b8e17b5d8.
 - Post-merge Android CI run [42699519172](https://github.com/ravaunrichards/Linka-Android/actions/runs/42699519172): PASS on main commit `776f9c1890ace342d00ac35d10981d93e0a226ff`; debug APK build, JVM unit tests, revision metadata and artifact upload succeeded.
-- The API merge commit is verified in main; PR #16 is closed and merged.
+- PR #16 and PR #17 are merged into main; E.164 normalization and destination metadata resolution are integrated.
 - POST /v1/destinations/normalize validates explicit international E.164 syntax only. It does not infer a country, identify mobile/landline type, prove number assignment or provider reachability, return provider pricing or place a call.
 - The native phone favourites change remains isolated on draft PR #15 / feature/native-phone-favorites; the instrumentation suite and emulator CI wiring are committed but no CI result exists for its latest branch head. This work is not counted in the main-branch score.
+- R013 messaging backend routes and persistence are on main, but the API stores opaque client-supplied ciphertext and does not independently establish end-to-end encryption. Client key management/distribution, secure attachments, delivery/read receipts and web/Android UI remain unfinished.
 
 ### Master requirement register
 
@@ -323,4 +329,4 @@ R008 is verified. Next implement the R013 client-side key registration/distribut
 
 ### Latest confirmed action
 
-R008 merged as PR #17 (main commit 51a388a39fe83dd0b3a37b5bcd9a18be865e5283). R013 backend work is committed on main: store/API implementation 748d4174ceaf2ae3672e9a1b5a429d130264ec4c, messaging store tests 4ada200b019dc9da176589861d48258a67ace9cb, corrected tests 971a8a8500e475b7c83e5818df000cfad8481f71, PostgreSQL/HTTP integration tests 59bc113bd99cc5637a6f82e04a11ddca8884127b, and capability/docs updates 0e602bc0f4fe2a313b4ab8ea84d5b7bb435def20. Messaging remains incomplete: no client E2EE key distribution, attachment storage, delivery/read receipts or UI. No production deployment or real provider was changed.
+R008 merged as PR #17 (main commit 51a388a39fe83dd0b3a37b5bcd9a18be865e5283). R013 backend implementation is in main (store/API commit 748d4174ceaf2ae3672e9a1b5a429d130264ec4c; store tests and integration commits 4ada200b019dc9da176589861d48258a67ace9cb, 971a8a8500e475b7c83e5818df000cfad8481f71 and 59bc113bd99cc5637a6f82e04a11ddca8884127b; capability/API docs update 0e602bc0f4fe2a313b4ab8ea84d5b7bb435def20). Main head at this checkpoint is b706a50d5236651dac7a6ced836f7e17edf2ad88. R013 remains partial: client E2EE key distribution, audited encryption, attachment storage, delivery/read receipts and chat UI are not complete. No production deployment or real provider was changed.

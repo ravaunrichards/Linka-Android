@@ -78,6 +78,11 @@ async function openAccountPage(context) {
   page.on("pageerror", error => browserErrors.push(error.message));
   await page.goto(apiOrigin + "/#account", { waitUntil: "domcontentloaded" });
   await page.locator("#accountEmail").waitFor({ state: "visible", timeout: 15_000 });
+  await page.waitForFunction(
+    expected => document.getElementById("accountApiOrigin")?.value === expected,
+    apiOrigin,
+    { timeout: 15_000 }
+  );
   assert.equal(
     await page.locator("#accountApiOrigin").inputValue(),
     apiOrigin,

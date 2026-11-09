@@ -6,10 +6,10 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified current main head at this checkpoint update: 4633d10c307fce56f1458f5ffef7e01571f84ab9.
+- Verified current main head at this checkpoint update: 124cfdb60b5d24ad77576bc72bb331fb48e5f316.
 - Repository ID: 1444736198.
 - Repository visibility: public.
-- Last inspected recursive tree: 129 entries, not truncated.
+- Last inspected recursive tree: 139 entries, not truncated.
 - GitHub permission snapshot during recovery: admin, maintain and push were true.
 - Recovery confidence: CONFIRMED for branch, commit ancestry, repository files, commit changes, issue records and Actions results. A local working tree is not exposed by the GitHub read APIs.
 
@@ -44,7 +44,11 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 - 31e7c573207af9c21cc9e79d7e3b45738506cfbb — added scrypt password handling, signed-device account registration/login store methods, persistent account sessions and HTTP routes, plus a real PostgreSQL HTTP integration test.
 - 27b598903b2b66b0808c8023833a3b4dee139a23 — preserved intended 401/409 account authentication HTTP status codes.
 - 9d870b18c6533d99d32192eb980d33fae7fde130 — corrected the fake-pool login lookup in the store unit test.
-- 4633d10c307fce56f1458f5ffef7e01571f84ab9 — added duplicate-email registration rejection to the HTTP/PostgreSQL integration test; latest API, PostgreSQL and Android CI passed.
+- 4633d10c307fce56f1458f5ffef7e01571f84ab9 — added duplicate-email registration rejection to the HTTP/PostgreSQL integration test; API, PostgreSQL and Android CI passed.
+- 92f900d77a4b20e0e1541c55a18aa46ada0dfe5b — updated the recovery checkpoint before account-client UI work.
+- 316db4bc4363526827c22553730988b0016e557d — added Android account registration/login UI and the Keystore-backed account client.
+- 9f291b73f2f97e9cd2ae6a6965337f1bf3333e3c — added browser account registration/login, non-exportable WebCrypto device identity and ECDSA signature conversion.
+- 124cfdb60b5d24ad77576bc72bb331fb48e5f316 — expanded API CI to syntax-check browser modules and verify both browser authentication assets are served.
 
 No source from those commits was discarded. All are ancestors of the verified main branch baseline.
 
@@ -65,7 +69,7 @@ The existing implementation still contains:
 - Android phone hub with keypad and system-app handoffs for dialer, SMS, contacts and recent calls.
 - Unit tests for call control/state, audio framing, peer security and mesh routing.
 - Node.js signed-device challenge and ephemeral call-signaling API.
-- Static browser companion.
+- Browser companion with account registration/login UI and browser-specific WebCrypto device identity; full web calling/messaging is not implemented.
 - Android CI and API CI workflows.
 - Architecture, compatibility, security, mesh, testing and Render service documentation.
 
@@ -87,19 +91,22 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Current main: `4633d10c307fce56f1458f5ffef7e01571f84ab9`.
-- Full-product progress: **39% complete | 61% remaining**.
-- PostgreSQL Schema CI run 42617603718 passed on 2026-11-09 with 65/65 tests; account registration, device binding, duplicate-email rejection, password login, second-device login, persistent hashed sessions and logout all passed over HTTP.
-- LINKA API CI run 42617603655 passed: 63 pass, 0 fail, 2 database-only skips.
-- Android CI run 42617603672 passed debug APK build, unit tests, revision metadata and artifact upload.
-- Password recovery and email verification remain unavailable pending a configured email-delivery provider.
-- Next action: implement the Android and website registration/login UI and secure token storage, then design email verification/recovery when a provider can be configured.
+- Current main: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
+- Full-product progress: **41% complete | 59% remaining**.
+- PostgreSQL Schema CI run 42617603718 passed with 65/65 tests; migrations 0001/0002 were applied twice, schema/wallet/cross-account checks passed, account HTTP integration passed and PostgreSQL readiness passed.
+- LINKA API CI run 42619263365 passed: browser module syntax checks, 67 passed, 0 failed, 2 database-only skips; API startup and both browser-module asset routes passed.
+- Android CI run 42619263339 passed: debug APK build, Android unit tests, source revision metadata and APK artifact upload all succeeded.
+- Debug APK artifact `linka-debug-apk-124cfdb60b5d24ad77576bc72bb331fb48e5f316` (artifact ID `13675156323`, 17,842,998 bytes) is available until 2026-12-09; it is not a production-signed APK.
+- Android and browser registration/login/profile/sign-out source is now present. Browser account tokens are tab-scoped; Android account tokens are AES-GCM encrypted using an Android Keystore key.
+- Password recovery and email verification remain unavailable pending a configured email-delivery provider. No provider, deployment or physical-device status was live-verified.
+- Next action: add focused client session restore/logout tests and a browser account/API end-to-end test using a disposable PostgreSQL CI service.
 
 ## Current CI and failure recovery
 
-- PostgreSQL Schema CI run 42617603718 on commit 4633d10 completed successfully on 2026-11-09. It reapplied migrations 0001/0002 twice, passed schema/wallet/cross-account checks, ran 65 tests with 65 passed and 0 failed, verified account HTTP integration and confirmed PostgreSQL readiness.
-- LINKA API CI run 42617603655 on commit 4633d10 completed successfully: 63 passed, 0 failed, 2 database-only tests skipped without DATABASE_URL; API/no-DB startup and routes passed.
-- Android CI run 42617603672 on commit 4633d10 completed successfully: debug APK build, Android unit tests, source revision metadata and APK artifact upload all passed.
+- PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, 65/65 tests passed, account HTTP integration and PostgreSQL readiness passed.
+- LINKA API CI run 42619263365 passed at 2026-11-09T12:42:51Z: browser module syntax checks passed; 69 tests total, 67 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and both browser module asset routes passed.
+- Android CI run 42619263339 passed at 2026-11-09T12:44:40Z: `:app:assembleDebug` and `:app:testDebugUnitTest` succeeded, source revision metadata was recorded and the debug APK artifact uploaded.
+- The API no-database job reports PostgreSQL `not_configured`; this is expected in that CI job and does not prove a hosted production database is running.
 - Historical API CI 42617260190 and PostgreSQL CI 42617260157 failed because the fake-pool test did not handle account lookup; PostgreSQL's real account HTTP integration already passed. Commit 9d870b1 added the fake query stub and the latest workflows passed.
 - Historical PostgreSQL run 42617062392 failed because a device-reuse HTTP conflict returned 400 rather than 409; commit 27b5989 fixed the store error helper to preserve status codes. The account HTTP test then passed.
 - Historical API run 42610320645 failed because an overflow test expected a valid MAX_SAFE_INTEGER balance to fail; commit f647d726 corrected the assertion and later API CI passed.
@@ -117,7 +124,7 @@ This is the weighted tracker for the full LINKA product and its repository imple
 |---|---:|---:|---:|
 | Repository organization, requirements and engineering documentation | 10% | 10% | 0% |
 | Existing Android offline direct/mesh source and automated verification | 12% | 8% | 4% |
-| Complete Android phone experience and native system integration | 9% | 2% | 7% |
+| Complete Android phone experience and native system integration | 9% | 3% | 6% |
 | Backend identity/signaling, schema integrity, PostgreSQL adapter and account authentication | 8% | 8% | 0% |
 | Free-first route policy and international number normalization | 6% | 3% | 3% |
 | Wallet credit-ledger domain | 8% | 4% | 4% |
@@ -126,25 +133,26 @@ This is the weighted tracker for the full LINKA product and its repository imple
 | End-to-end internet audio/video media and clients | 7% | 0% | 7% |
 | Internal chat and external SMS/MMS | 6% | 0% | 6% |
 | Payment processing, refunds and settlement reconciliation | 6% | 0% | 6% |
-| Full account-based website and browser calling | 5% | 1% | 4% |
+| Full account-based website and browser calling | 5% | 2% | 3% |
 | Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
 | Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
-| **TOTAL** | **100%** | **39%** | **61%** |
+| **TOTAL** | **100%** | **41%** | **59%** |
 
-**Current full-product completion: 39% | Remaining: 61%.**
+**Current full-product completion: 41% | Remaining: 59%.**
 
-The scope-wide full-product baseline was 35%; the prior checkpoint was 38%. One additional point is now credited because account registration and password login are integrated with PostgreSQL and passed real HTTP tests using P-256 signed devices. The test proves account/device binding, duplicate-device and duplicate-email rejection, multi-device login, password verification, SHA-256 bearer-token hashes at rest, persistent-session authentication and logout revocation. The backend milestone is now 8/8. Email verification/password recovery, public wallet endpoints, payment settlement, carrier/number providers, physical-device calling validation and production release remain unfinished and are not counted here.
+The previous verified checkpoint was 39%. Two additional points are credited for Android and browser account registration/login experiences now present in source and passing their respective CI workflows: one point in the Android phone experience milestone and one point in the website milestone. The backend account milestone remains 8/8 based on PostgreSQL HTTP integration proof. Android CI proves compilation, debug APK assembly and unit-test task success; API CI proves browser-module syntax, browser crypto tests, API startup and asset serving. Neither CI run proves physical Android sign-in or a real browser sign-in against a hosted production database. Email verification/password recovery, public wallet endpoints, payment settlement, carrier/number providers, physical-device calling validation and production release remain unfinished.
 
 ## Easy, medium and hard work remaining
 
 ### Easy
 - Keep documentation and integration status synchronized with source.
 - Maintain focused API unit tests and verify all local Markdown links.
-- Complete Android CI for the latest main commit.
-- Add missing API contract tests and negative-path validation where no external provider is required.
+- Keep repository documentation and integration status synchronized with source and CI evidence.
+- Add focused browser account lifecycle tests and Android account-session restore/logout tests.
+- Add API contract and negative-path validation where no external provider is required.
 
 ### Medium
-- Add Android and website registration/login screens, secure account-token storage and account-profile integration. Keep account-scoped wallet HTTP routes disabled until client and authorization tests are complete.
+- Add focused account-session restore/logout tests for Android and browser clients. Keep account-scoped wallet HTTP routes disabled until client and authorization tests are complete.
 
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.
@@ -159,7 +167,7 @@ The scope-wide full-product baseline was 35%; the prior checkpoint was 38%. One 
 
 ## Exact next action
 
-Continue with the next medium client integration task: add Android and website registration/login flows that first complete the existing signed-device challenge, then call the verified account endpoints and store persistent account tokens using platform-secure storage. Add client-side session restore/logout tests. Separately, configure an email provider before implementing password reset or verification delivery.
+Continue with focused client session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
 
 ## Execution boundaries
 

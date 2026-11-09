@@ -132,15 +132,15 @@ These are provider-independent, tested foundations. They do not provide a live p
 - Latest Android-tested main revision: `800fa72e422bc8855912fa31d44e65a5623bda40`.
 - Latest API-tested revision: `814be0cd77904872e941133a76d9830dc7ba9b97`; latest PostgreSQL + Chromium browser UI E2E-tested functional revision: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`.
 - Full-product progress: **44% complete | 56% remaining**.
-- Latest inspected repository tree: 144 entries, recursive tree not truncated.
+- Latest inspected repository tree: 145 entries, recursive tree not truncated.
 - Render workspace inspection is blocked pending explicit workspace confirmation; no live Render configuration or deployment health is claimed.
-- PostgreSQL Schema CI run 42665527585 passed on `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`: 75 passed, 0 failed, 0 skipped; migrations, schema checks, account HTTP integration, PostgreSQL readiness and browser-WebCrypto account E2E passed.
-- LINKA API CI run 42665527245 passed on the same commit: 75 total, 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL.
-- Android CI run 42665968552 passed on `ebe1490459da2b758cb7f08d9012fea425ecb1aa`: Gradle 8.14.4, debug APK build and `:app:testDebugUnitTest` passed; source metadata and APK artifact were uploaded.
+- PostgreSQL Schema CI run 42677952248 passed on `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7`: 75 passed, 0 failed, 0 skipped; migrations ran twice, schema/wallet checks passed, API readiness passed, and both Node WebCrypto and Chromium UI browser account E2E printed PASS.
+- LINKA API CI run 42677946243 passed on `814be0cd77904872e941133a76d9830dc7ba9b97`: 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; API startup and browser asset checks passed.
+- Android CI run 42670913670 passed on `472a590500e19f657746db77a0d15f5bac36ad07`, including `:app:assembleDebug` and `:app:testDebugUnitTest` with the no-session logout and HTTPS API-origin edge-case tests.
 - Latest debug APK artifact `linka-debug-apk-800fa72e422bc8855912fa31d44e65a5623bda40` (artifact ID `13701836521`, 17,845,187 bytes, SHA-256 `7eb20593c9f861db534ba7a1233f0b41387d999449714717da6ed201b3262333`) expires 2026-12-09. It is a debug APK, not a production-signed release.
-- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout and API-origin validation behavior has nine JVM test cases; browser account behavior has both a Node WebCrypto/PostgreSQL E2E and a real Chromium DOM/IndexedDB E2E.
+- Latest main checkpoint Android CI run 42678530091 passed on `800fa72e422bc8855912fa31d44e65a5623bda40`; debug APK assembly, `:app:testDebugUnitTest`, revision metadata and artifact upload passed.
 - Password recovery and email verification remain unavailable pending a configured email-delivery provider. Render, carrier, payment, tariff and physical-device status have not been live-verified.
-- CI verification: Android run 42670913670 and latest main run 42678530091 passed; API run 42677946243 passed; PostgreSQL/Chromium run 42677952248 passed with 75 tests and both browser E2E confirmation lines.
+- Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout and API-origin validation behavior has nine JVM test cases; Chromium verifies actual account DOM, non-exportable IndexedDB device key persistence, tab-scoped session restoration, second-context login and independent logout.
 
 ## Current CI and failure recovery
 
@@ -216,7 +216,7 @@ The previous verified checkpoint was 43%. One additional percentage point is now
 
 ## Exact next action
 
-Verify the Android CI run for the two account-client edge-case tests and the PostgreSQL CI run that now executes the Chromium DOM/IndexedDB account lifecycle E2E. Preserve the 43% score until those tests pass. Then continue with the next independent easy requirement; Render inspection still requires the user's workspace confirmation. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
+Extend the verified Chromium browser lifecycle E2E to Firefox, add it to the same PostgreSQL CI job and verify the run. Then continue with provider-independent integration work; Render inspection remains blocked until the user confirms the intended workspace. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
 
 ## Execution boundaries
 

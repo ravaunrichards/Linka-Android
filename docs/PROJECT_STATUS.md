@@ -6,7 +6,7 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified main head immediately before this checkpoint documentation refresh: 312aa4677baab63d3677b3d73718e97d3847eb2e.
+- Verified main head immediately before this checkpoint documentation refresh: 812fa3982b235fb79397f4e2281685f734a97cd6.
 - Repository ID: 1444736198.
 - Repository visibility: public.
 - Last inspected recursive tree: 139 entries, not truncated.
@@ -56,6 +56,9 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 - 94b69d192ba720f805657f8b83b3120f960899f4 — replaced deprecated Backspace and Message icons with AutoMirrored variants; Android CI passed.
 - 68813c280a5ff8679aa5f4508f92d75a91edcc20 — upgraded the Android CI Gradle distribution to 8.14.3; build and tests passed, but KGP warned that 8.14.4 is the minimum before Kotlin 2.5.0.
 - 312aa4677baab63d3677b3d73718e97d3847eb2e — upgraded the Android CI Gradle distribution to 8.14.4, the KGP-stated minimum and a Gradle patch release containing repository-resolution security fixes; Android CI passed on the exact commit.
+- 9062f26e42691a272cbcae2890890b4b134eda2b — added the browser account-session invalidation policy helper.
+- abb6a349b06b3ad5f0d9871c855ee3bc23e77c46 — preserved browser session tokens after transient API/network errors; only HTTP 401 clears the cached token.
+- 812fa3982b235fb79397f4e2281685f734a97cd6 — added a unit test for the browser session invalidation policy; latest API CI passed.
 
 Documentation recovery commits after that tested source revision:
 - 935080fe199b64bb1896ee125880ab451cdd5460 — corrected README account-client implementation status.
@@ -105,7 +108,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Latest Android-tested main revision: `312aa4677baab63d3677b3d73718e97d3847eb2e` (Android CI passed with Gradle 8.14.4). Latest API-tested revision: `76401c9311a25a64beec974a10794df3edaf5f49` (API CI passed). The account UI source revision `94b69d1` is an ancestor of the tested main commit.
+- Latest Android-tested main revision: `312aa4677baab63d3677b3d73718e97d3847eb2e` (Android CI passed with Gradle 8.14.4). Latest API-tested main revision: `812fa3982b235fb79397f4e2281685f734a97cd6` (API CI passed with the new browser session policy test). Android CI for this latest web-only change is queued; the Android source is unchanged from its passing ancestor.
 - Full-product progress: **41% complete | 59% remaining**.
 - PostgreSQL Schema CI run 42617603718 passed with 65/65 tests; migrations 0001/0002 were applied twice, schema/wallet/cross-account checks passed, account HTTP integration passed and PostgreSQL readiness passed.
 - LINKA API CI run 42619263365 passed: browser module syntax checks, 67 passed, 0 failed, 2 database-only skips; API startup and both browser-module asset routes passed.
@@ -119,7 +122,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 ## Current CI and failure recovery
 
 - PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, 65/65 tests passed, account HTTP integration and PostgreSQL readiness passed.
-- LINKA API CI run 42660318140 passed on `76401c9311a25a64beec974a10794df3edaf5f49`: 69 tests total, 67 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; browser account form controls, browser module syntax, API startup and asset routes passed.
+- LINKA API CI run 42662700808 passed on `812fa3982b235fb79397f4e2281685f734a97cd6`: 70 tests total, 68 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; browser account session policy, browser module syntax, account form controls, API startup and asset routes passed.
 - PostgreSQL Schema CI run 42659791482 passed on `3ddd892181f13de5fa5edb13d6df6b9c9af36572`: 69 passed, 0 failed, 0 skipped; migrations, constraints, account integration and readiness all passed.
 - Android CI run 42660779368 passed on `94b69d192ba720f805657f8b83b3120f960899f4`: build, unit tests, revision metadata and artifact upload succeeded.
 - Android CI run 42661787677 passed on `312aa4677baab63d3677b3d73718e97d3847eb2e` using Gradle 8.14.4: `:app:assembleDebug` and `:app:testDebugUnitTest` both succeeded; source revision metadata and debug APK artifact upload succeeded. The Kotlin Gradle Plugin minimum-version warning seen on 8.14.3 is absent on 8.14.4; the Gradle action emits only a generic notice that 8.14.4 is not the newest Gradle major.
@@ -167,7 +170,7 @@ The previous verified checkpoint was 39%. Two additional points are credited for
 - Keep documentation and integration status synchronized with source.
 - Maintain focused API unit tests and verify all local Markdown links.
 - Keep repository documentation and integration status synchronized with source and CI evidence.
-- Add focused client session restore/logout tests and browser account/API end-to-end verification.
+- Add focused Android session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service.
 - Add focused browser account lifecycle tests and Android account-session restore/logout tests.
 - Add API contract and negative-path validation where no external provider is required.
 
@@ -187,7 +190,7 @@ The previous verified checkpoint was 39%. Two additional points are credited for
 
 ## Exact next action
 
-Continue with focused Android/browser account-session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
+Verify the queued Android CI run for the latest web-only account-session fix, then continue with focused Android session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
 
 ## Execution boundaries
 

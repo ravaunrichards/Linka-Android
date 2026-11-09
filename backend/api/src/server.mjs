@@ -167,7 +167,9 @@ function safeErrorCode(error) {
     "invalid_conversation_members", "conversation_member_not_found", "invalid_page_limit",
     "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
     "invalid_message_attachments", "message_attachments_unavailable",
-    "invalid_message_query", "invalid_message_cursor", "conversation_not_found"
+    "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
+    "invalid_encryption_key", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
+    "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -248,7 +250,7 @@ async function handleRequest(req, res) {
           passwordRecovery: "not_implemented",
           emailVerification: "not_implemented",
           walletHttpApi: "not_implemented",
-          internalMessaging: postgresStore ? "available" : "database_required",
+          internalMessaging: postgresStore ? "device_encryption_required" : "database_required",
           encryptedAttachmentStorage: "not_implemented"
         },
         limitations: [
@@ -260,7 +262,9 @@ async function handleRequest(req, res) {
           "Password recovery and email verification require an email delivery provider that is not configured.",
           "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented.",
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
-          "Message key distribution, encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
+          "Device encryption keys use ECDH P-256 and per-device message-key envelopes; private keys remain on clients.",
+          "The backend validates current device-key coverage and stores wrapped content keys but cannot independently audit client cryptographic implementation.",
+          "Encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
         ]
       });
       return;
@@ -441,6 +445,54 @@ async function handleRequest(req, res) {
       return;
     }
 
+    if (req.method === "PUT" && path === "/v1/me/encryption-key") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`encryption-key-register:${session.accountId}:${session.deviceId}:${remote}`, 8, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      if (typeof body.publicKeyBase64 !== "string" ||
+          body.publicKeyBase64.length < 4 ||
+          body.publicKeyBase64.length > 1024 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.publicKeyBase64)) {
+        response(res, 400, { error: "invalid_encryption_key" });
+        return;
+      }
+      const publicKeyDer = Buffer.from(body.publicKeyBase64, "base64");
+      if (publicKeyDer.toString("base64") !== body.publicKeyBase64) {
+        response(res, 400, { error: "invalid_encryption_key" });
+        return;
+      }
+      const registered = await postgresStore.registerDeviceEncryptionKey({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        algorithm: body.algorithm,
+        publicKeyDer
+      });
+      response(res, registered.reused ? 200 : 201, registered);
+      return;
+    }
+
+    const encryptionDevicesRoute = /^\/v1\/conversations\/([^/]+)\/encryption-devices$/.exec(path);
+    if (encryptionDevicesRoute && req.method === "GET") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`encryption-device-list:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const devices = await postgresStore.listConversationEncryptionDevices({
+        accountId: session.accountId,
+        conversationId: encryptionDevicesRoute[1]
+      });
+      response(res, 200, { devices });
+      return;
+    }
+
     if (req.method === "GET" && path === "/v1/conversations") {
       const session = await requireAccountAuth(req, res);
       if (!session) return;
@@ -485,9 +537,11 @@ async function handleRequest(req, res) {
       const body = await readJson(req);
       const message = await postgresStore.sendInternalMessage({
         accountId: session.accountId,
+        senderDeviceId: session.deviceId,
         conversationId: messageRoute[1],
         ciphertext: body.ciphertext,
         encryptionVersion: body.encryptionVersion,
+        keyEnvelopes: body.keyEnvelopes,
         attachmentManifest: body.attachmentManifest
       });
       response(res, 201, { message });
@@ -506,6 +560,7 @@ async function handleRequest(req, res) {
       const before = url.searchParams.get("before");
       const messages = await postgresStore.listInternalMessages({
         accountId: session.accountId,
+        deviceId: session.deviceId,
         conversationId: messageRoute[1],
         limit,
         before

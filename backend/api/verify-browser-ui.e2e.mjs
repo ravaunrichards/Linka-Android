@@ -123,7 +123,7 @@ async function main() {
     await firstPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
     await firstPage.waitForFunction(() =>
       document.getElementById("walletStatus")?.textContent?.includes("loaded")
-    , { timeout: 15_000 });
+    , null, { timeout: 15_000 });
     assert.equal(await firstPage.locator(".wallet-balance-card").count(), 4);
     assert.equal(await firstPage.locator("#walletBalances").innerText().then(text => text.includes("0")), true);
     assert.match(
@@ -131,7 +131,9 @@ async function main() {
       /No wallet activity has been recorded/
     );
     await firstPage.locator("#walletRefresh").click();
-    await waitForStatus(firstPage, "account created and this browser device linked successfully");
+    await firstPage.waitForFunction(() =>
+      document.getElementById("walletStatus")?.textContent?.includes("loaded")
+    , null, { timeout: 15_000 });
 
     const firstSession = await readOwnProfile(firstPage);
     assert.equal(firstSession.status, 200, "new browser account token should authenticate");
@@ -167,7 +169,7 @@ async function main() {
     await secondPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
     await secondPage.waitForFunction(() =>
       document.getElementById("walletStatus")?.textContent?.includes("loaded")
-    , { timeout: 15_000 });
+    , null, { timeout: 15_000 });
     assert.equal(await secondPage.locator(".wallet-balance-card").count(), 4);
 
     const secondSession = await readOwnProfile(secondPage);

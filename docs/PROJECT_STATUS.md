@@ -113,7 +113,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Latest API-tested main revision: `60ec4c77e938867f53e164d5e6623461ff92d397` (API CI passed with CORS policy and preflight tests). Latest Android-tested revision: `312aa4677baab63d3677b3d73718e97d3847eb2e` (Android CI passed with Gradle 8.14.4). Android CI for the latest backend-only CORS change is queued; Android source is unchanged.
+- Latest API-tested main revision: `60ec4c77e938867f53e164d5e6623461ff92d397` (API CI passed with CORS policy and preflight tests). Latest Android-tested main revision: `60ec4c77e938867f53e164d5e6623461ff92d397` (Android CI passed with Gradle 8.14.4; backend-only CORS changes did not alter Android source).
 - Full-product progress: **41% complete | 59% remaining**.
 - PostgreSQL Schema CI run 42617603718 passed with 65/65 tests; migrations 0001/0002 were applied twice, schema/wallet/cross-account checks passed, account HTTP integration passed and PostgreSQL readiness passed.
 - LINKA API CI run 42619263365 passed: browser module syntax checks, 67 passed, 0 failed, 2 database-only skips; API startup and both browser-module asset routes passed.
@@ -128,6 +128,8 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 - PostgreSQL Schema CI run 42617603718 passed: migrations 0001/0002 reapplied twice, schema/wallet/cross-account checks passed, 65/65 tests passed, account HTTP integration and PostgreSQL readiness passed.
 - LINKA API CI run 42663600102 passed on `60ec4c77e938867f53e164d5e6623461ff92d397`: 75 tests total, 73 passed, 0 failed and 2 database-only tests skipped without DATABASE_URL; CORS origin policy, allowed and denied preflight, browser account session policy, browser module syntax, account form controls, API startup and asset routes passed.
+- Android CI run 42663600083 passed on the same commit: Gradle 8.14.4, debug APK build, Android unit-test task, source revision metadata, APK artifact upload and cleanup all succeeded.
+- Latest debug APK artifact `linka-debug-apk-60ec4c77e938867f53e164d5e6623461ff92d397` (artifact ID `13695177963`, 17,843,078 bytes) expires 2026-12-09; it is a debug APK, not a production-signed release.
 - PostgreSQL Schema CI run 42659791482 passed on `3ddd892181f13de5fa5edb13d6df6b9c9af36572`: 69 passed, 0 failed, 0 skipped; migrations, constraints, account integration and readiness all passed.
 - Android CI run 42660779368 passed on `94b69d192ba720f805657f8b83b3120f960899f4`: build, unit tests, revision metadata and artifact upload succeeded.
 - Android CI run 42661787677 passed on `312aa4677baab63d3677b3d73718e97d3847eb2e` using Gradle 8.14.4: `:app:assembleDebug` and `:app:testDebugUnitTest` both succeeded; source revision metadata and debug APK artifact upload succeeded. The Kotlin Gradle Plugin minimum-version warning seen on 8.14.3 is absent on 8.14.4; the Gradle action emits only a generic notice that 8.14.4 is not the newest Gradle major.
@@ -195,7 +197,7 @@ The previous verified checkpoint was 39%. Two additional points are credited for
 
 ## Exact next action
 
-Verify the queued Android CI run for the latest backend-only CORS change, then continue with focused Android session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
+Continue with focused Android account-session restore/logout tests and a browser account/API end-to-end test against a disposable PostgreSQL CI service. Keep password reset and email verification disabled until a real email-delivery provider and one-use reset/verification-token workflow are configured.
 
 ## Execution boundaries
 

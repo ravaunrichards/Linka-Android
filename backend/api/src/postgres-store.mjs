@@ -186,14 +186,22 @@ export function createPostgresStore({
           input.beforeEventId.trim().length === 0 || input.beforeEventId.length > 128) {
         fail("invalid_wallet_cursor");
       }
-      before = input.before instanceof Date ? input.before : new Date(input.before);
-      if (!Number.isFinite(before.getTime())) fail("invalid_wallet_cursor");
+      if (input.before instanceof Date) {
+        if (!Number.isFinite(input.before.getTime())) fail("invalid_wallet_cursor");
+        before = input.before;
+      } else if (typeof input.before === "string" && Number.isFinite(Date.parse(input.before))) {
+        // Preserve the original ISO text so PostgreSQL receives its full microsecond precision.
+        before = input.before.trim();
+      } else {
+        fail("invalid_wallet_cursor");
+      }
       beforeEventId = input.beforeEventId.trim();
     }
 
     const result = await pool.query(
       "SELECT event_id, event_type, credit_source, amount_credit_units, " +
-      "reference_id, reverses_event_id, created_at " +
+      "reference_id, reverses_event_id, created_at, " +
+      "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS cursor_created_at " +
       "FROM linka_private.wallet_ledger_events " +
       "WHERE account_id = $1::uuid " +
       "AND ($3::timestamptz IS NULL OR " +
@@ -214,10 +222,14 @@ export function createPostgresStore({
       createdAt: isoDate(row.created_at, "ledger event time")
     }));
     const last = page[page.length - 1];
+    const lastRow = hasMore ? result.rows[page.length - 1] : null;
     return Object.freeze({
       events: Object.freeze(page),
-      nextCursor: hasMore && last
-        ? Object.freeze({ before: last.createdAt, beforeEventId: last.eventId })
+      nextCursor: last && hasMore
+        ? Object.freeze({
+            before: lastRow.cursor_created_at ?? last.createdAt,
+            beforeEventId: last.eventId
+          })
         : null
     });
   }

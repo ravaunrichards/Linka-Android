@@ -1,6 +1,6 @@
 # LINKA integration and implementation matrix
 
-This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest Android-tested main revision is `ebe1490459da2b758cb7f08d9012fea425ecb1aa`; latest API- and PostgreSQL-tested functional revision is `b205708cd0c8ba5e08068e9ebfbc63eb16cdede8`.
+This matrix separates repository evidence from device, provider and production proof. Repository/CI status reflects GitHub Actions runs retrieved on 2026-11-09; provider and deployment status has not been live-verified. Latest Android- and API-tested main revision is `776f9c1890ace342d00ac35d10981d93e0a226ff`; latest PostgreSQL/browser-UI tested revision is `81f0d0eb4903787ba2e91395013eb9f765991f88`.
 
 | Capability | Repository evidence | Current status | Remaining proof/dependency |
 |---|---|---|---|
@@ -30,7 +30,7 @@ This matrix separates repository evidence from device, provider and production p
 | Destination rate finder | No provider-backed rate catalog verified | NOT IMPLEMENTED | Current tariff feed/API, rate versioning, taxes and number-type classification |
 | SIM/eSIM integration | Current Android manifest does not establish provisioning | NOT IMPLEMENTED | Android role/API design, carrier/eSIM partner and device tests |
 | Free-first route options | backend/api/src/domain/route-options.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED as a provider-independent policy core | Provider eligibility/rate feeds, API wiring, Android/web selection UI and durable user consent are not yet integrated |
-| E.164 destination normalization | backend/api/src/domain/e164.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED for international-format canonicalization | Country/number-type resolution, number assignment and provider availability still require numbering metadata and provider inventory |
+| E.164 destination normalization | `backend/api/src/domain/e164.mjs` and `POST /v1/destinations/normalize` in `backend/api/src/server.mjs` | SOURCE IMPLEMENTED; API HTTP TESTS AND MAIN API CI VERIFIED on `776f9c1`; syntax-only contract is explicit | Country/number-type resolution, number assignment and provider availability still require numbering metadata and provider inventory |
 | Provider-fed rate catalog and usage quotes | backend/api/src/domain/rate-catalog.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED as a tariff validation/matching/quote core | No live provider tariff import, current LINKA prices, API endpoint, wallet deduction or client display is integrated |
 | Wallet credit-ledger domain | backend/api/src/domain/credit-ledger.mjs with unit tests | SOURCE IMPLEMENTED; AUTOMATED TESTED as an immutable in-memory reducer | Durable database transactions, authenticated provider events, concurrency control, API endpoints, payment reconciliation and client UI are not yet integrated |
 | PostgreSQL persistence adapter | backend/api/src/postgres-store.mjs, account/device/session and wallet transactions, schema-aware readiness and PostgreSQL 17 CI | SOURCE IMPLEMENTED; ACCOUNT/DB INTEGRATION CI VERIFIED | No public wallet HTTP endpoint; production DB credentials/hosting remain unconfigured |
@@ -39,11 +39,12 @@ This matrix separates repository evidence from device, provider and production p
 
 ## CI and repository evidence recovered
 
-- Latest Android-tested main revision: `3982caf5d88d6286a5567354ff52841b06348afa`.
-- LINKA API CI run 42680765486 passed on `ccae0c1a0b86c0a39ed71d68b3743766ed67e293`: 73 passed, 0 failed and 2 PostgreSQL-only tests skipped in the no-database job; browser module syntax, API startup and asset checks passed.
+- Latest Android- and API-tested main revision: `776f9c1890ace342d00ac35d10981d93e0a226ff`.
+- LINKA API CI run 42699519290 passed on merged main commit `776f9c1890ace342d00ac35d10981d93e0a226ff`, including the new E.164 normalization HTTP route test, backend tests, API startup, CORS and browser asset checks.
 - PostgreSQL Schema CI run 42680769129 passed on `81f0d0eb4903787ba2e91395013eb9f765991f88`: 75 passed, 0 failed, 0 skipped; migrations applied twice, schema/wallet checks and API readiness passed. Node WebCrypto account E2E plus the browser DOM/IndexedDB lifecycle E2Es printed PASS in both Chromium and Firefox.
 - Android account edge-case CI run 42670913670 passed on `472a590500e19f657746db77a0d15f5bac36ad07`: debug APK assembly and JVM unit tests passed.
-- Latest main checkpoint Android CI run 42680782249 passed on `3982caf5d88d6286a5567354ff52841b06348afa`: Gradle 8.14.4 debug APK assembly, `:app:testDebugUnitTest`, source revision metadata and artifact upload succeeded.
+- Android CI run 42699002701 passed on the PR head containing the E.164 API integration; post-merge main Android CI run 42699519172 also passed on `776f9c1890ace342d00ac35d10981d93e0a226ff`.
+- Latest main Android CI run 42699519172 passed on `776f9c1890ace342d00ac35d10981d93e0a226ff`: Gradle 8.14.4 debug APK assembly, `:app:testDebugUnitTest`, source revision metadata and artifact upload succeeded.
 - Latest debug APK artifact `linka-debug-apk-3982caf5d88d6286a5567354ff52841b06348afa` (GitHub artifact ID `13702851282`; 17,845,192 bytes; GitHub ZIP SHA-256 `e035a6d3a59fe77d11321a86e42f3e70542cb04e3411bab98af6b0c66d915773`; expires 2026-12-09). It is a debug APK, not a production-signed release.
 - Chromium and Firefox both verify browser registration, IndexedDB non-exportable P-256 key persistence, tab-scoped session restoration after reload, second-context login with a distinct device identity/token, independent logout, recovery limitation messaging and clean browser page execution.
 - Account integration verifies signed-device registration/login, duplicate device/email rejection, persistent token hashes, second-device login and logout revocation.

@@ -6,7 +6,7 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified source head at recovery: `ebe1490459da2b758cb7f08d9012fea425ecb1aa` (main).
+- Verified functional baseline before this continuation: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`; latest implementation commits at checkpoint: `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7` (main).
 - Repository ID: 1444736198.
 - Repository visibility: public.
 - Last inspected recursive tree: 144 entries, not truncated.
@@ -20,6 +20,18 @@
 - HISTORICAL — a dated GitHub Actions, issue or repository event.
 - INFERRED — reasonable reconstruction not directly confirmed.
 - UNKNOWN — not established by available evidence.
+
+
+## Continuation update — 2026-11-09
+
+The following changes were recovered from and committed to the existing `main` branch:
+- `472a590500e19f657746db77a0d15f5bac36ad07` adds two Android account-client tests: logout with no local token makes no request, and production API origins require HTTPS while local development addresses remain allowed. The Android account-client test file now contains nine test cases. The new cases are SOURCE PRESENT; their CI result has not been independently retrieved in this continuation.
+- `12221854e5991e436a40aa9f5819c93507c21866` adds a real Chromium/Playwright browser account UI lifecycle test for IndexedDB key persistence, tab session restore, second-device login, independent logout, recovery messaging and uncaught page errors.
+- `814be0cd77904872e941133a76d9830dc7ba9b97` pins Playwright 1.65.0 and adds the `test:browser-ui` package command.
+- `e9cacd9f8b53f221eb125733b2836a6fd8fc84a7` installs Chromium in PostgreSQL CI, adds the browser UI test to workflow path filters and runs it after the existing API/database browser E2E.
+
+The repository files and commits are independently verified. The GitHub connector available in this continuation does not expose push-triggered workflow-run listing; combined commit status currently returns no status contexts. Therefore the Android and PostgreSQL CI results for these newest commits remain UNVERIFIED here. Do not credit the new tests toward weighted product completion until the corresponding workflow runs pass. Current verified product progress remains 43% complete / 57% remaining.
+
 
 ## Recovery from the prior checkpoint
 
@@ -128,7 +140,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 - Latest debug APK artifact `linka-debug-apk-ebe1490459da2b758cb7f08d9012fea425ecb1aa` (artifact ID `13696198097`, 17,845,189 bytes) expires 2026-12-09. It is a debug APK, not a production-signed release.
 - Android and browser account registration/login/profile/sign-out source is present. Android session restore/logout behavior has seven JVM test cases; browser WebCrypto account lifecycle has a PostgreSQL-backed CI E2E.
 - Password recovery and email verification remain unavailable pending a configured email-delivery provider. Render, carrier, payment, tariff and physical-device status have not been live-verified.
-- Next action: add the remaining no-saved-session logout and API-origin validation edge-case tests for the Android account client, then verify them in Android CI.
+- Next action: verify Android CI for the two newly added account-client edge cases and PostgreSQL CI for the new Chromium browser UI E2E; fix any failures before awarding progress credit.
 
 ## Current CI and failure recovery
 
@@ -183,12 +195,12 @@ The previous verified checkpoint was 41%. Two further percentage points are cred
 ## Easy, medium and hard work remaining
 
 ### Easy
-- Add the no-saved-session logout and API-origin validation edge-case tests for the Android account client.
+- Verify the Android CI run for the no-saved-session logout and HTTPS-only API-origin edge-case tests already committed.
 - Keep current documentation and repository inventories synchronized with the verified branch.
 - Continue focused API negative-path tests where no external provider is required.
 
 ### Medium
-- Add actual Chromium/Firefox browser automation for the page DOM, IndexedDB device-key persistence, tab-scoped session restoration and logout against a disposable PostgreSQL CI service.
+- Verify the first Chromium browser UI E2E run against disposable PostgreSQL, fix any failures, then extend coverage to Firefox where supported.
 - Run browser registration/login on a separately hosted test origin using the explicit CORS configuration; do not treat the current Node WebCrypto E2E as browser-rendering proof.
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.
@@ -204,7 +216,7 @@ The previous verified checkpoint was 41%. Two further percentage points are cred
 
 ## Exact next action
 
-Add two focused Android account-client edge-case tests (logout without a saved token; HTTPS-only API-origin validation), run Android CI, and update this checkpoint. The browser-WebCrypto/PostgreSQL E2E is already verified in disposable CI; actual browser DOM/IndexedDB automation remains next after the Android edge tests. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
+Verify the Android CI run for the two account-client edge-case tests and the PostgreSQL CI run that now executes the Chromium DOM/IndexedDB account lifecycle E2E. Preserve the 43% score until those tests pass. Then continue with the next independent easy requirement; Render inspection still requires the user's workspace confirmation. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
 
 ## Execution boundaries
 

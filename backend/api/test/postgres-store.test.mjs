@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPostgresStore } from "../src/postgres-store.mjs";
 
-function fakePool({ schemaReady = true, crossAccountReady = true } = {}) {
+function fakePool({ schemaReady = true, crossAccountReady = true, messageKeysReady = true } = {}) {
   const calls = [];
   const pool = {
     on(event, callback) {
@@ -14,7 +14,8 @@ function fakePool({ schemaReady = true, crossAccountReady = true } = {}) {
       if (sql.includes("to_regprocedure")) return {
         rows: [{
           wallet_function_ready: schemaReady,
-          cross_account_migration_ready: crossAccountReady
+          message_key_migration_ready: crossAccountReady,
+          message_key_table_ready: messageKeysReady
         }]
       };
       if (sql.includes("INSERT INTO linka_private.wallet_accounts")) return { rows: [], rowCount: 1 };
@@ -57,7 +58,7 @@ test("checks for the migrated wallet function before reporting readiness", async
   const store = createPostgresStore({ pool });
   assert.deepEqual(await store.checkReady(), {
     status: "ready",
-    schemaVersion: "0002_cross_account_integrity"
+    schemaVersion: "0003_message_encryption_keys"
   });
   assert.match(pool.calls[0].sql, /to_regprocedure/);
   await store.close();
@@ -74,7 +75,14 @@ test("does not report version 0002 until the ownership migration is recorded", a
   const pool = fakePool({ crossAccountReady: false });
   const store = createPostgresStore({ pool });
   await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
-  assert.deepEqual(pool.calls[0].values, ["0002_cross_account_integrity"]);
+  assert.deepEqual(pool.calls[0].values, ["0003_message_encryption_keys"]);
+  await store.close();
+});
+
+test("does not report readiness until the message encryption key registry exists", async () => {
+  const pool = fakePool({ messageKeysReady: false });
+  const store = createPostgresStore({ pool });
+  await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
   await store.close();
 });
 

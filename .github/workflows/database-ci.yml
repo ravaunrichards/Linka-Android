@@ -60,9 +60,9 @@ jobs:
       - name: Install API dependencies
         run: npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund
 
-      - name: Install Chromium for browser UI E2E
+      - name: Install Chromium and Firefox for browser UI E2E
         working-directory: backend/api
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox
 
       - name: Install PostgreSQL client
         run: |
@@ -113,4 +113,5 @@ jobs:
           curl --fail --silent http://127.0.0.1:8080/readyz | grep -q "postgres-wallet-ledger"
           LINKA_API_URL=http://127.0.0.1:8080 node backend/api/verify-browser-account.e2e.mjs
           LINKA_API_URL=http://127.0.0.1:8080 npm --prefix backend/api run test:browser-ui
+          PLAYWRIGHT_BROWSER=firefox LINKA_API_URL=http://127.0.0.1:8080 npm --prefix backend/api run test:browser-ui
           cat /tmp/linka-api-postgres.log | tail -n 30

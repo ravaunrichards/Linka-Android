@@ -2,80 +2,87 @@
 
 ## Purpose
 
-The Render service is LINKA's live public web/API origin. It serves the browser companion from `/` and provides signed device authentication plus ephemeral call-control / WebRTC signaling endpoints for online app instances.
+The Node.js service in `backend/api/` serves the browser companion and exposes LINKA's signed-device authentication, PostgreSQL-backed account/session routes (when `DATABASE_URL` is configured), and call-control signaling.
 
-It is **not** part of SIM-free nearby calling. The offline radio path must keep working with no SIM, no mobile data, no Wi-Fi internet and no Render access.
+The API does not relay voice audio. It is not a TURN server, SFU, push-notification provider, number-provisioning provider, PSTN/SIP gateway or SMS/MMS gateway.
 
-The API does not relay voice audio. It is not a TURN server, SFU, push-notification provider, user directory, or persistent database.
+## Repository-defined runtime configuration
 
-## Render service configuration
+These are the configuration requirements expressed by the repository. They are not proof that a live Render service currently has them set.
 
-- Service name: `linka-api`
-- Live origin: https://linka-api-vq2h.onrender.com/
-- Browser companion: https://linka-api-vq2h.onrender.com/
-- The `web/` HTML, CSS and JavaScript assets are served by the same Node process; a separate Render static-site service is not required.
-- Repository: `https://github.com/ravaunrichards/Linka-Android`
-- Branch: `main`
-- Runtime: Node
-- Node version: 22 or newer
-- Build command: `npm --prefix backend/api install --omit=dev`
-- Start command: `npm --prefix backend/api start`
-- Health endpoint: `/healthz` (available to monitors and covered by API CI; the Render dashboard health-check field itself remains unset)
-- Region target: Virginia
-- Initial plan target: Free (subject to Render's current plan availability and limits)
-- Required secret environment variables: none
-- Port: Render-provided `PORT`
+- Service name previously recorded: `linka-api`.
+- Previously recorded origin: `https://linka-api-vq2h.onrender.com/` (historical; not live-verified in this GitHub-only check).
+- Repository: `ravaunrichards/Linka-Android`.
+- Branch: `main`.
+- Runtime: Node.js 22 or newer.
+- Build command: `npm --prefix backend/api install --omit=dev`.
+- Start command: `npm --prefix backend/api start`.
+- Port: Render-provided `PORT`.
+- Health endpoint: `/healthz`.
+- Optional `DATABASE_URL`: enables PostgreSQL-backed account registration, persistent account sessions and the server-side wallet store. Account endpoints return `database_not_configured` if PostgreSQL is not configured.
+- Optional `CORS_ALLOWED_ORIGINS`: comma-separated exact HTTPS origins allowed to call the API from a separately hosted browser website. Same-origin hosting needs no CORS entry. Wildcards, URL paths and remote HTTP origins are rejected. Local HTTP is allowed only for `localhost` and `127.0.0.1`.
+- No email-delivery provider is configured in this repository; password recovery and email verification remain unavailable.
 
-The API has no third-party runtime dependencies. It uses Node.js built-in HTTP and cryptography modules.
+The service uses Node.js built-in HTTP/cryptography modules and the `pg` package for PostgreSQL access.
+
+## Browser origin and CORS
+
+The browser companion defaults to the same origin as the API, so same-origin deployment requires no CORS configuration.
+
+For a separate browser domain:
+1. Set `CORS_ALLOWED_ORIGINS` on the API service to exact origins, for example `https://app.example.com`.
+2. Separate multiple origins with commas.
+3. Do not include paths, trailing URL routes, wildcards or insecure remote HTTP origins.
+4. Ensure the browser points to the API's HTTPS origin.
+
+The API handles preflight `OPTIONS` requests for `GET` and `POST`, allowing only `Authorization` and `Content-Type` request headers. It returns `Access-Control-Allow-Origin` for the exact allowlisted origin and rejects unlisted cross-origin requests with HTTP 403. Credentialed cookies are not enabled; browser account tokens use explicit bearer authorization.
+
+API CI tests the allowed-origin preflight, the rejected-origin preflight, origin validation, browser account modules and API startup. This verifies repository behavior, not a live Render environment configuration.
 
 ## Browser and health routes
 
-- `GET /` — LINKA browser companion entry point
-- `GET /styles.css` and `GET /app.js` — browser companion assets
-- `GET /healthz` — basic process health
-- `GET /readyz` — readiness and available API capabilities
-- `GET /v1/info` — API version, supported signaling mode and explicit media limitations
+- `GET /` — browser companion entry point.
+- `GET /styles.css`, `GET /app.js`, `GET /account.mjs`, `GET /auth-crypto.mjs` — browser assets.
+- `GET /healthz` — basic process health.
+- `GET /readyz` — readiness and configured capabilities.
+- `GET /v1/info` — API version, signaling mode and explicit limitations.
+- `OPTIONS` — CORS preflight for configured cross-origin browser clients.
+
+## Account authentication
+
+When PostgreSQL is configured:
+- `POST /v1/auth/challenge` and `POST /v1/auth/verify` establish a signed device session.
+- `POST /v1/accounts/register` creates an account and links the verified device.
+- `POST /v1/accounts/login` signs an existing account in on another verified device.
+- `GET /v1/me` returns the current account profile.
+- `POST /v1/auth/logout` revokes the persistent account session.
+- `POST /v1/accounts/recovery` explicitly returns HTTP 501 until email delivery and one-use recovery tokens are implemented.
+
+Passwords are stored as salted scrypt hashes. Persistent bearer tokens are stored as SHA-256 hashes, not plaintext.
 
 ## Device authentication
 
-1. `POST /v1/auth/challenge` with `{ "deviceId": "<uuid>" }`.
-2. The server returns `challengeId`, a random `nonce`, `issuedAt`, and `expiresAt`.
-3. The Android device signs the UTF-8 statement below with its Android Keystore P-256 identity key:
+1. `POST /v1/auth/challenge` with a device UUID.
+2. The server returns a one-time challenge ID, nonce, issue time and expiry.
+3. The device signs the LINKA server-authentication statement using its P-256 device key.
+4. `POST /v1/auth/verify` submits the device ID, DER SPKI public key and DER ECDSA signature.
+5. The server verifies the signature and returns a short-lived bearer token.
 
-```text
-LINKA-SERVER-AUTH-V1
-{challengeId}
-{nonce}
-{deviceId}
-{issuedAt}
-```
-
-4. `POST /v1/auth/verify` with `challengeId`, `deviceId`, `publicKeyBase64` (DER SubjectPublicKeyInfo), and `signatureBase64` (DER ECDSA signature).
-5. The server verifies possession of the matching P-256 private key and returns a random, expiring bearer token.
-
-The challenge is single-use and expires after 90 seconds. Bearer sessions expire after one hour. The service verifies device-key possession; it does not create a global username account or prove that a device is trusted by another person. Trust remains a separate in-person QR action in LINKA.
+Device-key possession does not by itself prove another person has trusted the device. Trust remains a separate QR pairing action.
 
 ## Call signaling
 
-Authenticated calls use:
+Authenticated clients use:
+- `POST /v1/signals` to send a supported call-control/WebRTC signaling event to an online device.
+- `GET /v1/signals` to poll and consume queued signaling events.
 
-- `POST /v1/signals` to send a signal to an online device.
-- `GET /v1/signals` to poll and consume up to 25 queued signals.
+Signaling queues and short-lived device challenge sessions remain in memory and are lost on restart. The API does not transport voice audio.
 
-Allowed signal types: `call_invite`, `call_accept`, `call_reject`, `call_busy`, `call_end`, `webrtc_offer`, `webrtc_answer`, `webrtc_ice`.
+## Operational limitations and verification
 
-The sender identity is taken from the authenticated bearer session, not from a client-supplied sender field. The service rejects offline recipients, self-signals, unsupported message types, malformed call IDs and payloads over 16 KiB.
+- No SIP/PSTN termination, carrier number inventory, SMS/MMS provider, payment settlement, TURN/SFU media relay or emergency calling is implemented by this service.
+- The Android client has not been validated for internet media calls against a live provider.
+- A configured PostgreSQL connection is required for account registration/login and persistent account sessions.
+- Render service status, environment variables, live origin, plan, region and deployment health were not checked during this GitHub-only recovery.
 
-## Operational limitations
-
-- Sessions, online presence and queued signals are in memory. A deploy or restart clears them.
-- Signals expire after 90 seconds; the service is not an offline message store.
-- The API has no account database and no permanent username lookup.
-- The service does not receive or forward audio. WebRTC media connectivity requires a separate direct peer path and, for restrictive networks, a separately provisioned TURN service.
-- The Android client is not yet integrated with these HTTPS signaling endpoints. The API being live does not activate internet calling in the Android app. Offline Nearby Connections and mesh routes are independent of this service.
-- Free instances may sleep or be constrained by Render's current free-plan policy. Use a paid always-on plan before relying on internet calling for production or emergency communication.
-- Do not send passwords, private keys, call audio, or long-lived secrets to the API.
-
-## Verification
-
-Run `npm --prefix backend/api test` locally or use the LINKA API CI workflow. CI also verifies the hosted companion entry point, CSS, JavaScript, and API health routes. The live origin is https://linka-api-vq2h.onrender.com/. Physical Android-to-Android internet call tests are still required after client integration.
+Use `npm --prefix backend/api test` or the LINKA API CI workflow. CI validates unit tests, CORS policy, browser assets and API startup; it does not establish production deployment or physical-device readiness.

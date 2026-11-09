@@ -7,6 +7,7 @@ on:
       - "backend/api/db/**"
       - "backend/api/src/postgres-store.mjs"
       - "backend/api/test/postgres-*.test.mjs"
+      - "backend/api/verify-browser-account.e2e.mjs"
       - "backend/api/package.json"
       - ".github/workflows/database-ci.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "backend/api/db/**"
       - "backend/api/src/postgres-store.mjs"
       - "backend/api/test/postgres-*.test.mjs"
+      - "backend/api/verify-browser-account.e2e.mjs"
       - "backend/api/package.json"
       - ".github/workflows/database-ci.yml"
   workflow_dispatch:
@@ -93,7 +95,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://linka_ci:linka_ci_password@127.0.0.1:5432/linka_ci
         run: |
-          PORT=8080 npm --prefix backend/api start > /tmp/linka-api-postgres.log 2>&1 &
+          PORT=8080 CORS_ALLOWED_ORIGINS=https://browser.example npm --prefix backend/api start > /tmp/linka-api-postgres.log 2>&1 &
           API_PID=$!
           trap 'kill "$API_PID" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
@@ -103,4 +105,5 @@ jobs:
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:8080/readyz | grep -q "postgres-wallet-ledger"
+          LINKA_API_URL=http://127.0.0.1:8080 node backend/api/verify-browser-account.e2e.mjs
           cat /tmp/linka-api-postgres.log | tail -n 30

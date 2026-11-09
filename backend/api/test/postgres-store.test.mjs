@@ -75,7 +75,9 @@ test("does not report version 0002 until the ownership migration is recorded", a
   const pool = fakePool({ crossAccountReady: false });
   const store = createPostgresStore({ pool });
   await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
-  assert.deepEqual(pool.calls[0].values, ["0002_cross_account_integrity"]);
+  assert.deepEqual(pool.calls[0].values, [
+    "0002_cross_account_integrity", "0003_messaging_device_encryption"
+  ]);
   await store.close();
 });
 

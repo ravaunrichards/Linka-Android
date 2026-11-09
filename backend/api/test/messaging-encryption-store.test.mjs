@@ -23,7 +23,7 @@ function signedRegistrationInput(publicKeyDer = ecdhPublicKey(), {
     SENDER_DEVICE,
     algorithm,
     fingerprint
-  ].join("\\n"), "utf8");
+  ].join("\n"), "utf8");
   return {
     accountId: ACTOR,
     deviceId: SENDER_DEVICE,
@@ -240,7 +240,7 @@ test("rejects an ECDH key proof signed by a different device identity", async ()
   const otherSigner = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const statement = Buffer.from([
     "LINKA-MESSAGING-KEY-V1", SENDER_DEVICE, "ECDH-P256", fingerprint
-  ].join("\\n"), "utf8");
+  ].join("\n"), "utf8");
   const store = createPostgresStore({ pool: fakePool() });
   await assert.rejects(
     store.registerDeviceEncryptionKey({

@@ -200,7 +200,7 @@ The previous verified checkpoint was 43%. One additional percentage point is now
 - Continue focused API negative-path tests where no external provider is required.
 
 ### Medium
-- Extend the browser UI E2E to Firefox on CI after confirming Playwright browser availability and platform-specific storage behavior.
+- Verify the new Firefox browser UI E2E run; the Chromium equivalent is already green.
 - Run browser registration/login on a separately hosted test origin using the explicit CORS configuration; do not treat the current Node WebCrypto E2E as browser-rendering proof.
 - Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
 - Integrate Android and web clients with supported backend capabilities.
@@ -216,7 +216,7 @@ The previous verified checkpoint was 43%. One additional percentage point is now
 
 ## Exact next action
 
-Extend the verified Chromium browser lifecycle E2E to Firefox, add it to the same PostgreSQL CI job and verify the run. Then continue with provider-independent integration work; Render inspection remains blocked until the user confirms the intended workspace. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
+Verify the Firefox browser UI lifecycle run and resolve any browser-specific failure. Then continue with provider-independent integration work; Render inspection remains blocked until the user confirms the intended workspace. Keep password reset/email verification disabled until a real email provider and one-use token workflow exist.
 
 ## Execution boundaries
 

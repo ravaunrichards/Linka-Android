@@ -51,7 +51,7 @@ jobs:
       PGUSER: linka_ci
       PGDATABASE: linka_ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install API dependencies
         run: npm install --prefix backend/api --no-package-lock --ignore-scripts --no-audit --no-fund

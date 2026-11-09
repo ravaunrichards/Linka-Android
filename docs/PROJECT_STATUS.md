@@ -6,7 +6,7 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Verified current main head at this checkpoint update: 124cfdb60b5d24ad77576bc72bb331fb48e5f316.
+- Verified main head immediately before this checkpoint documentation refresh: ae2e1110311673b6493c04e9a8de8e86ab3bebd9.
 - Repository ID: 1444736198.
 - Repository visibility: public.
 - Last inspected recursive tree: 139 entries, not truncated.
@@ -50,6 +50,13 @@ The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9
 - 9f291b73f2f97e9cd2ae6a6965337f1bf3333e3c — added browser account registration/login, non-exportable WebCrypto device identity and ECDSA signature conversion.
 - 124cfdb60b5d24ad77576bc72bb331fb48e5f316 — expanded API CI to syntax-check browser modules and verify both browser authentication assets are served.
 
+Documentation recovery commits after that tested source revision:
+- 935080fe199b64bb1896ee125880ab451cdd5460 — corrected README account-client implementation status.
+- bb58573d5bf67b1cba1a5392bf653927ee1476c4 — documented Android and browser account session storage.
+- e2ea64ab167eeef343f759645a8cc0babf795d9d — refreshed the integration matrix with current CI evidence.
+- aefbe54bf64d614ed42f64e5ed1f21ac71f33ac8 — updated the repository tree and ownership map.
+- ae2e1110311673b6493c04e9a8de8e86ab3bebd9 — saved the 41% recovery checkpoint and current test evidence.
+
 No source from those commits was discarded. All are ancestors of the verified main branch baseline.
 
 ## Previous project work preserved
@@ -91,7 +98,7 @@ These are provider-independent, tested foundations. They do not provide a live p
 
 ## Latest verified checkpoint summary
 
-- Current main: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`.
+- Latest functional source revision with green API/Android CI: `124cfdb60b5d24ad77576bc72bb331fb48e5f316`. Documentation-only checkpoint commits follow through `ae2e1110311673b6493c04e9a8de8e86ab3bebd9`.
 - Full-product progress: **41% complete | 59% remaining**.
 - PostgreSQL Schema CI run 42617603718 passed with 65/65 tests; migrations 0001/0002 were applied twice, schema/wallet/cross-account checks passed, account HTTP integration passed and PostgreSQL readiness passed.
 - LINKA API CI run 42619263365 passed: browser module syntax checks, 67 passed, 0 failed, 2 database-only skips; API startup and both browser-module asset routes passed.
@@ -115,6 +122,8 @@ These are provider-independent, tested foundations. They do not provide a live p
 - Historical PostgreSQL run 42612619048 failed because a test public-key fixture was shorter than the schema's minimum; commit 03d07a2 fixed it and later PostgreSQL CI passed.
 - Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; upload/deploy were skipped. The workflow was later removed in favor of the documented Render origin.
 - No external Render, email, carrier, payment, tariff or device-lab service was live-verified. Password reset and email verification are therefore not enabled.
+- A GitHub-only Markdown relative-link check passed for README.md and the four updated account, integration, repository-structure and project-status documents: 5 files checked, 0 broken relative links.
+- GitHub Actions logs contain maintenance warnings: setup-java@v4 is deprecated, and several actions still report Node.js 20 runtime deprecation. These are not failed checks; review and update action majors after checking their official compatibility notes.
 
 ## Full LINKA product progress tracker
 

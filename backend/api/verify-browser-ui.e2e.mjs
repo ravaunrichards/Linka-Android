@@ -197,6 +197,20 @@ async function main() {
     await firstPage.locator("#chatMessageDraft").fill(secretMessage);
     await firstPage.locator("#chatSendMessage").click();
     await firstPage.waitForFunction(
+      () => {
+        const status = document.getElementById("chatStatus");
+        return status?.textContent?.startsWith("Encrypted message sent") ||
+          status?.dataset.kind === "error";
+      },
+      null,
+      { timeout: 20_000 }
+    );
+    const sendStatus = await firstPage.evaluate(() => ({
+      kind: document.getElementById("chatStatus")?.dataset.kind,
+      text: document.getElementById("chatStatus")?.textContent
+    }));
+    assert.equal(sendStatus.kind, "success", "Encrypted send failed: " + sendStatus.text);
+    await firstPage.waitForFunction(
       text => [...document.querySelectorAll("#chatMessages .chat-message p")]
         .some(element => element.textContent === text),
       secretMessage,

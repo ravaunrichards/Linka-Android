@@ -39,10 +39,7 @@ function assertWalletState(state) {
     typeof state !== "object" ||
     typeof state.accountId !== "string" ||
     !state.balances ||
-    !Array.isArray(state.events) ||
-    !CREDIT_SOURCES.has("purchased") ||
-    !CREDIT_SOURCES.has("promotional") ||
-    !CREDIT_SOURCES.has("sponsored")
+    !Array.isArray(state.events)
   ) {
     fail("invalid_wallet_state", "A valid wallet state is required.");
   }
@@ -96,12 +93,16 @@ export function getWalletBalances(state) {
   const purchased = state.balances.purchased;
   const promotional = state.balances.promotional;
   const sponsored = state.balances.sponsored;
+  const total = purchased + promotional + sponsored;
+  if (!Number.isSafeInteger(total)) {
+    fail("wallet_balance_overflow", "Combined wallet balance exceeds the safe integer range.");
+  }
 
   return Object.freeze({
     purchased,
     promotional,
     sponsored,
-    total: purchased + promotional + sponsored
+    total
   });
 }
 
@@ -198,6 +199,11 @@ export function applyWalletEvent(state, input) {
     ...state.balances,
     [event.source]: nextBalance
   };
+  const totalBalance = balances.purchased + balances.promotional + balances.sponsored;
+  if (!Number.isSafeInteger(totalBalance)) {
+    fail("wallet_balance_overflow", "Combined wallet balance exceeds the safe integer range.");
+  }
+
   const storedEvent = Object.freeze(event);
   const nextState = freezeState(state.accountId, balances, [...state.events, storedEvent]);
 

@@ -164,6 +164,19 @@ test("unsupported events, empty IDs and malformed state are rejected", () => {
   assert.throws(() => createWalletState(" "), { code: "invalid_ledger_event" });
 });
 
+test("combined wallet balance cannot overflow the safe integer range", () => {
+  let state = createWalletState("account-1");
+  state = applyWalletEvent(state, grant({ amount: Number.MAX_SAFE_INTEGER })).state;
+  assert.throws(() => applyWalletEvent(state, grant({
+    eventId: "promo-overflow",
+    idempotencyKey: "promo-overflow-key",
+    type: "PROMOTIONAL_GRANT",
+    source: "promotional",
+    amount: 1
+  })), { code: "wallet_balance_overflow" });
+  assert.throws(() => getWalletBalances(state), { code: "wallet_balance_overflow" });
+});
+
 test("wallet snapshots and stored ledger events are immutable", () => {
   const state = createWalletState("account-1");
   const next = applyWalletEvent(state, grant()).state;

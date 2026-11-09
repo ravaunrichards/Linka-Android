@@ -73,24 +73,30 @@ Each event should include a unique idempotency key, account reference, amount, c
 
 Do not update a balance based solely on a client request. Validate available credits and write ledger events atomically. Authenticate and deduplicate payment webhooks.
 
-## 7. Billing states and failed calls
+## 7. Current repository implementation
+
+The API source now includes a provider-independent route-options policy and an immutable in-memory wallet ledger reducer under `backend/api/src/domain/`. Automated tests cover free-first option selection, exact-quote paid consent, capped paid preauthorization, E.164 syntax normalization, credit grants, source-separated balances, idempotency, account mismatch, insufficient balance and capped refunds.
+
+These modules are domain foundations only. They are not connected to provider tariff feeds, number inventory, persistent storage, authenticated API endpoints, payment processing, Android or website wallet screens. The in-memory reducer is not safe as a production source of truth across concurrent server instances or restarts. See [Wallet ledger design](WALLET_LEDGER_DESIGN.md).
+
+## 8. Billing states and failed calls
 
 Define a lifecycle: preflight, rate quote, user consent, route setup, ringing, answered/connected, completed or failed, final usage reconciliation, refund/reversal when required.
 
 A failed connection, rejected call or unconnected attempt must not be billed as a completed conversation. Credit reservation and release behavior must be documented and tested.
 
-## 8. Payments and refunds
+## 9. Payments and refunds
 
 Evaluate card, PayPal and market-appropriate payment providers after confirming availability and compliance. Checkout discloses currency, amount charged, credit quantity, taxes, exchange rate where relevant and refund policy.
 
 Never store raw card credentials. Keep production payment keys outside the repository. Verify webhook signatures, event identity and idempotency. Reconcile settlements against purchases and wallet grants.
 
-## 9. Rate catalog
+## 10. Rate catalog
 
 A rate record should include destination country and normalized prefix/number metadata, number type where known, provider/route ID, billing unit and rounding rule, customer price/currency, applicable tax/fee model, provider tariff reference, effective dates, source/import time/version, direction and restrictions.
 
 Do not use stale rates after expiry. If a current rate cannot be loaded, do not invent a quote; report the service unavailable or use a clearly labeled still-valid cached rate under policy.
 
-## 10. Competitor reference principles
+## 11. Competitor reference principles
 
 TextNow, 2ndLine, TextMe, Dingtone and Talkatone were reviewed as examples of balances, credit packages and destination rates. Their rates and credits are not interchangeable with LINKA currency or provider costs. They are design references, never LINKA pricing evidence.

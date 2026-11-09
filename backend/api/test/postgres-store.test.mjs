@@ -140,6 +140,29 @@ test("rejects invalid account IDs, event types, sources and amounts before query
   await store.close();
 });
 
+test("account registration and login input errors preserve intended HTTP status codes", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const validDevice = {
+    deviceId: ACCOUNT_ID,
+    publicKeyDer: Buffer.alloc(91, 1),
+    platform: "android"
+  };
+
+  await assert.rejects(store.createAccountWithDevice({
+    email: "invalid", password: "valid-account-password",
+    displayName: "Test Account", device: validDevice
+  }), { code: "invalid_email" });
+
+  await assert.rejects(store.loginAccount({
+    email: "person@example.com", password: "wrong-password",
+    device: validDevice
+  }), { code: "invalid_credentials", statusCode: 401 });
+
+  assert.equal(pool.calls.length, 1);
+  await store.close();
+});
+
 test("closes the pool once and refuses queries after close", async () => {
   const pool = fakePool();
   const store = createPostgresStore({ pool });

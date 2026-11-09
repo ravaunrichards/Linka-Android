@@ -18,9 +18,10 @@ const EVENT_TYPES = new Set([
   "NUMBER_RENTAL", "NUMBER_RENEWAL", "REFUND"
 ]);
 
-function fail(code, message = code) {
+function fail(code, message = code, statusCode) {
   const error = new Error(message);
   error.code = code;
+  if (Number.isInteger(statusCode)) error.statusCode = statusCode;
   throw error;
 }
 function requiredText(value, field) {

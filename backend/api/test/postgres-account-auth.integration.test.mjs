@@ -142,7 +142,7 @@ test("account registration, persistent login sessions and multi-device binding w
       displayName: "Wrong Link",
       platform: "android"
     }, firstDeviceToken);
-    assert.equal(deviceReused.status, 409);
+    assert.equal(deviceReused.status, 409, JSON.stringify(deviceReused.body));
     assert.equal(deviceReused.body.error, "device_already_linked");
 
     const recovery = await postJson(baseUrl, "/v1/accounts/recovery", { email });
@@ -159,7 +159,7 @@ test("account registration, persistent login sessions and multi-device binding w
       password: "incorrect-password",
       platform: "android"
     }, firstDeviceTokenAgain);
-    assert.equal(wrongPassword.status, 401);
+    assert.equal(wrongPassword.status, 401, JSON.stringify(wrongPassword.body));
     assert.equal(wrongPassword.body.error, "invalid_credentials");
 
     const secondDevice = createIdentity();

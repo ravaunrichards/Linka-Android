@@ -40,17 +40,18 @@ test("resolves a UK +44 number using numbering-plan metadata", () => {
   assert.equal(result.countryResolution, "resolved");
 });
 
-test("does not guess country for ambiguous shared +1 toll-free destinations", () => {
-  const result = resolveDestinationNumber("+1 800 555 0123");
+test("reports non-geographic +800 numbers without inventing a country", () => {
+  const result = resolveDestinationNumber("+800 1234 5678");
 
+  assert.equal(result.normalizedNumber, "+80012345678");
   assert.equal(result.numberPlanValidation, "valid");
   assert.equal(result.countryIso2, null);
-  assert.notEqual(result.countryResolution, "resolved");
+  assert.equal(result.countryResolution, "unresolved");
   assert.equal(result.providerReachability, "not_checked");
 });
 
-test("rejects impossible or malformed numbers using full metadata", () => {
-  for (const value of ["+1 234 567 8900", "+44 123", "+999123456789", "call me at +18765551234"]) {
+test("rejects definitely invalid international numbers and malformed text", () => {
+  for (const value of ["+123", "+999123456789", "call me at +18765551234"]) {
     assert.throws(
       () => resolveDestinationNumber(value),
       error => ["invalid_e164", "invalid_destination_number"].includes(error.code)

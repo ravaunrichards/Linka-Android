@@ -6,139 +6,136 @@
 - Reporting timezone: America/Jamaica.
 - Repository: ravaunrichards/Linka-Android.
 - Default branch: main.
-- Recovery baseline commit: a14baf36ac90dfb1f78324cccaf7e1a26180e81d.
-- Repository organization commit: 85c64d8515063c6cffc15424d399953a609a082d.
-- Browser status correction commit: d7ca2dce8ba787db60464204e6b85d9f7ad3bd75.
-- Main branch head before this checkpoint update: d7ca2dce8ba787db60464204e6b85d9f7ad3bd75.
+- Verified source baseline before this checkpoint update: a230d168de391b3d209865eb8c51bbbc3c5aa03c.
 - Repository ID: 1444736198.
 - Repository visibility: public.
-- Main tree: 105 entries; recursive Git tree was not truncated.
-- Connected GitHub permission snapshot during recovery: admin, maintain and push were true.
-- Recovery confidence: CONFIRMED for branch, commits, tree, merged PRs, open issue, file fetches and Actions runs. GitHub read APIs do not expose a local working tree.
+- Last inspected recursive tree: 115 entries, not truncated.
+- GitHub permission snapshot during recovery: admin, maintain and push were true.
+- Recovery confidence: CONFIRMED for branch, commit ancestry, repository files, commit changes, issue records and Actions results. A local working tree is not exposed by the GitHub read APIs.
 
 ## Recovery labels
 
 - RECOVERED — present in prior task context or durable GitHub records.
-- VERIFIED — re-read from GitHub during the 2026-11-09 recovery.
+- VERIFIED — re-read from GitHub during the current recovery.
 - HISTORICAL — a dated GitHub Actions, issue or repository event.
-- UNKNOWN — not established by available GitHub evidence.
+- INFERRED — reasonable reconstruction not directly confirmed.
+- UNKNOWN — not established by available evidence.
 
-## Previous work recovered
+## Recovery from the prior checkpoint
+
+The previous saved checkpoint was at repository commit 36ef4745a13e48c37b89bead9c6497e66993520c and recorded the repository-organization phase as complete. Since that checkpoint, additional commits appeared on main and were recovered rather than overwritten:
+
+- 71deee602161d6a1ac239d92f8868a423eb347c3 — added the tested immutable wallet credit-ledger domain, its tests and design documentation.
+- 7cf935f3fc5137e8c7756f4f703997dbb6e06646 — added a combined-credit-balance overflow guard and extended the wallet-ledger documentation.
+- f647d7267432c89bc355e4008c12343093393100 — corrected the wallet overflow test: a balance exactly at Number.MAX_SAFE_INTEGER is valid; only a genuinely overflowing combined snapshot should fail.
+- e30a9087fec46c43038f0463877b05961120178d — fixed literal escaped-newline separators that had merged two integration-matrix rows.
+- f16f2a36d07ab19c52fdbb937335cb5604d2ce76 — added a provider-fed rate catalog and credit-estimate domain with unit tests.
+- 53772274ae6b4389ec60fcf00c4174c8e450c293 — corrected rate-prefix validation to permit a bare calling-code prefix such as +1.
+- a230d168de391b3d209865eb8c51bbbc3c5aa03c — made message quotes explicitly reject voice tariffs.
+
+No source from those commits was discarded. All are ancestors of the verified main branch baseline.
+
+## Previous project work preserved
 
 Closed and merged pull requests:
 - PR #1 — LINKA Android improvements and responsive web companion.
 - PR #3 — secure direct and multi-hop offline voice calling.
 - PR #4 — premium phone hub and Android system integrations.
 
-The inspected main branch already contained:
+The existing implementation still contains:
 - Kotlin/Jetpack Compose Android application.
 - Nearby Connections discovery, advertising and pairing.
 - Android Keystore device identity and signed QR identity.
 - Authenticated peer/session security.
-- Direct encrypted audio transport.
-- Multi-peer and multi-hop offline route implementation with local relay consent.
-- Unit tests for audio framing, call state/control, security and mesh routing.
-- Node.js backend API with signed device challenge and ephemeral call signaling.
+- Direct encrypted voice transport.
+- Multi-peer/multi-hop offline route source with local relay consent.
+- Android phone hub with keypad and system-app handoffs for dialer, SMS, contacts and recent calls.
+- Unit tests for call control/state, audio framing, peer security and mesh routing.
+- Node.js signed-device challenge and ephemeral call-signaling API.
 - Static browser companion.
 - Android CI and API CI workflows.
-- Architecture, security, Jamaica compatibility, offline mesh, Render service and testing documentation.
+- Architecture, compatibility, security, mesh, testing and Render service documentation.
 
-The latest open release-tracking issue found is issue #2: [LINKA physical-device validation, security review and release gates](https://github.com/ravaunrichards/Linka-Android/issues/2). It records outstanding two-phone direct audio tests, multi-phone relay voice tests, Android lifecycle/audio checks, independent cryptographic review, non-GMS scope decision, Android Telecom/default-dialer/release signing and deployment follow-up.
+Open issue #2 remains the physical-device, security-review and release-gate tracker. It still includes two-phone direct audio proof, four-or-more-device relay proof, Android lifecycle/audio checks, independent cryptographic review, non-GMS scope, Android Telecom/default-dialer and release signing.
 
-## Repository changes completed in this organization pass
+## New backend domain capabilities recovered and verified
 
-Commit 85c64d8515063c6cffc15424d399953a609a082d added 19 files and updated three existing documentation/entry files. It added:
-- .gitignore, .editorconfig and .gitattributes.
-- CONTRIBUTING.md and SECURITY.md.
-- GitHub issue templates, pull request template, CODEOWNERS and Dependabot configuration.
-- Documentation index.
-- Full product requirements.
-- Repository structure guide.
-- Roadmap.
-- Integration matrix.
-- Architecture decisions.
-- Telephony and billing specification.
-- This persistent project status checkpoint.
-- Corrected root README, Jamaica/international compatibility plan and offline mesh status.
+The backend now includes:
+- `backend/api/src/domain/e164.mjs` — strict international-format normalization of explicitly supplied phone numbers. It does not identify country from +1.
+- `backend/api/src/domain/route-options.mjs` — free-first option construction, exact-quote paid consent and bounded paid auto-fallback policy.
+- `backend/api/src/domain/credit-ledger.mjs` — immutable in-memory wallet reducer with separate purchased/promotional/sponsored buckets, idempotency checks, usage deductions, capped refunds and safe-integer balance limits.
+- `backend/api/src/domain/rate-catalog.mjs` — validation of provider-supplied tariff records, active-rate selection by provider/country/number-type/longest prefix and credit estimates for voice/SMS/MMS.
 
-Commit d7ca2dce8ba787db60464204e6b85d9f7ad3bd75 corrected stale browser companion wording:
-- The web page now identifies itself as a development-status browser companion, not a live calling client.
-- The browser status reflects multi-hop mesh source implementation.
-- Physical-device validation remains visibly outstanding.
-- The page distinguishes Jamaica-first testing from the international number-service scope.
+These are provider-independent, tested domain foundations. They do not provide a live provider tariff feed, actual number inventory, persistence, concurrent database transactions, payment authorization/webhooks, user wallet APIs, Android/web UI or operational carrier routes. No LINKA customer prices are set by these modules.
 
-The final main tree check found all 22 organization-pass paths present and preserved the existing Android, backend, web and CI paths. The follow-up web file was fetched back and its updated content verified.
+## Current CI and failure recovery
 
-## CI and GitHub evidence
+- API CI run 42611442996 for commit a230d168de391b3d209865eb8c51bbbc3c5aa03c completed successfully. Its test log reports 49 tests passed, 0 failed; API start/readiness and browser route checks also passed.
+- Android CI run 42611442986 was queued/pending when this checkpoint was prepared; do not report it as passed until GitHub confirms its conclusion.
+- Historical API CI run 42610320645 failed because an overflow test expected a valid MAX_SAFE_INTEGER balance to fail. The implementation was retained; the test was corrected in commit f647d7267432c89bc355e4008c12343093393100, whose API CI passed.
+- Historical API CI run 42611182288 failed because the rate-prefix validator rejected the bare +1 calling-code prefix. The validator was corrected in commit 53772274ae6b4389ec60fcf00c4174c8e450c293, whose API CI passed.
+- These failures and fixes are retained in history; they are not hidden or counted as successful runs.
+- Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages; its upload/deploy steps were skipped. The Pages workflow was later removed and the repository documents a single Render origin.
+- No external Render dashboard, carrier account, payment account, tariff feed or device lab was accessed during this GitHub-only pass.
 
-- Android CI run 42607627743 for main commit 85c64d8515063c6cffc15424d399953a609a082d completed with conclusion success.
-- Android CI run 42607905650 for main commit d7ca2dce8ba787db60464204e6b85d9f7ad3bd75 completed with conclusion success. The debug APK build, unit tests, source-revision metadata and APK artifact upload steps all passed.
-- LINKA API CI run 41780783071 for commit aaeacf7d225f315c55d7b0aaeceac3fd3ed905ca completed successfully on 2026-11-04.
-- These are GitHub Actions results. No external Render dashboard, carrier account, payment-provider account or device farm was accessed in this GitHub-only pass.
-- Historical GitHub Pages deployment run 41780817544 failed at Configure GitHub Pages with Resource not accessible by integration; upload and deploy were skipped. Later repository history removed that Pages workflow and documented a single Render origin.
-- Dependabot opened update PRs #5 through #10 after the new configuration was added. They are separate review items and none was merged in this pass.
+## Full LINKA product progress tracker
 
-## Known LINKA product gaps
+This is the weighted tracker for the full LINKA product and its repository implementation. The weights total 100%. It is separate from the earlier repository-organization milestone, which remains complete.
 
-The repository organization phase does not complete the entire LINKA product. The following are not yet implemented as production integrations:
-- Carrier/SIP/PSTN calls to ordinary telephone numbers.
-- Real Jamaican or international number provisioning.
-- Integrated external SMS/MMS.
-- Fully integrated Android/browser WebRTC media calls.
-- Durable account/user database and production account authentication.
-- Server-authoritative credit wallet and transaction ledger.
-- Payment processing and settlement reconciliation.
-- Provider-backed international rate catalog.
-- SIM/eSIM service provisioning.
-- End-to-end automatic connection switching.
-- Emergency calling.
+| Milestone | Weight | Verified credit | Remaining |
+|---|---:|---:|---:|
+| Repository organization, requirements and engineering documentation | 10% | 10% | 0% |
+| Existing Android offline direct/mesh source and automated verification | 12% | 8% | 4% |
+| Complete Android phone experience and native system integration | 9% | 2% | 7% |
+| Backend device identity and signaling foundation | 8% | 4% | 4% |
+| Free-first route policy and international number normalization | 6% | 3% | 3% |
+| Wallet credit-ledger domain | 8% | 4% | 4% |
+| Provider-fed rate catalog and usage estimation | 6% | 3% | 3% |
+| Provider-backed Jamaican/international number inventory and SIP/PSTN | 10% | 0% | 10% |
+| End-to-end internet audio/video media and clients | 7% | 0% | 7% |
+| Internal chat and external SMS/MMS | 6% | 0% | 6% |
+| Payment processing, refunds and settlement reconciliation | 6% | 0% | 6% |
+| Full account-based website and browser calling | 5% | 1% | 4% |
+| Supported SIM/eSIM and complete automatic connection switching | 3% | 0% | 3% |
+| Independent security, compliance, physical field tests and production release | 4% | 0% | 4% |
+| **TOTAL** | **100%** | **35%** | **65%** |
 
-The existing system dialer and SMS app handoffs are Android system-app integrations, not LINKA's own carrier calling or messaging services. The backend signaling runtime keeps sessions and queues in memory; it is not a durable account, number, message or billing database.
+**Current full-product completion: 35% | Remaining: 65%.**
 
-Offline direct and routed voice are implemented in Android source and have automated protocol tests, but real two-phone/four-phone physical-device operation and independent security review remain release gates.
+The previous checkpoint measured only repository organization at 100%; it did not establish a weighted full-product percentage. Therefore, this is the first explicit full-product weighted baseline. Partial credit is limited to source and automated-test evidence. Provider integrations, durable storage, physical-device verification and production release receive no credit until independently verified.
 
-## Repository organization phase progress model
+## Easy, medium and hard work remaining
 
-This tracker measures the assigned GitHub repository organization and orientation phase only. It does not represent completion of all LINKA product features.
+### Easy
+- Keep documentation and integration status synchronized with source.
+- Maintain focused API unit tests and verify all local Markdown links.
+- Complete Android CI for the latest main commit.
+- Add missing API contract tests and negative-path validation where no external provider is required.
 
-Milestone weights and verified status:
-- Recovery and verified baseline: 15% — VERIFIED.
-- Product requirements and acceptance scope: 20% — VERIFIED.
-- Architecture and integration boundaries: 15% — VERIFIED.
-- Repository organization and navigation: 15% — VERIFIED.
-- Contributor, security and GitHub collaboration hygiene: 10% — VERIFIED.
-- Roadmap and persistent recovery checkpoint: 10% — VERIFIED.
-- Correction of stale compatibility/mesh/browser status documentation: 5% — VERIFIED.
-- GitHub file, tree, commit, fetch-back and relevant CI verification: 10% — VERIFIED.
+### Medium
+- Connect domain policy to authenticated backend services.
+- Implement a durable PostgreSQL persistence boundary and migrations for accounts, number inventory, rate versions and wallet ledger.
+- Add provider adapter contracts and import/refresh interfaces without fabricating live provider data.
+- Integrate Android and web clients with supported backend capabilities.
 
-Previous verified completion at the first recovery checkpoint: 15%.
-Current verified completion for the repository organization phase: 100%.
-Remaining for the repository organization phase: 0%.
-Progress since the first recovery checkpoint: +85 percentage points.
+### Hard / externally dependent
+- Jamaican and international number provisioning and SIP/PSTN carrier agreements.
+- Actual external SMS/MMS delivery providers.
+- WebRTC media path, TURN and production network integration.
+- Payment processor onboarding, signed webhooks, settlement/refund handling.
+- SIM/eSIM operator provisioning and supported automatic routing.
+- Physical two-phone and multi-relay field tests, independent cryptographic review, telecom/regulatory reviews and release signing.
 
-## Remaining work outside the completed organization phase
+## Exact next action
 
-The broader LINKA product remains unfinished. Its next roadmap phases are:
-- Complete source, physical-device and security release validation for the existing offline voice foundation.
-- Build durable account, identity and PostgreSQL backend services.
-- Integrate provider-backed Jamaican and international number inventory.
-- Integrate SIP/PSTN calling and internet audio/video media.
-- Implement free calling eligibility, the optional wallet, credits, rate catalog, payment and reconciliation.
-- Implement internal and external messaging.
-- Integrate supported SIM/eSIM functionality and consent-aware connection switching.
-- Build the full account-based website.
-- Complete regulatory, security, operational and release validation.
-
-Easy independent documentation/configuration tasks for the repository organization phase: NONE.
-Medium and hard tasks: the product implementation phases listed above; they are not complete and include provider, device, security and regulatory dependencies.
+After the latest Android CI conclusion is recorded, continue with the easiest independent backend task: define the durable PostgreSQL schema/migration plan for accounts, provider-backed numbers, rate versions and wallet ledger, keeping production credentials out of Git and not claiming live provider availability.
 
 ## Execution boundaries
 
-- Work only in this GitHub repository.
-- Preserve existing implementation.
-- Do not create a duplicate repository.
-- Keep all product requirements, architecture, source, tests, integrations and release documentation inside this repository.
+- Work only in ravaunrichards/Linka-Android.
+- Preserve all existing implementation and commits.
+- Do not create a duplicate repository or add unrelated products.
+- Keep code, docs, tests, migrations and deployment configuration inside this repository.
 - Do not deploy or change external service settings during a GitHub-only pass.
-- Do not add provider credentials or private signing material to source control.
-- Do not claim physical-device tests, provider enablement or independent security review without evidence.
-- Do not describe the whole LINKA product as complete because the repository organization phase is complete.
+- Do not add provider credentials, private signing keys or payment secrets to source control.
+- Do not claim physical-device tests, provider enablement, emergency calling or independent security review without evidence.

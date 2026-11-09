@@ -75,9 +75,16 @@ Do not update a balance based solely on a client request. Validate available cre
 
 ## 7. Current repository implementation
 
-The API source now includes a provider-independent route-options policy and an immutable in-memory wallet ledger reducer under `backend/api/src/domain/`. Automated tests cover free-first option selection, exact-quote paid consent, capped paid preauthorization, E.164 syntax normalization, credit grants, source-separated balances, idempotency, account mismatch, insufficient balance and capped refunds.
+Provider-independent API domain modules now exist under `backend/api/src/domain/`:
 
-These modules are domain foundations only. They are not connected to provider tariff feeds, number inventory, persistent storage, authenticated API endpoints, payment processing, Android or website wallet screens. The in-memory reducer is not safe as a production source of truth across concurrent server instances or restarts. See [Wallet ledger design](WALLET_LEDGER_DESIGN.md).
+- `route-options.mjs` offers only provider-confirmed free and credit routes, requires exact-quote consent for paid actions and limits optional paid auto-fallback to a matching preauthorization and spend cap.
+- `e164.mjs` normalizes explicit international `+` and `00` telephone formats. It does not infer country or number type.
+- `rate-catalog.mjs` validates provider-supplied tariffs, selects the most specific active provider/destination/number-type rate and calculates credit estimates for voice, SMS and MMS.
+- `credit-ledger.mjs` applies immutable integer-credit events to separate purchased, promotional and sponsored buckets, with idempotency, balance, usage and refund checks.
+
+The latest LINKA API CI run recorded 49 passing tests and zero failures for these domains plus the existing API runtime tests.
+
+These are tested domain foundations, not a live billing service. They are not yet connected to provider tariff feeds, number inventory, persistent storage, authenticated billing endpoints, payment processing, Android or website rate/wallet screens. The in-memory ledger is not a production source of truth across concurrent server instances or restarts. See [Wallet ledger design](WALLET_LEDGER_DESIGN.md).
 
 ## 8. Billing states and failed calls
 

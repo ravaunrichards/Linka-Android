@@ -49,6 +49,8 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 - backend/api contains a Node.js signed-device challenge and ephemeral call-signaling API.
 - The signaling runtime holds sessions and queues in memory; it is not a durable account, number, message or billing database.
 - The API carries signaling, not voice audio.
+- Pure backend domain modules now cover E.164 syntax normalization, free-first route options, provider-fed rate validation/matching/credit estimates, and an immutable purchased/promotional/sponsored wallet ledger.
+- Those domain modules have automated tests but are not yet connected to provider tariff imports, a durable database, payment webhooks, authenticated billing endpoints, Android screens or website wallet/rate screens.
 - web contains a static responsive browser companion. It cannot access Android Nearby Connections or Android Keystore and is not a full web telephone client.
 
 ## Current repository layout

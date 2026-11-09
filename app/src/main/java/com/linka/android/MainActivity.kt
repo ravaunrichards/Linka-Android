@@ -66,6 +66,7 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.linka.android.account.LinkaAccountClient
 import com.linka.android.core.audio.VoiceSessionState
 import com.linka.android.core.call.CallPhase
 import com.linka.android.core.call.NearbyCallController
@@ -163,6 +164,7 @@ class MainActivity : ComponentActivity() {
                 callController = callController,
                 trustedDevices = trustedDevices,
                 relayConsent = relayConsent,
+                accountClient = runtime.accountClient,
                 onStartDiscovery = { withNearbyPermissions { startDiscoveryWhenReady() } },
                 onStartAdvertising = { withNearbyPermissions { startAdvertisingWhenReady() } },
                 onStartCall = { withMicrophonePermission { callController.startOutgoingCall() } },
@@ -291,6 +293,7 @@ private fun LinkaApp(
     callController: NearbyCallController,
     trustedDevices: TrustedDeviceStore,
     relayConsent: RelayConsentStore,
+    accountClient: LinkaAccountClient,
     onScanQr: (onResult: (String?) -> Unit) -> Unit,
     onStartDiscovery: () -> Unit,
     onStartAdvertising: () -> Unit,
@@ -412,6 +415,7 @@ private fun LinkaApp(
                     modifier = Modifier.padding(contentPadding),
                     identity = identity,
                     trustedDevices = trustedDevices,
+                    accountClient = accountClient,
                     onScanQr = onScanQr,
                     onTrustChanged = { callController.refreshSecurePairings() }
                 )
@@ -781,6 +785,7 @@ private fun IdentityScreen(
     modifier: Modifier = Modifier,
     identity: LocalDeviceIdentity,
     trustedDevices: TrustedDeviceStore,
+    accountClient: LinkaAccountClient,
     onScanQr: (onResult: (String?) -> Unit) -> Unit,
     onTrustChanged: () -> Unit
 ) {
@@ -796,6 +801,7 @@ private fun IdentityScreen(
             )
         }
         item { IdentityCard(identity) }
+        item { LinkaAccountPanel(accountClient = accountClient) }
         item { IdentityQrControls(identity, trustedDevices, onScanQr, onTrustChanged) }
         item {
             MessageCard(

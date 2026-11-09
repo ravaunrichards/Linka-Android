@@ -1,6 +1,7 @@
 package com.linka.android
 
 import android.app.Application
+import com.linka.android.account.LinkaAccountClient
 import com.linka.android.core.call.NearbyCallController
 import com.linka.android.core.identity.LocalDeviceIdentity
 import com.linka.android.core.identity.TrustedDeviceStore
@@ -13,6 +14,9 @@ import com.linka.android.core.mesh.RelayConsentStore
  */
 class LinkaApplication : Application() {
     lateinit var identity: LocalDeviceIdentity
+        private set
+
+    lateinit var accountClient: LinkaAccountClient
         private set
 
     lateinit var trustedDevices: TrustedDeviceStore
@@ -30,6 +34,7 @@ class LinkaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         identity = LocalDeviceIdentity.load(this)
+        accountClient = LinkaAccountClient(this, identity)
         trustedDevices = TrustedDeviceStore(this, identity.deviceId)
         relayConsent = RelayConsentStore(this)
         nearbyLink = NearbyDirectLink(this, "LINKA ${identity.shortId}")

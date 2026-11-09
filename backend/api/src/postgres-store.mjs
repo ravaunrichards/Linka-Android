@@ -414,6 +414,237 @@ export function createPostgresStore({
     return result.rows[0] ?? null;
   }
 
+  async function createConversation(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_conversation");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const kind = input.kind;
+    if (!["direct", "group"].includes(kind)) fail("invalid_conversation_kind");
+    if (!Array.isArray(input.participantAccountIds) ||
+        input.participantAccountIds.length < 1 ||
+        input.participantAccountIds.length > 49) {
+      fail("invalid_conversation_members");
+    }
+    const recipients = input.participantAccountIds.map((value, index) =>
+      requireUuid(value, "participantAccountIds[" + index + "]")
+    );
+    if (new Set(recipients).size !== recipients.length || recipients.includes(accountId)) {
+      fail("invalid_conversation_members");
+    }
+    if (kind === "direct" && recipients.length !== 1) {
+      fail("invalid_conversation_members");
+    }
+    const memberIds = [accountId, ...recipients].sort();
+
+    return transaction(async client => {
+      const activeAccounts = await client.query(
+        "SELECT account_id FROM linka_private.accounts " +
+        "WHERE account_id = ANY($1::uuid[]) AND account_status = 'active' " +
+        "ORDER BY account_id FOR SHARE",
+        [memberIds]
+      );
+      if (activeAccounts.rows.length !== memberIds.length) {
+        fail("conversation_member_not_found", "One or more conversation members do not exist.", 404);
+      }
+
+      if (kind === "direct") {
+        const pairKey = memberIds.join(":");
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+          [pairKey]
+        );
+        const existing = await client.query(
+          "SELECT c.conversation_id, c.created_at " +
+          "FROM linka_private.conversations c " +
+          "WHERE c.conversation_kind = 'direct' " +
+          "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
+          "WHERE m.conversation_id = c.conversation_id AND m.account_id = $1::uuid AND m.left_at IS NULL) " +
+          "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
+          "WHERE m.conversation_id = c.conversation_id AND m.account_id = $2::uuid AND m.left_at IS NULL) " +
+          "AND (SELECT count(*) FROM linka_private.conversation_members m " +
+          "WHERE m.conversation_id = c.conversation_id AND m.left_at IS NULL) = 2 " +
+          "ORDER BY c.created_at ASC LIMIT 1",
+          memberIds
+        );
+        if (existing.rows.length > 0) {
+          return Object.freeze({
+            conversationId: existing.rows[0].conversation_id,
+            kind,
+            createdAt: isoDate(existing.rows[0].created_at, "conversation creation"),
+            memberAccountIds: Object.freeze(memberIds),
+            reused: true
+          });
+        }
+      }
+
+      const conversationId = randomUUID();
+      const inserted = await client.query(
+        "INSERT INTO linka_private.conversations " +
+        "(conversation_id, conversation_kind, created_by_account_id) " +
+        "VALUES ($1::uuid, $2::text, $3::uuid) RETURNING created_at",
+        [conversationId, kind, accountId]
+      );
+      await client.query(
+        "INSERT INTO linka_private.conversation_members (conversation_id, account_id) " +
+        "SELECT $1::uuid, member_id FROM unnest($2::uuid[]) AS members(member_id)",
+        [conversationId, memberIds]
+      );
+      return Object.freeze({
+        conversationId,
+        kind,
+        createdAt: isoDate(inserted.rows[0].created_at, "conversation creation"),
+        memberAccountIds: Object.freeze(memberIds),
+        reused: false
+      });
+    });
+  }
+
+  async function listConversations(accountIdInput, limitInput = 50) {
+    assertStoreOpen();
+    const accountId = requireUuid(accountIdInput, "accountId");
+    const limit = Number(limitInput);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      fail("invalid_page_limit");
+    }
+    const result = await pool.query(
+      "SELECT c.conversation_id, c.conversation_kind, c.created_at, " +
+      "count(m.account_id)::integer AS member_count, " +
+      "COALESCE(json_agg(json_build_object(" +
+      "'accountId', member.account_id, 'displayName', member.display_name) " +
+      "ORDER BY member.display_name) FILTER (WHERE member.account_id IS NOT NULL), '[]'::json) AS members, " +
+      "last_message.message_id AS last_message_id, " +
+      "last_message.sender_account_id AS last_message_sender_account_id, " +
+      "last_message.sent_at AS last_message_at " +
+      "FROM linka_private.conversations c " +
+      "JOIN linka_private.conversation_members mine " +
+      "ON mine.conversation_id = c.conversation_id AND mine.account_id = $1::uuid AND mine.left_at IS NULL " +
+      "JOIN linka_private.conversation_members m " +
+      "ON m.conversation_id = c.conversation_id AND m.left_at IS NULL " +
+      "LEFT JOIN linka_private.accounts member ON member.account_id = m.account_id " +
+      "LEFT JOIN LATERAL (" +
+      "SELECT message_id, sender_account_id, sent_at FROM linka_private.internal_messages " +
+      "WHERE conversation_id = c.conversation_id ORDER BY sent_at DESC, message_id DESC LIMIT 1" +
+      ") last_message ON TRUE " +
+      "GROUP BY c.conversation_id, last_message.message_id, " +
+      "last_message.sender_account_id, last_message.sent_at " +
+      "ORDER BY COALESCE(last_message.sent_at, c.created_at) DESC, c.conversation_id DESC " +
+      "LIMIT $2::integer",
+      [accountId, limit]
+    );
+    return Object.freeze(result.rows.map(row => Object.freeze({
+      conversationId: row.conversation_id,
+      kind: row.conversation_kind,
+      createdAt: isoDate(row.created_at, "conversation creation"),
+      memberCount: safeInteger(row.member_count, "conversation member count"),
+      members: Object.freeze(Array.isArray(row.members) ? row.members : []),
+      lastMessageId: row.last_message_id ?? null,
+      lastMessageSenderAccountId: row.last_message_sender_account_id ?? null,
+      lastMessageAt: row.last_message_at == null
+        ? null : isoDate(row.last_message_at, "last message time")
+    })));
+  }
+
+  async function sendInternalMessage(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_message");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    if (typeof input.ciphertext !== "string" ||
+        input.ciphertext.length < 4 ||
+        input.ciphertext.length > 16_384 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.ciphertext)) {
+      fail("invalid_message_ciphertext");
+    }
+    const ciphertext = Buffer.from(input.ciphertext, "base64");
+    if (ciphertext.length === 0 || ciphertext.length > 12 * 1024 ||
+        ciphertext.toString("base64") !== input.ciphertext) {
+      fail("invalid_message_ciphertext");
+    }
+    if (typeof input.encryptionVersion !== "string" ||
+        !/^[A-Za-z0-9._-]{1,64}$/.test(input.encryptionVersion)) {
+      fail("invalid_message_encryption_version");
+    }
+    const attachmentManifest = input.attachmentManifest ?? [];
+    if (!Array.isArray(attachmentManifest)) fail("invalid_message_attachments");
+    if (attachmentManifest.length > 0) {
+      fail("message_attachments_unavailable", "Encrypted attachment storage is not implemented yet.", 501);
+    }
+
+    const messageId = randomUUID();
+    const result = await pool.query(
+      "INSERT INTO linka_private.internal_messages " +
+      "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
+      "SELECT $1::uuid, c.conversation_id, $3::uuid, $4::bytea, $5::text, '[]'::jsonb " +
+      "FROM linka_private.conversations c " +
+      "WHERE c.conversation_id = $2::uuid " +
+      "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
+      "WHERE m.conversation_id = c.conversation_id AND m.account_id = $3::uuid AND m.left_at IS NULL) " +
+      "RETURNING message_id, conversation_id, sender_account_id, " +
+      "encode(ciphertext, 'base64') AS ciphertext, encryption_version, " +
+      "attachment_manifest, sent_at",
+      [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
+    );
+    if (result.rows.length === 0) {
+      fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+    }
+    return mapInternalMessage(result.rows[0]);
+  }
+
+  function mapInternalMessage(row) {
+    return Object.freeze({
+      messageId: row.message_id,
+      conversationId: row.conversation_id,
+      senderAccountId: row.sender_account_id,
+      ciphertext: typeof row.ciphertext === "string"
+        ? row.ciphertext : Buffer.from(row.ciphertext).toString("base64"),
+      encryptionVersion: row.encryption_version,
+      attachmentManifest: Object.freeze(Array.isArray(row.attachment_manifest) ? row.attachment_manifest : []),
+      sentAt: isoDate(row.sent_at, "message time")
+    });
+  }
+
+  async function listInternalMessages(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_message_query");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    const limit = input.limit == null ? 50 : Number(input.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail("invalid_page_limit");
+
+    let before = null;
+    if (input.before != null) {
+      before = input.before instanceof Date ? input.before : new Date(input.before);
+      if (!Number.isFinite(before.getTime())) fail("invalid_message_cursor");
+    }
+
+    const access = await pool.query(
+      "SELECT 1 FROM linka_private.conversation_members " +
+      "WHERE conversation_id = $1::uuid AND account_id = $2::uuid AND left_at IS NULL",
+      [conversationId, accountId]
+    );
+    if (access.rows.length === 0) {
+      fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+    }
+
+    const result = await pool.query(
+      "SELECT m.message_id, m.conversation_id, m.sender_account_id, " +
+      "encode(m.ciphertext, 'base64') AS ciphertext, m.encryption_version, " +
+      "m.attachment_manifest, m.sent_at " +
+      "FROM linka_private.internal_messages m " +
+      "WHERE m.conversation_id = $1::uuid " +
+      "AND ($3::timestamptz IS NULL OR m.sent_at < $3::timestamptz) " +
+      "ORDER BY m.sent_at DESC, m.message_id DESC LIMIT $2::integer",
+      [conversationId, limit, before]
+    );
+    return Object.freeze(result.rows.map(mapInternalMessage));
+  }
+
   async function getAccountProfile(accountIdInput) {
     assertStoreOpen();
     const accountId = requireUuid(accountIdInput, "accountId");
@@ -446,6 +677,10 @@ export function createPostgresStore({
     authenticateAccountSession,
     revokeAccountSession,
     getAccountProfile,
+    createConversation,
+    listConversations,
+    sendInternalMessage,
+    listInternalMessages,
 
     async checkReady() {
       assertOpen();

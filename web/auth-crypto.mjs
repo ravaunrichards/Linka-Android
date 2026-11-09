@@ -82,3 +82,30 @@ export async function signLinkaDeviceChallenge(privateKey, {
 export function shouldClearAccountSession(status) {
   return status === 401;
 }
+
+/** Proves possession of the signed LINKA device identity for a messaging ECDH public key. */
+export async function signBrowserMessagingKey(privateKey, deviceId, algorithm, publicKeyBase64) {
+  if (typeof deviceId !== "string" || typeof algorithm !== "string" ||
+      typeof publicKeyBase64 !== "string") {
+    throw new TypeError("A LINKA device and messaging public key are required.");
+  }
+  const binary = atob(publicKeyBase64);
+  const publicKeyDer = Uint8Array.from(binary, character => character.charCodeAt(0));
+  if (bytesToBase64(publicKeyDer) !== publicKeyBase64) {
+    throw new TypeError("The messaging public key must use canonical base64.");
+  }
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", publicKeyDer));
+  const fingerprint = [...digest].map(byte => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const statement = [
+    "LINKA-MESSAGING-KEY-V1",
+    deviceId,
+    algorithm,
+    fingerprint
+  ].join("\n");
+  const signature = await globalThis.crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    new TextEncoder().encode(statement)
+  );
+  return bytesToBase64(p1363ToDer(new Uint8Array(signature)));
+}

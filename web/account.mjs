@@ -427,9 +427,29 @@ async function loadSelectedConversation() {
     }
     const time = document.createElement("time");
     time.dateTime = message.sentAt;
-    time.textContent = new Date(message.sentAt).toLocaleString();
+    const receipt = message.receiptSummary;
+    const receiptText = receipt
+      ? " · Delivered " + receipt.deliveredDevices + "/" + receipt.recipientDevices +
+        " · Read " + receipt.readDevices + "/" + receipt.recipientDevices
+      : "";
+    time.textContent = new Date(message.sentAt).toLocaleString() + receiptText;
     article.append(heading, body, time);
     messageList.append(article);
+  }
+  const incomingMessageIds = items
+    .filter(message => message.senderAccountId !== currentAccountProfile.accountId)
+    .map(message => message.messageId)
+    .filter(Boolean);
+  if (incomingMessageIds.length > 0) {
+    await apiRequest(
+      origin,
+      "/v1/conversations/" + encodeURIComponent(conversationId) + "/receipts",
+      {
+        method: "POST",
+        token,
+        body: { messageIds: incomingMessageIds.slice(0, 100), state: "read" }
+      }
+    );
   }
   const missing = activeConversationMembers.filter(item => !item.keyVersion || !item.publicKeyBase64);
   chatStatus(

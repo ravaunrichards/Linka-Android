@@ -112,6 +112,9 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
           if (sql.includes("INSERT INTO linka_private.internal_message_key_envelopes")) {
             return { rows: [], rowCount: 1 };
           }
+          if (sql.includes("INSERT INTO linka_private.internal_message_device_receipts")) {
+            return { rows: [], rowCount: 1 };
+          }
           throw new Error("unexpected_transaction_query");
         },
         release() {}
@@ -303,6 +306,7 @@ test("stores an E2EE-2 message only when every active conversation device has a 
   assert.equal(message.encryptionVersion, "LINKA-E2EE-2");
   assert.equal(message.senderAccountId, ACTOR);
   assert.equal(pool.calls.filter(call => call.sql.includes("INSERT INTO linka_private.internal_message_key_envelopes")).length, 3);
+  assert.equal(pool.calls.filter(call => call.sql.includes("INSERT INTO linka_private.internal_message_device_receipts")).length, 3);
   assert.ok(pool.calls.some(call => call.sql === "COMMIT"));
 });
 

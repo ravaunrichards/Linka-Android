@@ -849,6 +849,14 @@ export function createPostgresStore({
             ]
           );
         }
+        for (const device of devices.rows) {
+          await client.query(
+            "INSERT INTO linka_private.internal_message_device_receipts " +
+            "(message_id, recipient_device_id, recipient_account_id) " +
+            "VALUES ($1::uuid, $2::uuid, $3::uuid)",
+            [messageId, device.device_id, device.account_id]
+          );
+        }
         return mapInternalMessage(inserted.rows[0]);
       });
     }
@@ -873,7 +881,7 @@ export function createPostgresStore({
     return mapInternalMessage(result.rows[0]);
   }
 
-  function mapInternalMessage(row) {
+  function mapInternalMessage(row, viewerAccountId = null) {
     return Object.freeze({
       messageId: row.message_id,
       conversationId: row.conversation_id,
@@ -892,7 +900,59 @@ export function createPostgresStore({
           wrapNonceBase64: row.envelope_wrap_nonce,
           wrappedContentKeyBase64: row.envelope_wrapped_content_key
         })
+      } : {}),
+      ...(viewerAccountId != null && row.sender_account_id === viewerAccountId &&
+          row.receipt_device_count != null ? {
+        receiptSummary: Object.freeze({
+          recipientDevices: safeInteger(row.receipt_device_count, "message recipient device count"),
+          deliveredDevices: safeInteger(row.receipt_delivered_count, "delivered device count"),
+          readDevices: safeInteger(row.receipt_read_count, "read device count")
+        })
       } : {})
+    });
+  }
+
+  async function markInternalMessagesReceived(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_message_receipt");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const deviceId = requireUuid(input.deviceId, "deviceId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    if (!["delivered", "read"].includes(input.state)) fail("invalid_message_receipt");
+    if (!Array.isArray(input.messageIds) || input.messageIds.length < 1 || input.messageIds.length > 100) {
+      fail("invalid_message_receipt");
+    }
+    const messageIds = input.messageIds.map((value, index) =>
+      requireUuid(value, "messageIds[" + index + "]")
+    );
+    if (new Set(messageIds).size !== messageIds.length) fail("invalid_message_receipt");
+
+    const member = await pool.query(
+      "SELECT 1 FROM linka_private.conversation_members " +
+      "WHERE conversation_id = $1::uuid AND account_id = $2::uuid AND left_at IS NULL",
+      [conversationId, accountId]
+    );
+    if (member.rows.length === 0) {
+      fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+    }
+
+    const result = await pool.query(
+      "UPDATE linka_private.internal_message_device_receipts r " +
+      "SET delivered_at = COALESCE(r.delivered_at, now()), " +
+      "read_at = CASE WHEN $5::text = 'read' THEN COALESCE(r.read_at, now()) ELSE r.read_at END " +
+      "FROM linka_private.internal_messages m " +
+      "WHERE r.message_id = m.message_id AND r.message_id = ANY($4::uuid[]) " +
+      "AND m.conversation_id = $1::uuid AND m.sender_account_id <> $2::uuid " +
+      "AND r.recipient_device_id = $3::uuid AND r.recipient_account_id = $2::uuid " +
+      "RETURNING r.message_id, r.delivered_at, r.read_at",
+      [conversationId, accountId, deviceId, messageIds, input.state]
+    );
+    return Object.freeze({
+      state: input.state,
+      acknowledged: result.rows.length,
+      messageIds: Object.freeze(result.rows.map(row => row.message_id))
     });
   }
 
@@ -929,16 +989,26 @@ export function createPostgresStore({
       "replace(encode(e.ephemeral_public_key_der, 'base64'), E'\\n', '') AS envelope_ephemeral_public_key, " +
       "replace(encode(e.hkdf_salt, 'base64'), E'\\n', '') AS envelope_hkdf_salt, " +
       "replace(encode(e.wrap_nonce, 'base64'), E'\\n', '') AS envelope_wrap_nonce, " +
-      "replace(encode(e.wrapped_content_key, 'base64'), E'\\n', '') AS envelope_wrapped_content_key " +
+      "replace(encode(e.wrapped_content_key, 'base64'), E'\\n', '') AS envelope_wrapped_content_key, " +
+      "receipts.recipient_device_count AS receipt_device_count, " +
+      "receipts.delivered_device_count AS receipt_delivered_count, " +
+      "receipts.read_device_count AS receipt_read_count " +
       "FROM linka_private.internal_messages m " +
       "LEFT JOIN linka_private.internal_message_key_envelopes e " +
       "ON e.message_id = m.message_id AND e.recipient_device_id = $4::uuid " +
+      "LEFT JOIN LATERAL (" +
+      "SELECT count(*)::integer AS recipient_device_count, " +
+      "count(*) FILTER (WHERE r.delivered_at IS NOT NULL)::integer AS delivered_device_count, " +
+      "count(*) FILTER (WHERE r.read_at IS NOT NULL)::integer AS read_device_count " +
+      "FROM linka_private.internal_message_device_receipts r " +
+      "WHERE r.message_id = m.message_id AND r.recipient_account_id <> m.sender_account_id" +
+      ") receipts ON TRUE " +
       "WHERE m.conversation_id = $1::uuid " +
       "AND ($3::timestamptz IS NULL OR m.sent_at < $3::timestamptz) " +
       "ORDER BY m.sent_at DESC, m.message_id DESC LIMIT $2::integer",
       [conversationId, limit, before, input.deviceId == null ? null : requireUuid(input.deviceId, "deviceId")]
     );
-    return Object.freeze(result.rows.map(mapInternalMessage));
+    return Object.freeze(result.rows.map(row => mapInternalMessage(row, accountId)));
   }
 
   async function getAccountProfile(accountIdInput) {
@@ -978,6 +1048,7 @@ export function createPostgresStore({
     registerDeviceEncryptionKey,
     listConversationEncryptionDevices,
     sendInternalMessage,
+    markInternalMessagesReceived,
     listInternalMessages,
 
     async checkReady() {
@@ -989,17 +1060,20 @@ export function createPostgresStore({
         "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
         "WHERE version = $1::text) AS cross_account_migration_ready, " +
         "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
-        "WHERE version = $2::text) AS messaging_encryption_migration_ready",
-        ["0002_cross_account_integrity", "0003_messaging_device_encryption"]
+        "WHERE version = $2::text) AS messaging_encryption_migration_ready, " +
+        "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
+        "WHERE version = $3::text) AS messaging_receipts_migration_ready",
+        ["0002_cross_account_integrity", "0003_messaging_device_encryption", "0004_messaging_device_receipts"]
       );
       if (result.rows[0]?.wallet_function_ready !== true ||
           result.rows[0]?.cross_account_migration_ready !== true ||
-          result.rows[0]?.messaging_encryption_migration_ready !== true) {
+          result.rows[0]?.messaging_encryption_migration_ready !== true ||
+          result.rows[0]?.messaging_receipts_migration_ready !== true) {
         fail("database_schema_not_ready");
       }
       return Object.freeze({
         status: "ready",
-        schemaVersion: "0003_messaging_device_encryption"
+        schemaVersion: "0004_messaging_device_receipts"
       });
     },
 

@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  decryptAttachmentForDevice,
   decryptMessageForDevice,
+  encryptAttachmentForDevices,
   encryptMessageForDevices,
   generateBrowserEncryptionIdentity
 } from "../../../web/messaging-crypto.mjs";
@@ -158,6 +160,108 @@ test("rejects tampered ciphertext, tampered key envelopes and missing recipient 
       keyEnvelope: null
     })
   );
+});
+
+test("encrypts attachment bytes once and wraps the attachment key for every registered device", async () => {
+  const identities = await Promise.all(DEVICES.map(() => generateBrowserEncryptionIdentity()));
+  const devices = identities.map((identity, index) => ({
+    deviceId: DEVICES[index],
+    accountId: index === 2 ? "00000000-0000-4000-8000-000000000002" : SENDER,
+    keyVersion: index + 1,
+    algorithm: "ECDH-P256",
+    publicKeyBase64: identity.publicKeyBase64
+  }));
+  const plaintext = new TextEncoder().encode("LINKA confidential file bytes".repeat(1024));
+  const encrypted = await encryptAttachmentForDevices({
+    bytes: plaintext,
+    conversationId: CONVERSATION,
+    devices
+  });
+
+  assert.equal(encrypted.encryptionVersion, "LINKA-E2EE-2");
+  assert.equal(encrypted.plaintextSizeBytes, plaintext.length);
+  assert.equal(Buffer.from(encrypted.ciphertextBase64, "base64").length, plaintext.length + 28);
+  assert.equal(encrypted.keyEnvelopes.length, devices.length);
+
+  for (let index = 0; index < devices.length; index += 1) {
+    const envelope = encrypted.keyEnvelopes[index];
+    assert.equal(envelope.recipientDeviceId, devices[index].deviceId);
+    assert.equal(envelope.recipientKeyVersion, devices[index].keyVersion);
+    const restored = await decryptAttachmentForDevice({
+      ciphertextBase64: encrypted.ciphertextBase64,
+      encryptionVersion: encrypted.encryptionVersion,
+      conversationId: CONVERSATION,
+      deviceId: devices[index].deviceId,
+      privateKey: identities[index].privateKey,
+      keyEnvelope: envelope
+    });
+    assert.deepEqual(restored, plaintext);
+  }
+});
+
+test("rejects attachment ciphertext tampering and cross-device envelope substitution", async () => {
+  const identities = await Promise.all([generateBrowserEncryptionIdentity(), generateBrowserEncryptionIdentity()]);
+  const devices = identities.map((identity, index) => ({
+    deviceId: DEVICES[index],
+    accountId: SENDER,
+    keyVersion: 1,
+    algorithm: "ECDH-P256",
+    publicKeyBase64: identity.publicKeyBase64
+  }));
+  const encrypted = await encryptAttachmentForDevices({
+    bytes: new Uint8Array([1, 2, 3, 4, 5, 6]),
+    conversationId: CONVERSATION,
+    devices
+  });
+  const envelope = encrypted.keyEnvelopes[0];
+  const tampered = Buffer.from(encrypted.ciphertextBase64, "base64");
+  tampered[tampered.length - 1] ^= 1;
+
+  await assert.rejects(decryptAttachmentForDevice({
+    ciphertextBase64: tampered.toString("base64"),
+    encryptionVersion: encrypted.encryptionVersion,
+    conversationId: CONVERSATION,
+    deviceId: DEVICES[0],
+    privateKey: identities[0].privateKey,
+    keyEnvelope: envelope
+  }));
+  await assert.rejects(decryptAttachmentForDevice({
+    ciphertextBase64: encrypted.ciphertextBase64,
+    encryptionVersion: encrypted.encryptionVersion,
+    conversationId: CONVERSATION,
+    deviceId: DEVICES[0],
+    privateKey: identities[1].privateKey,
+    keyEnvelope: envelope
+  }));
+  await assert.rejects(decryptAttachmentForDevice({
+    ciphertextBase64: encrypted.ciphertextBase64,
+    encryptionVersion: "LINKA-E2EE-1",
+    conversationId: CONVERSATION,
+    deviceId: DEVICES[0],
+    privateKey: identities[0].privateKey,
+    keyEnvelope: envelope
+  }));
+});
+
+test("rejects zero-length and oversized browser attachments", async () => {
+  const identity = await generateBrowserEncryptionIdentity();
+  const device = {
+    deviceId: DEVICES[0],
+    accountId: SENDER,
+    keyVersion: 1,
+    algorithm: "ECDH-P256",
+    publicKeyBase64: identity.publicKeyBase64
+  };
+  await assert.rejects(encryptAttachmentForDevices({
+    bytes: new Uint8Array(0),
+    conversationId: CONVERSATION,
+    devices: [device]
+  }));
+  await assert.rejects(encryptAttachmentForDevices({
+    bytes: new Uint8Array(4 * 1024 * 1024 + 1),
+    conversationId: CONVERSATION,
+    devices: [device]
+  }));
 });
 
 test("refuses to encrypt until every active device has an ECDH public key", async () => {

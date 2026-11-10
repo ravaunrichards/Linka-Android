@@ -105,6 +105,18 @@
             <p id="accountProfileDevice"></p>
             <p id="accountProfileVerification"></p>
             <p id="accountProfileExpiry"></p>
+            <section class="account-device-panel" id="accountDevicesPanel" aria-labelledby="accountDevicesHeading">
+              <div class="account-device-heading">
+                <div>
+                  <div class="eyebrow">ACCOUNT SECURITY</div>
+                  <h3 id="accountDevicesHeading">Your LINKA devices</h3>
+                </div>
+                <button class="button secondary" id="accountDevicesRefresh" type="button">Refresh</button>
+              </div>
+              <p class="account-device-status" id="accountDevicesStatus" role="status" aria-live="polite">Loading devices registered to this account…</p>
+              <div class="account-device-list" id="accountDevicesList" aria-live="polite"></div>
+              <p class="account-help">Revoking a device ends its active sessions, disables its relay permission and retires its active messaging key. It cannot erase information already copied by that device.</p>
+            </section>
             <button class="button secondary" id="accountLogout" type="button">Sign out</button>
             <section class="chat-workspace" id="messagingPanel" aria-labelledby="messagingHeading">
               <div class="chat-heading">

@@ -124,6 +124,12 @@ async function main() {
     await waitForStatus(firstPage, "account created and this browser device linked successfully");
     assert.equal(await firstPage.locator("#accountProfileEmail").innerText(), email);
     assert.equal(await firstPage.locator("#accountProfileName").innerText(), displayName);
+    await firstPage.locator("#accountDevicesPanel").waitFor({ state: "visible" });
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 1,
+      null,
+      { timeout: 15_000 }
+    );
 
     const firstSession = await readOwnProfile(firstPage);
     assert.equal(firstSession.status, 200, "new browser account token should authenticate");
@@ -163,6 +169,17 @@ async function main() {
     const secondIdentity = await inspectStoredIdentity(secondPage);
     assert.notEqual(secondIdentity.deviceId, firstIdentity.deviceId, "separate browser contexts must use distinct device identities");
     assert.equal(secondIdentity.privateKeyExtractable, false);
+
+    await firstPage.locator("#accountDevicesRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 2,
+      null,
+      { timeout: 15_000 }
+    );
+    const firstAccountDevices = await firstPage.locator("#accountDevicesList .account-device-row")
+      .evaluateAll(rows => rows.map(row => ({ id: row.dataset.deviceId, status: row.dataset.status })));
+    assert.ok(firstAccountDevices.some(device => device.id === firstIdentity.deviceId && device.status === "active"));
+    assert.ok(firstAccountDevices.some(device => device.id === secondIdentity.deviceId && device.status === "active"));
 
     // A third isolated browser context is a distinct account/device recipient.
     const thirdContext = await browser.newContext({
@@ -377,6 +394,63 @@ async function main() {
     assert.notEqual(secondOwnDevice.deviceId, firstIdentity.deviceId);
     assert.notEqual(recipientDevice.deviceId, firstIdentity.deviceId);
     assert.notEqual(recipientDevice.deviceId, secondOwnDevice.deviceId);
+
+    // A fourth independent browser context signs in to the same account so
+    // the owner can revoke a lost device without revoking either active phone.
+    const revocationContext = await browser.newContext({
+      viewport: { width: 1280, height: 900 }
+    });
+    contexts.push(revocationContext);
+    const revocationPage = await openAccountPage(revocationContext);
+    await revocationPage.locator("#accountEmail").fill(email);
+    await revocationPage.locator("#accountPassword").fill(password);
+    await revocationPage.locator("#accountLogin").click();
+    await revocationPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
+    await waitForStatus(revocationPage, "Signed in to LINKA on this browser device");
+    const revocationIdentity = await inspectStoredIdentity(revocationPage);
+    assert.notEqual(revocationIdentity.deviceId, firstIdentity.deviceId);
+    assert.notEqual(revocationIdentity.deviceId, secondIdentity.deviceId);
+
+    await firstPage.locator("#accountDevicesRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 3,
+      null,
+      { timeout: 15_000 }
+    );
+    const dialogDecision = firstPage.waitForEvent("dialog").then(dialog => dialog.accept());
+    await firstPage.locator(
+      '#accountDevicesList [data-device-id="' + revocationIdentity.deviceId + '"] .account-device-revoke'
+    ).click();
+    await dialogDecision;
+    await firstPage.waitForFunction(
+      deviceId => {
+        const row = document.querySelector(
+          '#accountDevicesList [data-device-id="' + deviceId + '"]'
+        );
+        return row?.dataset.status === "revoked";
+      },
+      revocationIdentity.deviceId,
+      { timeout: 15_000 }
+    );
+    await waitForStatus(firstPage, "Device revoked. Its active sessions and messaging key are disabled.");
+    const revokedSessionStatus = await revocationPage.evaluate(async key => {
+      const token = sessionStorage.getItem(key);
+      const response = await fetch("/v1/me", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      return response.status;
+    }, SESSION_KEY);
+    assert.equal(revokedSessionStatus, 401, "revoked browser device must lose its account session");
+
+    const firstAfterRevocation = await readOwnProfile(firstPage);
+    const secondAfterRevocation = await readOwnProfile(secondPage);
+    assert.equal(firstAfterRevocation.status, 200, "revocation must not affect the current browser device");
+    assert.equal(secondAfterRevocation.status, 200, "revocation must not affect another active account device");
+
+    await revocationPage.reload({ waitUntil: "domcontentloaded" });
+    await revocationPage.locator("#accountSignedOut").waitFor({ state: "visible", timeout: 15_000 });
+    assert.equal(await revocationPage.evaluate(key => sessionStorage.getItem(key), SESSION_KEY), null);
 
     await secondPage.locator("#accountLogout").click();
     await secondPage.locator("#accountSignedOut").waitFor({ state: "visible", timeout: 15_000 });

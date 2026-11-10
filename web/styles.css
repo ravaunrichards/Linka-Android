@@ -42,3 +42,19 @@
 .chat-workspace input[type="file"]{padding:8px;background:#091726;color:#dce8f2}
 .chat-attachment{display:block;width:max-content;max-width:100%;margin:7px 0;padding:7px 10px;border:1px solid #36566c;border-radius:8px;background:#0b2232;color:#9be8db;font:inherit;font-size:11px;text-align:left;overflow-wrap:anywhere}
 .chat-attachment:disabled{opacity:.6;cursor:wait}
+
+
+/* Account-scoped registered device management */
+.account-device-panel{grid-column:1/-1;display:grid;gap:12px;margin:14px 0;padding:18px;border:1px solid var(--line);border-radius:16px;background:#0c1b2b;min-width:0}
+.account-device-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.account-device-heading h3{font-size:18px;margin:5px 0 0}
+.account-device-status{font-size:11px;line-height:1.5;color:var(--muted);margin:0}
+.account-device-list{display:grid;gap:9px;min-width:0}
+.account-device-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:11px;background:#102236;min-width:0}
+.account-device-details{display:grid;gap:5px;min-width:0}
+.account-device-details strong{font-size:12px;overflow-wrap:anywhere}
+.account-device-meta{font-size:10px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
+.account-device-row[data-status="revoked"]{opacity:.72}
+.account-device-revoke{flex:none;padding:8px 11px}
+.account-device-empty{font-size:12px;color:var(--muted);margin:0;padding:9px 0}
+@media(max-width:600px){.account-device-panel{padding:13px}.account-device-row{align-items:flex-start;flex-direction:column}.account-device-revoke{width:100%}}

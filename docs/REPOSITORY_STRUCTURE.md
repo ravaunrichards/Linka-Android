@@ -7,7 +7,7 @@
 - Product: LINKA — independent Android-first international calling and communications platform.
 - Active implementation branch for encrypted messaging: `feature/messaging-device-e2ee`
 - Structure inventory commit: `bfaea9fedcc925a64af8f49d537e45275af8b187`
-- Recursive Git tree: 172 entries; not truncated.
+- Recursive Git tree: 176 entries; not truncated.
 - This is an existing application repository. Preserve the current Gradle root and package layout; do not create a second repository or an artificial duplicate tree.
 
 ## Current repository tree
@@ -66,7 +66,9 @@ Linka-Android/
 │       │           └── security/
 │       │               └── PeerSessionSecurity.kt
 │       ├── test/                     # Android/JVM unit tests
+│       │   └── java/com/linka/android/PhoneFavoritesCodecTest.kt
 │       └── androidTest/              # Android instrumented/Keystore tests
+│           └── java/com/linka/android/PhoneFavoritesStoreTest.kt
 ├── backend/
 │   └── api/
 │       ├── package.json
@@ -143,7 +145,7 @@ The original planning layout used `android/`, `web-preview/` and root `tests/` n
 |---|---|---|
 | Android application | `app/` | Existing Gradle application module; do not move beneath a second `android/` root without a coordinated Gradle/CI migration |
 | Android core | `app/src/main/java/com/linka/android/core/` | Audio, call state, identity, nearby radio, mesh and security packages |
-| Android dialer/phone UI | `PhoneHubScreen.kt` and phone hub components | Native phone hub currently hands carrier dialing to Android system `ACTION_DIAL`; not a replacement default dialer |
+| Android dialer/phone UI | `PhoneHubScreen.kt`, `PhoneFavorites.kt`, `PhoneFavoriteIntents.kt` | Phone hub includes user-managed favourites encrypted with a non-exportable Android Keystore AES-GCM key; carrier dial/SMS actions hand off to Android system `ACTION_DIAL` / `ACTION_SENDTO`; not a replacement default dialer |
 | Android contacts | Phone hub/system contact handoffs | Full in-app contact management/sync is not yet a verified complete capability |
 | Android telecom | Android manifest and phone handoff integration | Full Telecom/Core-Telecom/default-dialer integration remains a release task |
 | Android messaging/security | `MessagingScreen.kt`, `messaging/`, `LinkaAccountPanel.kt` | Device-key E2EE, encrypted attachments, per-device receipts and account device list/revoke controls on PR #20 |
@@ -152,7 +154,7 @@ The original planning layout used `android/`, `web-preview/` and root `tests/` n
 | Backend device management | `postgres-store.mjs`, `server.mjs`, `backend/api/test/device-management-store.test.mjs`, `backend/api/test/postgres-device-management.integration.test.mjs` | Owner-scoped device inventory and revocation; revokes sessions, disables relay consent and retires active ECDH keys |
 | Backend notifications | Current API and Android messaging/call notification code | Dedicated production push/delivery service is not yet verified |
 | Web preview | `web/` | Browser companion; not yet a full web telephone client |
-| Tests | Android `test/`, Android `androidTest/`, backend `test/` and E2E scripts | Includes Android client tests and PostgreSQL-backed account-device revocation integration tests; tests remain beside the owning module |
+| Tests | Android `test/`, Android `androidTest/`, backend `test/` and E2E scripts | Includes phone-favourites codec/Keystore tests, encrypted-messaging Keystore tests, account-device client tests and PostgreSQL-backed account-device revocation integration tests; tests remain beside the owning module |
 | Deployment | `docs/RENDER_API_SERVICE.md`, `deployment/README.md` | Runbook only; live Render configuration is not verified by repository CI |
 | Documentation | `docs/` and root governance files | Product, architecture, tests, security, release gates and recovery checkpoints |
 

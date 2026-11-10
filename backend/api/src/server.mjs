@@ -79,7 +79,7 @@ function rateLimit(key, limit, windowMs) {
   return true;
 }
 
-async function readJson(req) {
+async function readJson(req, maxBytes = MAX_BODY_BYTES) {
   const contentType = req.headers["content-type"] ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) {
     throw Object.assign(new Error("content_type_must_be_json"), { statusCode: 415 });
@@ -89,7 +89,7 @@ async function readJson(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > maxBytes) {
       throw Object.assign(new Error("request_body_too_large"), { statusCode: 413 });
     }
     chunks.push(chunk);
@@ -171,7 +171,7 @@ function safeErrorCode(error) {
     "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
     "invalid_encryption_key", "invalid_encryption_key_proof", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
     "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted",
-    "invalid_message_receipt"
+    "invalid_message_receipt", "attachment_not_found", "conversation_attachment_key_changed"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -254,7 +254,7 @@ async function handleRequest(req, res) {
           walletHttpApi: "not_implemented",
           internalMessaging: postgresStore ? "device_encryption_required" : "database_required",
           internalMessageReceipts: postgresStore ? "per_device_delivered_read" : "database_required",
-          encryptedAttachmentStorage: "not_implemented"
+          encryptedAttachmentStorage: postgresStore ? "end_to_end_encrypted_4_mib" : "database_required"
         },
         limitations: [
           "This service carries call-control and WebRTC signaling only.",
@@ -267,7 +267,7 @@ async function handleRequest(req, res) {
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
           "Device encryption keys use ECDH P-256 and per-device message-key envelopes; private keys remain on clients.",
           "The backend validates current device-key coverage and stores wrapped content keys but cannot independently audit client cryptographic implementation.",
-          "Encrypted attachment upload/storage is not implemented; delivery and read acknowledgements are persisted per recipient device.",
+          "Encrypted attachment blobs up to 4 MiB are stored as ciphertext with per-device wrapped keys; only conversation members with a matching device envelope can retrieve them.",
           "The E2EE client implementation has automated browser and Android emulator tests but has not undergone an independent cryptographic audit."
         ]
       });
@@ -539,6 +539,48 @@ async function handleRequest(req, res) {
         participantAccountIds: body.participantAccountIds
       });
       response(res, conversation.reused ? 200 : 201, conversation);
+      return;
+    }
+
+    const attachmentCollectionRoute = /^\/v1\/conversations\/([^/]+)\/attachments$/.exec(path);
+    if (attachmentCollectionRoute && req.method === "POST") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-attachment-upload:${session.accountId}:${session.deviceId}:${remote}`, 12, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req, 6 * 1024 * 1024);
+      const attachment = await postgresStore.createInternalAttachment({
+        accountId: session.accountId,
+        senderDeviceId: session.deviceId,
+        conversationId: attachmentCollectionRoute[1],
+        ciphertextBase64: body.ciphertextBase64,
+        plaintextSizeBytes: body.plaintextSizeBytes,
+        encryptionVersion: body.encryptionVersion,
+        keyEnvelopes: body.keyEnvelopes
+      });
+      response(res, 201, { attachment });
+      return;
+    }
+
+    const attachmentItemRoute = /^\/v1\/conversations\/([^/]+)\/attachments\/([^/]+)$/.exec(path);
+    if (attachmentItemRoute && req.method === "GET") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-attachment-download:${session.accountId}:${session.deviceId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const attachment = await postgresStore.getInternalAttachment({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        conversationId: attachmentItemRoute[1],
+        attachmentId: attachmentItemRoute[2]
+      });
+      response(res, 200, { attachment });
       return;
     }
 

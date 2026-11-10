@@ -493,6 +493,84 @@ export function createPostgresStore({
     return result.rows[0] ?? null;
   }
 
+  async function listAccountDevices(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_device_management");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const currentDeviceId = input.currentDeviceId == null
+      ? null : requireUuid(input.currentDeviceId, "currentDeviceId");
+    const result = await pool.query(
+      "SELECT d.device_id, d.platform, d.device_name, d.created_at, d.last_seen_at, " +
+      "d.revoked_at, COUNT(s.session_id) FILTER (" +
+      "WHERE s.revoked_at IS NULL AND s.expires_at > now())::integer AS active_session_count " +
+      "FROM linka_private.user_devices d " +
+      "LEFT JOIN linka_private.auth_sessions s " +
+      "ON s.device_id = d.device_id AND s.account_id = d.account_id " +
+      "WHERE d.account_id = $1::uuid " +
+      "GROUP BY d.device_id, d.platform, d.device_name, d.created_at, d.last_seen_at, d.revoked_at " +
+      "ORDER BY d.created_at DESC, d.device_id LIMIT 100",
+      [accountId]
+    );
+    return Object.freeze(result.rows.map(row => Object.freeze({
+      deviceId: row.device_id,
+      platform: row.platform,
+      deviceName: row.device_name ?? null,
+      createdAt: isoDate(row.created_at, "device creation"),
+      lastSeenAt: row.last_seen_at == null ? null : isoDate(row.last_seen_at, "device last seen"),
+      revokedAt: row.revoked_at == null ? null : isoDate(row.revoked_at, "device revocation"),
+      status: row.revoked_at == null ? "active" : "revoked",
+      activeSessionCount: safeInteger(row.active_session_count, "active device session count"),
+      current: row.device_id === currentDeviceId
+    })));
+  }
+
+  async function revokeAccountDevice(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      fail("invalid_device_management");
+    }
+    const accountId = requireUuid(input.accountId, "accountId");
+    const deviceId = requireUuid(input.deviceId, "deviceId");
+    return transaction(async client => {
+      const selected = await client.query(
+        "SELECT device_id, revoked_at FROM linka_private.user_devices " +
+        "WHERE device_id = $1::uuid AND account_id = $2::uuid FOR UPDATE",
+        [deviceId, accountId]
+      );
+      if (selected.rows.length === 0) {
+        fail("device_not_found", "The device does not belong to this account.", 404);
+      }
+      if (selected.rows[0].revoked_at != null) {
+        return Object.freeze({ deviceId, status: "revoked", alreadyRevoked: true });
+      }
+
+      const revoked = await client.query(
+        "UPDATE linka_private.user_devices SET revoked_at = now(), relay_consent = FALSE " +
+        "WHERE device_id = $1::uuid AND account_id = $2::uuid AND revoked_at IS NULL " +
+        "RETURNING revoked_at",
+        [deviceId, accountId]
+      );
+      await client.query(
+        "UPDATE linka_private.auth_sessions SET revoked_at = now() " +
+        "WHERE device_id = $1::uuid AND account_id = $2::uuid AND revoked_at IS NULL",
+        [deviceId, accountId]
+      );
+      await client.query(
+        "UPDATE linka_private.device_encryption_keys SET retired_at = now() " +
+        "WHERE device_id = $1::uuid AND account_id = $2::uuid AND retired_at IS NULL",
+        [deviceId, accountId]
+      );
+      return Object.freeze({
+        deviceId,
+        status: "revoked",
+        alreadyRevoked: false,
+        revokedAt: isoDate(revoked.rows[0]?.revoked_at, "device revocation")
+      });
+    });
+  }
+
   async function createConversation(input) {
     assertStoreOpen();
     if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -1223,6 +1301,8 @@ export function createPostgresStore({
     loginAccount,
     authenticateAccountSession,
     revokeAccountSession,
+    listAccountDevices,
+    revokeAccountDevice,
     getAccountProfile,
     createConversation,
     listConversations,

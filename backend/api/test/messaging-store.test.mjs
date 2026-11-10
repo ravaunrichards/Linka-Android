@@ -206,7 +206,7 @@ test("rejects plaintext-invalid payload formats, unsupported attachments and ove
       encryptionVersion: "LINKA-E2EE-1",
       attachmentManifest: [{ assetId: "unverified" }]
     }),
-    { code: "message_attachments_unavailable", statusCode: 501 }
+    { code: "invalid_message_attachments" }
   );
   assert.equal(pool.calls.length, 0);
 });

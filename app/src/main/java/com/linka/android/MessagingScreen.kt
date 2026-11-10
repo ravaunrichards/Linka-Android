@@ -702,6 +702,7 @@ fun LinkaMessagingScreen(
                                                 )
                                             }
                                             accountClient.sendEncryptedMessage(conversationId, payload)
+                                            uploadedAttachmentId = null
                                             draft = ""
                                             selectedAttachmentUri = null
                                             selectedAttachmentName = null
@@ -713,6 +714,15 @@ fun LinkaMessagingScreen(
                                                 "Encrypted attachment and message sent to ${directory.size} active device(s)."
                                             }
                                         } catch (error: Exception) {
+                                            val failedUploadId = uploadedAttachmentId
+                                            if (failedUploadId != null) {
+                                                runCatching {
+                                                    accountClient.deleteUnsentEncryptedAttachment(
+                                                        conversationId = conversationId,
+                                                        attachmentId = failedUploadId
+                                                    )
+                                                }
+                                            }
                                             status = error.message ?: "Could not send the encrypted message."
                                         } finally {
                                             loading = false

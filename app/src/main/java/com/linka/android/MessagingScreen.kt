@@ -63,7 +63,8 @@ private data class ConversationMessage(
     val sentAt: String,
     val receiptDevices: Int? = null,
     val deliveredDevices: Int? = null,
-    val readDevices: Int? = null
+    val readDevices: Int? = null,
+    val decryptedSuccessfully: Boolean = false
 )
 
 @Composable
@@ -102,11 +103,11 @@ fun LinkaMessagingScreen(
             val senderAccountId = item.optString("senderAccountId")
             val version = item.optString("encryptionVersion")
             val envelope = item.optJSONObject("keyEnvelope")
-            val plaintext = when {
+            val (plaintext, decryptedSuccessfully) = when {
                 version != AndroidMessagingKeyManager.ENCRYPTION_VERSION ->
-                    "[This message uses an unsupported or legacy encryption version]"
+                    "[This message uses an unsupported or legacy encryption version]" to false
                 envelope == null ->
-                    "[No encrypted key envelope is available for this Android device]"
+                    "[No encrypted key envelope is available for this Android device]" to false
                 else -> runCatching {
                     keyManager.decryptMessage(
                         ciphertextBase64 = item.getString("ciphertext"),
@@ -114,9 +115,9 @@ fun LinkaMessagingScreen(
                         conversationId = conversationId,
                         senderAccountId = senderAccountId,
                         keyEnvelope = envelope
-                    )
+                    ).let { it to true }
                 }.getOrElse {
-                    "[Unable to decrypt this message on this Android device]"
+                    "[Unable to decrypt this message on this Android device]" to false
                 }
             }
             ConversationMessage(
@@ -128,19 +129,28 @@ fun LinkaMessagingScreen(
                 sentAt = item.optString("sentAt"),
                 receiptDevices = item.optJSONObject("receiptSummary")?.optInt("recipientDevices"),
                 deliveredDevices = item.optJSONObject("receiptSummary")?.optInt("deliveredDevices"),
-                readDevices = item.optJSONObject("receiptSummary")?.optInt("readDevices")
+                readDevices = item.optJSONObject("receiptSummary")?.optInt("readDevices"),
+                decryptedSuccessfully = decryptedSuccessfully
             )
         }.asReversed()
         messages = decoded
-        val incomingIds = decoded
-            .filter { it.sender != "You" }
-            .map { it.id }
-            .filter { it.isNotBlank() }
-            .takeLast(100)
+        val incoming = decoded.filter { it.sender != "You" }.takeLast(100)
+        val incomingIds = incoming.map { it.id }.filter { it.isNotBlank() }
         if (incomingIds.isNotEmpty()) {
             accountClient.acknowledgeInternalMessages(
                 conversationId = conversationId,
                 messageIds = incomingIds,
+                state = "delivered"
+            )
+        }
+        val readableIds = incoming
+            .filter { it.decryptedSuccessfully }
+            .map { it.id }
+            .filter { it.isNotBlank() }
+        if (readableIds.isNotEmpty()) {
+            accountClient.acknowledgeInternalMessages(
+                conversationId = conversationId,
+                messageIds = readableIds,
                 state = "read"
             )
         }
@@ -492,7 +502,7 @@ fun LinkaMessagingScreen(
 
         item {
             Text(
-                "Attachments, delivery/read receipts, key transparency and Android account key recovery are not enabled yet. Android 12 or later is required for hardware-backed ECDH key agreement.",
+                "Encrypted attachments, key transparency and Android account key recovery are not enabled yet. Delivery/read receipts are recorded per recipient device. Android 12 or later is required for hardware-backed ECDH key agreement.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

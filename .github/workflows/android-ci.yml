@@ -36,6 +36,34 @@ jobs:
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android emulator instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest
+
+      - name: Upload Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linka-android-instrumentation-results-${{ github.sha }}
+          path: |
+            app/build/outputs/androidTest-results/connected/**
+            app/build/reports/androidTests/connected/**
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Record exact source revision
         shell: bash
         run: |

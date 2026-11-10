@@ -1,101 +1,184 @@
 # LINKA repository structure and organization
 
-## 1. Repository identity
-- Repository: ravaunrichards/Linka-Android
-- Default branch: main
-- Product: LINKA
-- Scope: one independent product across Android, browser, backend, database migrations, CI and documentation.
-- Do not create a duplicate LINKA repository.
-- Latest Android-tested main at this inventory: `ebe1490459da2b758cb7f08d9012fea425ecb1aa`.
+## Repository identity and verified inventory
 
-## 2. Current verified source tree
+- Repository: `ravaunrichards/Linka-Android`
+- Default branch: `main`
+- Product: LINKA — independent Android-first international calling and communications platform.
+- Active implementation branch for encrypted messaging: `feature/messaging-device-e2ee`
+- Structure inventory commit: `b2b99f420781b9b767ca0e3dd4f35cd7541c9e88`
+- Recursive Git tree: 168 entries; not truncated.
+- This is an existing application repository. Preserve the current Gradle root and package layout; do not create a second repository or an artificial duplicate tree.
 
-The recursive GitHub tree contains 144 entries and is not truncated. The repository is an existing product codebase, not an empty starter.
+## Current repository tree
 
-- `.github/` — CODEOWNERS, issue and pull-request templates, Dependabot configuration and workflows.
-- `.github/workflows/android-ci.yml` — Android debug build, unit tests, source revision metadata and APK artifact.
-- `.github/workflows/linka-api-ci.yml` — browser module syntax, API unit tests and API startup/asset checks.
-- `.github/workflows/database-ci.yml` — PostgreSQL 17 migrations, schema invariants, persistence integration and readiness checks.
-- `app/` — Kotlin/Jetpack Compose Android application.
-- `app/src/main/java/com/linka/android/` — application shell, phone hub and account panel.
-- `app/src/main/java/com/linka/android/account/` — account API client and Android Keystore-backed encrypted account-token storage.
-- `app/src/main/java/com/linka/android/core/audio/` — audio codecs, direct/routed voice sessions and microphone foreground service.
-- `app/src/main/java/com/linka/android/core/call/` — call control, state machine and nearby call controller.
-- `app/src/main/java/com/linka/android/core/identity/` — QR identity, Android Keystore device identity and trusted-device store.
-- `app/src/main/java/com/linka/android/core/mesh/` — packet routing, relay consent and routed payload handling.
-- `app/src/main/java/com/linka/android/core/nearby/` — nearby radio connections.
-- `app/src/main/java/com/linka/android/core/security/` — peer session security and encrypted call primitives.
-- `app/src/test/` — Android unit tests for audio, call control/state, mesh routing, security and account-session restore/logout (`account/LinkaAccountClientTest.kt`).
-- `backend/api/` — Node.js API, domain modules, persistence adapter and automated tests.
-- `backend/api/db/migrations/` — ordered PostgreSQL schema migrations.
-- `backend/api/db/checks/` — schema, wallet and integrity checks used by database CI.
-- `backend/api/src/domain/` — E.164 normalization, free-first route policy, wallet ledger and provider-fed rate catalog.
-- `backend/api/src/cors.mjs` — strict exact-origin CORS allowlist for separately hosted browser clients.
-- `backend/api/test/` — API, domain, PostgreSQL integration, browser-crypto, browser-session policy and CORS policy tests.
-- `backend/api/verify-browser-account.e2e.mjs` — browser-WebCrypto account lifecycle test executed against the API and a disposable PostgreSQL database in CI.
-- `web/` — responsive browser companion, account UI, WebCrypto device identity and browser API client.
-- `docs/` — requirements, architecture, decisions, repository map, account authentication, database schema, integration matrix, roadmap, security, testing and recovery checkpoint.
-- Root files — README, license, contributing guide, security policy, editor settings, git attributes and ignore rules.
+```text
+Linka-Android/
+├── .github/
+│   ├── CODEOWNERS
+│   ├── ISSUE_TEMPLATE/
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── dependabot.yml
+│   └── workflows/
+│       ├── android-ci.yml
+│       ├── database-ci.yml
+│       └── linka-api-ci.yml
+├── app/                              # Android Gradle application module
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml
+│       │   ├── res/xml/
+│       │   └── java/com/linka/android/
+│       │       ├── MainActivity.kt
+│       │       ├── LinkaApplication.kt
+│       │       ├── LinkaAccountPanel.kt
+│       │       ├── PhoneHubScreen.kt
+│       │       ├── MessagingScreen.kt
+│       │       ├── account/
+│       │       │   └── LinkaAccountClient.kt
+│       │       ├── messaging/
+│       │       │   └── AndroidMessagingKeyManager.kt
+│       │       └── core/
+│       │           ├── audio/
+│       │           │   ├── LinkaVoiceForegroundService.kt
+│       │           │   ├── NearbyVoiceSession.kt
+│       │           │   ├── RoutedVoiceSession.kt
+│       │           │   ├── VoiceFrameCodec.kt
+│       │           │   └── MuLawCodec.kt
+│       │           ├── call/
+│       │           │   ├── CallControlCodec.kt
+│       │           │   ├── CallStateMachine.kt
+│       │           │   └── NearbyCallController.kt
+│       │           ├── identity/
+│       │           │   ├── LocalDeviceIdentity.kt
+│       │           │   ├── LinkaQrIdentity.kt
+│       │           │   ├── LinkaQrBitmap.kt
+│       │           │   └── TrustedDeviceStore.kt
+│       │           ├── mesh/
+│       │           │   ├── MeshModels.kt
+│       │           │   ├── MeshPacketRouter.kt
+│       │           │   ├── RelayConsentStore.kt
+│       │           │   ├── RouteSelector.kt
+│       │           │   └── RoutedPayloadCodec.kt
+│       │           ├── nearby/
+│       │           │   └── NearbyDirectLink.kt
+│       │           └── security/
+│       │               └── PeerSessionSecurity.kt
+│       ├── test/                     # Android/JVM unit tests
+│       └── androidTest/              # Android instrumented/Keystore tests
+├── backend/
+│   └── api/
+│       ├── package.json
+│       ├── db/
+│       │   ├── checks/
+│       │   │   └── verify_core_schema.sql
+│       │   └── migrations/
+│       │       ├── 0001_core_schema.sql
+│       │       ├── 0002_cross_account_integrity.sql
+│       │       ├── 0003_messaging_device_encryption.sql
+│       │       ├── 0004_messaging_device_receipts.sql
+│       │       └── 0005_messaging_encrypted_attachments.sql
+│       ├── src/
+│       │   ├── account-auth.mjs
+│       │   ├── cors.mjs
+│       │   ├── postgres-store.mjs
+│       │   ├── runtime.mjs
+│       │   ├── server.mjs
+│       │   └── domain/
+│       │       ├── credit-ledger.mjs
+│       │       ├── destination-metadata.mjs
+│       │       ├── e164.mjs
+│       │       ├── rate-catalog.mjs
+│       │       └── route-options.mjs
+│       ├── test/                     # API, domain and PostgreSQL integration tests
+│       ├── verify-browser-account.e2e.mjs
+│       └── verify-browser-ui.e2e.mjs
+├── web/                              # Browser companion / web preview
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js
+│   ├── account.mjs
+│   ├── auth-crypto.mjs
+│   └── messaging-crypto.mjs
+├── docs/
+│   ├── INDEX.md
+│   ├── PRODUCT_REQUIREMENTS.md
+│   ├── ARCHITECTURE.md
+│   ├── ARCHITECTURE_DECISIONS.md
+│   ├── REPOSITORY_STRUCTURE.md
+│   ├── PROJECT_STATUS.md
+│   ├── ROADMAP.md
+│   ├── INTEGRATION_MATRIX.md
+│   ├── ACCOUNT_AUTH.md
+│   ├── DATABASE_SCHEMA.md
+│   ├── RENDER_API_SERVICE.md
+│   ├── TELEPHONY_AND_BILLING.md
+│   ├── WALLET_LEDGER_DESIGN.md
+│   ├── OFFLINE_MESH_ROADMAP.md
+│   ├── JAMAICA_COMPATIBILITY.md
+│   ├── SECURITY.md
+│   └── TESTING.md
+├── deployment/                       # Render/deployment runbook (no live secrets)
+│   └── README.md
+├── .editorconfig
+├── .gitattributes
+├── .gitignore
+├── build.gradle.kts
+├── settings.gradle.kts
+├── gradle.properties
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── LICENSE
+└── README.md
+```
 
-The tree count is a Git object inventory, not a claim that all planned product modules exist. Do not create empty placeholders for future services.
+The tree above is an ownership map of the active branch. It intentionally omits generated build output, local secrets, caches and empty future directories.
 
-## 3. Repository organization rules
-- Keep all LINKA source, documentation, tests, migrations and deployment configuration in this repository.
-- Keep Android-specific code in `app/`; use clear packages by real capability.
-- Keep backend APIs, domain logic, persistence and provider adapters under `backend/api/` until a genuine bounded service requires separation.
-- Keep browser source under `web/`.
-- Keep architecture, product requirements, integration evidence, release gates and operating instructions under `docs/`.
-- Keep GitHub automation, issue/PR templates and dependency automation under `.github/`.
-- Keep tests close to the module they verify.
-- Keep migrations beside the backend/data service that owns them, with ordering and rollback notes.
-- Keep safe example configuration in Git; keep real secrets and release signing keys outside Git.
-- Use explicit interfaces/adapters for carriers, number providers, messaging and payment providers.
-- Avoid duplicating the rate catalog, wallet ledger or number inventory across clients.
-- Do not create empty placeholder directories. The first real source, test or configuration file should create a module boundary.
+## Mapping from the requested conceptual layout
 
-## 4. Target organization as capabilities are implemented
+The original planning layout used `android/`, `web-preview/` and root `tests/` names. The current repository already uses standard Gradle and colocated-test conventions. Keep those real conventions:
 
-This is a target map, not a claim that these directories currently exist:
-- `app/` — Android application and native integrations.
-- `backend/api/` — public API and routing entry point.
-- `backend/telephony/` — carrier, SIP/PSTN and number lifecycle adapters when real provider work begins.
-- `backend/messaging/` — SMS/MMS and internal messaging services when implemented.
-- `backend/billing/` — wallet, immutable ledger, pricing and payment integrations when separated from API domain code.
-- `backend/notifications/` — push and delivery notifications when implemented.
-- `backend/shared/` — shared backend contracts only when genuinely reused.
-- `web/` — full web client and browser calling.
-- `docs/` — product, architecture, integration, security, testing and release records.
-- `infra/` — infrastructure-as-code and deployment configuration when adopted.
-- `.github/` — CI, dependency updates, review templates and release workflows.
+| Planned capability | Existing implementation location | Current boundary |
+|---|---|---|
+| Android application | `app/` | Existing Gradle application module; do not move beneath a second `android/` root without a coordinated Gradle/CI migration |
+| Android core | `app/src/main/java/com/linka/android/core/` | Audio, call state, identity, nearby radio, mesh and security packages |
+| Android dialer/phone UI | `PhoneHubScreen.kt` and phone hub components | Native phone hub currently hands carrier dialing to Android system `ACTION_DIAL`; not a replacement default dialer |
+| Android contacts | Phone hub/system contact handoffs | Full in-app contact management/sync is not yet a verified complete capability |
+| Android telecom | Android manifest and phone handoff integration | Full Telecom/Core-Telecom/default-dialer integration remains a release task |
+| Android messaging/security | `MessagingScreen.kt`, `messaging/` | Device-key E2EE implementation and tests on PR #20 |
+| Backend API/authentication | `backend/api/src/server.mjs`, `account-auth.mjs` | API routing and signed-device/account authentication |
+| Backend signaling/calls | `backend/api/src/runtime.mjs`, server routes | Call-control signaling queue; does not relay voice media |
+| Backend device management | `postgres-store.mjs`, database schema/migrations | Device/account/session/key records and authorization |
+| Backend notifications | Current API and Android messaging/call notification code | Dedicated production push/delivery service is not yet verified |
+| Web preview | `web/` | Browser companion; not yet a full web telephone client |
+| Tests | Android `test/`, Android `androidTest/`, backend `test/` and E2E scripts | Tests remain beside the owning module to preserve clear dependency boundaries |
+| Deployment | `docs/RENDER_API_SERVICE.md`, `deployment/README.md` | Runbook only; live Render configuration is not verified by repository CI |
+| Documentation | `docs/` and root governance files | Product, architecture, tests, security, release gates and recovery checkpoints |
 
-Create target modules incrementally when real source, configuration, tests or migrations are ready. Do not add empty folders or fake service shells.
+## What must not be represented as complete
 
-## 5. Required ownership boundaries
-- Android client: presentation, device permissions, local identity, audio routing and client-side connection management.
-- Backend: authoritative identity/session state, number inventory, provider adapters, rate decisions, usage records, wallet ledger, payment reconciliation and notifications.
-- Web client: browser-compatible experiences; it must not claim native Android radio or SIM access.
-- Provider adapters: isolate vendor-specific API behavior and normalize errors, pricing, number types and delivery states.
-- Billing: one server-authoritative ledger; clients display balances but do not write authoritative balances.
-- Documentation: state whether a capability is planned, source implemented, automated tested, device tested, provider enabled or production verified.
+The current source tree is substantial, but folder existence is not proof of product readiness. These are outstanding until supported by code, tests and operational evidence:
 
-## 6. Repository hygiene and build tooling
+- Real SIP/PSTN carrier integration, rented telephone-number inventory and SMS/MMS provider delivery.
+- Production WebRTC media transport with TURN/SFU where required; the existing API signaling queue is not a media relay.
+- Full Android Telecom/default-dialer integration and SIM/eSIM provisioning.
+- Dedicated production notification delivery and operational monitoring.
+- Complete browser calling, number management, wallet and settings experiences.
+- Independent review of the cryptographic design and production key transparency/recovery.
+- Two-phone and four-or-more-phone field proof for direct/mesh offline voice.
+- Production Render/PostgreSQL deployment, protected release signing and Play Store release.
+- Emergency calling; LINKA must not claim to be an emergency-calling service.
 
-Verified root governance files now include:
-- `.gitignore`, `.editorconfig`, `.gitattributes`.
-- `CONTRIBUTING.md` and `SECURITY.md`.
-- `.github/CODEOWNERS`.
-- `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`.
-- `.github/dependabot.yml`.
+## Organization rules
 
-A Gradle wrapper is still not checked into the repository. Android CI installs Gradle 8.14.4 directly; Android CI run 42665968552 passed on the latest Android-tested main commit. Add a wrapper only after generating and verifying the official wrapper scripts and JAR; do not fabricate a wrapper binary.
-
-## 7. Rules for structural changes
-
-Before moving or renaming source:
-1. Inspect imports, Gradle project settings, package references, CI paths and deployment paths.
-2. Make one coherent change with all references updated.
-3. Run module-specific tests and builds.
-4. Verify GitHub Actions and paths after the change.
-5. Document the resulting tree.
-
-Do not reorganize working Android source merely for visual neatness. Preserve verified implementation and use clear package ownership for new capabilities.
+1. Keep one independent LINKA repository: `ravaunrichards/Linka-Android`.
+2. Keep Android Kotlin source inside the existing `app/` Gradle module and use capability packages below `com.linka.android`.
+3. Keep API, authentication, signaling, domain rules, persistence and database migrations under `backend/api/` until a bounded service is real and independently deployable.
+4. Keep browser source under `web/`; it is the web preview/client.
+5. Keep automated tests beside the module they validate; do not add a duplicate root `tests/` tree containing copies.
+6. Keep deployment instructions under `deployment/` and service-specific operational details under `docs/`.
+7. Never add empty placeholder folders, demo service shells, fake data or unconfigured provider adapters merely to make the tree look larger.
+8. Keep credentials, API keys, database passwords, signing keys and keystores outside Git.
+9. Before a source move, update Gradle settings, imports, CI paths, Render build/start paths and documentation together; run all affected workflows before merging.
+10. Update this map and `docs/PROJECT_STATUS.md` when a real module or verified capability changes.

@@ -29,6 +29,7 @@ jobs:
         run: |
           node --check web/account.mjs
           node --check web/auth-crypto.mjs
+          node --check web/messaging-crypto.mjs
       - name: Run API tests
         run: npm --prefix backend/api test
       - name: Verify API starts

@@ -401,3 +401,41 @@ Run the current PR #20 head `aab531e678234431da79ee2cbd1667d416449588` through A
 ### Latest confirmed action
 
 R008 merged as PR #17 (main commit 51a388a39fe83dd0b3a37b5bcd9a18be865e5283). R013 backend implementation is in main (store/API commit 748d4174ceaf2ae3672e9a1b5a429d130264ec4c; integration test commit 59bc113bd99cc5637a6f82e04a11ddca8884127b). R021 is on draft PR #18 at `feature/native-phone-favorites-current`, verified by Android CI 42707950486; the physical handset system-app handoff remains. R011 is on draft PR #19 at `feature/wallet-read-api`, verified by API CI 42709104246 and PostgreSQL CI 42708962443 (119/119 plus Chromium/Firefox wallet panel E2E). The two feature PRs have not been merged into main. Main remains at the prior integrated source baseline; latest status tracker commit is this checkpoint update. R013 still needs client key distribution, audited encryption, attachments, delivery/read receipts and client UI. No production deployment, real provider, payment or handset call/SMS was activated.
+
+
+## Continuation checkpoint — 2026-11-10
+
+**Active repository:** `ravaunrichards/Linka-Android`  
+**Active branch:** `feature/messaging-device-e2ee`  
+**Current verified branch head:** `b2b99f420781b9b767ca0e3dd4f35cd7541c9e88`  
+**Pull request:** [#20 — device-key E2EE and encrypted browser chat](https://github.com/ravaunrichards/Linka-Android/pull/20) (still draft; not merged).  
+**Verified recursive tree:** 168 entries, not truncated.  
+**Latest correction:** `b2b99f420781b9b767ca0e3dd4f35cd7541c9e88` updates the legacy attachment integration test to the current API contract. It does not weaken runtime validation.
+
+### CI evidence for the current head
+
+- Android CI run [42813662782](https://github.com/ravaunrichards/Linka-Android/actions/runs/42813662782): PASS. Debug APK assembly, Android unit tests and Android API 35 Keystore E2EE instrumentation all succeeded; APK and instrumentation reports uploaded.
+- LINKA API CI run [42813662845](https://github.com/ravaunrichards/Linka-Android/actions/runs/42813662845): PASS. Dependency install, browser module syntax, API tests and service startup/health/readiness/asset/CORS checks succeeded.
+- LINKA PostgreSQL Schema CI run [42813662834](https://github.com/ravaunrichards/Linka-Android/actions/runs/42813662834): PASS. Migrations applied twice, schema/integrity checks, PostgreSQL adapter tests and database readiness succeeded.
+- Debug APK artifact: `linka-debug-apk-72fc61bd15900a8d1d260986deaee26cc44a0640`, artifact ID `13764296022`, 17,915,757 bytes, SHA-256 `81a4b87343d8e04d757273483c440038764ce1910fd2d1e719b12f50800523fd`; expires 2026-12-10. This is a debug artifact, not a production-signed APK.
+- Android instrumentation report artifact ID: `13762593938`.
+
+### Repository structure correction
+
+The branch now has a refreshed structure map in `docs/REPOSITORY_STRUCTURE.md` and a deployment runbook in `deployment/README.md`. The current Gradle root is `app/`, browser preview is `web/`, and tests are colocated under Android `test/` and `androidTest/` plus backend `test/`. Those are the actual working locations. Do not create duplicate `android/`, `web-preview/` or root `tests/` directories just for appearance; retain the existing build paths until a complete, tested migration is planned.
+
+### Accurate remaining work
+
+- PR #20 remains draft because passing CI does not equal independent cryptographic audit, key transparency/recovery, physical device acceptance or production release. Its encrypted attachment implementation, API 35 Android Keystore instrumentation and read/delivery receipt tests now pass current CI.
+- Complete key transparency, device revocation and safe account/device key backup/recovery design; test account/device loss and device rotation/revocation.
+- Complete offline synchronization/history behavior and cross-device recovery acceptance.
+- Finish production WebRTC media calling and TURN/SFU path; current signaling API does not carry audio/video.
+- Integrate real telephone-number inventory, SIP/PSTN, SMS/MMS, tariffs and payment providers only with confirmed provider coverage, credentials and commercial/legal approval.
+- Complete Android Telecom/default-dialer and SIM/eSIM integration where supported.
+- Finish full web calling/number/wallet experiences.
+- Obtain two-phone direct offline voice and four-or-more-phone mesh field evidence; arrange independent cryptographic and telecom/privacy review.
+- Verify Render deployment, database backup/restore, monitoring and production release signing. The Render workspace must be explicitly confirmed before any service inspection or modification.
+
+### Exact next safe engineering task
+
+Continue PR #20's security lifecycle: device-key revocation and key-rotation behavior, then add tests proving revoked/stale devices cannot retrieve new message/attachment envelopes or acknowledge receipts. Do not implement exportable private-key backups; design recovery with explicit user trust and audited cryptographic review. Keep production/provider claims disabled until their independent gates pass.

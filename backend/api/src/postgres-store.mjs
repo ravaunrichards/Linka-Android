@@ -280,7 +280,7 @@ export function createPostgresStore({
     const result = await pool.query(
       "SELECT event_id, event_type, credit_source, amount_credit_units, " +
       "reference_id, reverses_event_id, created_at, " +
-      "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\\"T\\"HH24:MI:SS.US\\"Z\\"') AS cursor_created_at " +
+      "to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS cursor_created_at " +
       "FROM linka_private.wallet_ledger_events " +
       "WHERE account_id = $1::uuid " +
       "AND ($3::timestamptz IS NULL OR " +

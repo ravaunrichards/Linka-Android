@@ -398,6 +398,7 @@ async function loadSelectedConversation() {
   const messageList = document.getElementById("chatMessages");
   messageList.replaceChildren();
   const items = [...(history.messages || [])].reverse();
+  const readableMessageIds = [];
   for (const message of items) {
     const article = document.createElement("article");
     article.className = "chat-message";
@@ -417,6 +418,9 @@ async function loadSelectedConversation() {
           privateKey: browserMessagingIdentity.privateKey,
           keyEnvelope: message.keyEnvelope
         });
+        if (message.senderAccountId !== currentAccountProfile.accountId && message.messageId) {
+          readableMessageIds.push(message.messageId);
+        }
       } catch {
         body.textContent = "[Unable to decrypt this message on this device]";
       }
@@ -439,17 +443,22 @@ async function loadSelectedConversation() {
   const incomingMessageIds = items
     .filter(message => message.senderAccountId !== currentAccountProfile.accountId)
     .map(message => message.messageId)
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 100);
+  const receiptUrl = "/v1/conversations/" + encodeURIComponent(conversationId) + "/receipts";
   if (incomingMessageIds.length > 0) {
-    await apiRequest(
-      origin,
-      "/v1/conversations/" + encodeURIComponent(conversationId) + "/receipts",
-      {
-        method: "POST",
-        token,
-        body: { messageIds: incomingMessageIds.slice(0, 100), state: "read" }
-      }
-    );
+    await apiRequest(origin, receiptUrl, {
+      method: "POST",
+      token,
+      body: { messageIds: incomingMessageIds, state: "delivered" }
+    });
+  }
+  if (readableMessageIds.length > 0) {
+    await apiRequest(origin, receiptUrl, {
+      method: "POST",
+      token,
+      body: { messageIds: readableMessageIds.slice(0, 100), state: "read" }
+    });
   }
   const missing = activeConversationMembers.filter(item => !item.keyVersion || !item.publicKeyBase64);
   chatStatus(

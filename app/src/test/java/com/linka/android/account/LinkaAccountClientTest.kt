@@ -109,6 +109,29 @@ class LinkaAccountClientTest {
     }
 
     @Test
+    fun acknowledgeInternalMessagesPostsPerDeviceReadReceiptsWithAccountToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(JSONObject().put("acknowledged", 2))
+        val client = client(store, transport)
+
+        val response = client.acknowledgeInternalMessages(
+            conversationId = "conversation-123",
+            messageIds = listOf("message-1", "message-2"),
+            state = "read"
+        )
+
+        assertEquals(2, response.getInt("acknowledged"))
+        val call = transport.calls.single()
+        assertEquals("POST", call.method)
+        assertEquals("/v1/conversations/conversation-123/receipts", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+        val body = JSONObject(call.body ?: error("Receipt body was not sent"))
+        assertEquals("read", body.getString("state"))
+        assertEquals(2, body.getJSONArray("messageIds").length())
+        assertEquals("message-1", body.getJSONArray("messageIds").getString(0))
+    }
+
+    @Test
     fun restoreSessionWithoutTokenDoesNotMakeNetworkRequest() = runBlocking {
         val store = FakeTokenStore(token = null)
         val transport = FakeTransport()
@@ -190,6 +213,7 @@ class LinkaAccountClientTest {
     private data class ApiCall(
         val method: String,
         val path: String,
+        val body: String?,
         val bearerToken: String?
     )
 
@@ -206,7 +230,7 @@ class LinkaAccountClientTest {
             body: JSONObject?,
             bearerToken: String?
         ): JSONObject {
-            calls += ApiCall(method, path, bearerToken)
+            calls += ApiCall(method, path, body?.toString(), bearerToken)
             failure?.let { throw it }
             return JSONObject(response.toString())
         }

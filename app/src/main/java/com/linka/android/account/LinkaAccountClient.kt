@@ -376,6 +376,28 @@ class LinkaAccountClient internal constructor(
         ).optJSONArray("messages") ?: JSONArray()
     }
 
+    suspend fun acknowledgeInternalMessages(
+        conversationId: String,
+        messageIds: List<String>,
+        state: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(state == "delivered" || state == "read") {
+            "Use a supported LINKA message receipt state."
+        }
+        require(messageIds.isNotEmpty() && messageIds.size <= 100) {
+            "A LINKA receipt batch must contain between 1 and 100 messages."
+        }
+        request(
+            store.getServerUrl(),
+            "POST",
+            "/v1/conversations/" + encodePathSegment(conversationId) + "/receipts",
+            JSONObject()
+                .put("messageIds", JSONArray(messageIds))
+                .put("state", state),
+            requireMessagingToken()
+        )
+    }
+
     private fun requireMessagingToken(): String =
         store.readToken() ?: throw LinkaAccountException(
             "unauthorized",

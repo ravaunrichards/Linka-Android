@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.linka.android.account.LinkaAccountClient
+import com.linka.android.account.LinkaAccountDevice
 import com.linka.android.account.LinkaAccountException
 import com.linka.android.account.LinkaAccountProfile
 import kotlinx.coroutines.launch
@@ -45,6 +47,8 @@ fun LinkaAccountPanel(
     var displayName by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var profile by remember { mutableStateOf<LinkaAccountProfile?>(null) }
+    var devices by remember { mutableStateOf<List<LinkaAccountDevice>>(emptyList()) }
+    var deviceToRevoke by remember { mutableStateOf<LinkaAccountDevice?>(null) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var createMode by rememberSaveable { mutableStateOf(false) }
@@ -62,6 +66,20 @@ fun LinkaAccountPanel(
                 }
                 .onFailure { error ->
                     message = error.message ?: "Unable to restore the LINKA account session."
+                }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(profile) {
+        if (profile == null) {
+            devices = emptyList()
+        } else {
+            loading = true
+            runCatching { accountClient.listAccountDevices() }
+                .onSuccess { devices = it }
+                .onFailure { error ->
+                    message = error.message ?: "Unable to load LINKA devices."
                 }
             loading = false
         }
@@ -191,6 +209,78 @@ fun LinkaAccountPanel(
                 )
                 Text("Device: " + profile!!.deviceId.take(8).uppercase(), style = MaterialTheme.typography.labelSmall)
                 Text("Session expires: " + profile!!.expiresAt, style = MaterialTheme.typography.labelSmall)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Your devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    loading = true
+                                    runCatching { accountClient.listAccountDevices() }
+                                        .onSuccess { devices = it }
+                                        .onFailure { error ->
+                                            message = error.message ?: "Unable to refresh LINKA devices."
+                                        }
+                                    loading = false
+                                }
+                            },
+                            enabled = !loading
+                        ) { Text("Refresh") }
+                    }
+                    if (devices.isEmpty()) {
+                        Text(
+                            "No registered devices were returned. Refresh to check your account.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    devices.forEach { device ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    device.deviceName?.takeIf { it.isNotBlank() }
+                                        ?: device.platform.replaceFirstChar { it.uppercase() } + " device",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "ID: " + device.deviceId.take(8).uppercase() +
+                                        if (device.current) " • This device" else "",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    "Status: " + device.status +
+                                        " • Active sessions: " + device.activeSessionCount,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Last seen: " + (device.lastSeenAt ?: "Not recorded"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (!device.current && device.status == "active") {
+                                    TextButton(
+                                        onClick = { deviceToRevoke = device },
+                                        enabled = !loading
+                                    ) { Text("Revoke device") }
+                                }
+                            }
+                        }
+                    }
+                }
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -216,6 +306,48 @@ fun LinkaAccountPanel(
             if (loading) CircularProgressIndicator()
             message?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+            deviceToRevoke?.let { selected ->
+                AlertDialog(
+                    onDismissRequest = { deviceToRevoke = null },
+                    title = { Text("Revoke this device?") },
+                    text = {
+                        Text(
+                            "This signs out " +
+                                (selected.deviceName?.takeIf { it.isNotBlank() } ?: selected.platform + " device") +
+                                ", revokes its active encryption key and prevents it receiving new LINKA messages."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                deviceToRevoke = null
+                                scope.launch {
+                                    loading = true
+                                    message = null
+                                    runCatching { accountClient.revokeAccountDevice(selected.deviceId) }
+                                        .onSuccess { result ->
+                                            message = if (result.optBoolean("alreadyRevoked")) {
+                                                "This device was already revoked."
+                                            } else {
+                                                "Device revoked. Its active sessions and messaging key are disabled."
+                                            }
+                                            runCatching { accountClient.listAccountDevices() }
+                                                .onSuccess { devices = it }
+                                        }
+                                        .onFailure { error ->
+                                            message = error.message ?: "Unable to revoke this device."
+                                        }
+                                    loading = false
+                                }
+                            },
+                            enabled = !loading
+                        ) { Text("Revoke") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deviceToRevoke = null }) { Text("Cancel") }
+                    }
+                )
             }
             TextButton(
                 onClick = { message = "Password recovery is not available until LINKA email delivery is configured." },

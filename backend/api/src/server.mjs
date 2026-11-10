@@ -170,7 +170,8 @@ function safeErrorCode(error) {
     "invalid_message_attachments", "message_attachments_unavailable",
     "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
     "invalid_encryption_key", "invalid_encryption_key_proof", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
-    "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted"
+    "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted",
+    "invalid_message_receipt"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -536,6 +537,27 @@ async function handleRequest(req, res) {
         participantAccountIds: body.participantAccountIds
       });
       response(res, conversation.reused ? 200 : 201, conversation);
+      return;
+    }
+
+    const messageReceiptRoute = /^\/v1\/conversations\/([^/]+)\/receipts$/.exec(path);
+    if (messageReceiptRoute && req.method === "POST") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-receipts:${session.accountId}:${session.deviceId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const acknowledgement = await postgresStore.markInternalMessagesReceived({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        conversationId: messageReceiptRoute[1],
+        messageIds: body.messageIds,
+        state: body.state
+      });
+      response(res, 200, acknowledgement);
       return;
     }
 

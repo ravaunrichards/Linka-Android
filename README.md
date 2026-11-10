@@ -38,12 +38,13 @@ LINKA is an independent Android and web communication product planned for Jamaic
 - Direct nearby voice capture/playback using 8 kHz mono audio and G.711 mu-law frames.
 - Multi-peer nearby links, explicit relay consent and multi-hop route discovery/forwarding.
 - End-to-end encrypted routed call-control and voice payloads.
+- Encrypted phone favourites with codec unit tests and Android Keystore instrumentation tests.
 - Automated unit tests for call control/state, audio framing, peer security and routing.
 
 These are source and automated-test capabilities. Physical radio/audio tests and independent security review remain release gates.
 
 ### Android system-app handoffs
-The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
+The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. User-created phone favourites are encrypted locally with AES-GCM and a non-exportable Android Keystore key; selecting a favourite still opens the system dialler or SMS app through ACTION_DIAL/ACTION_SENDTO. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
 
 ### Backend and browser companion
 - backend/api contains a Node.js P-256 signed-device challenge API and call-signaling routes.

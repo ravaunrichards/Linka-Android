@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, sign as signSignature } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID, sign as signSignature } from "node:crypto";
 import { createPostgresStore } from "../src/postgres-store.mjs";
 
 const ACTOR = "00000000-0000-4000-8000-000000000001";
 const MEMBER = "00000000-0000-4000-8000-000000000002";
+const OUTSIDER = "00000000-0000-4000-8000-000000000003";
 const SENDER_DEVICE = "00000000-0000-4000-8000-000000000011";
 const SECOND_DEVICE = "00000000-0000-4000-8000-000000000012";
 const MEMBER_DEVICE = "00000000-0000-4000-8000-000000000013";

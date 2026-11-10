@@ -248,6 +248,18 @@ async function main() {
     assert.equal(storedMessage.message.ciphertext.includes(secretMessage), false);
     assert.equal(storedMessage.message.keyEnvelope.recipientDeviceId, firstIdentity.deviceId);
 
+    await firstPage.waitForFunction(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      if (!token) return false;
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      if (!response.ok) return false;
+      const payload = await response.json();
+      return payload.messages?.[0]?.receiptSummary?.readDevices === 1;
+    }, { sessionKey: SESSION_KEY, conversationId }, { timeout: 15_000 });
+
     const receiptView = await firstPage.evaluate(async ({ sessionKey, conversationId }) => {
       const token = sessionStorage.getItem(sessionKey);
       const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {

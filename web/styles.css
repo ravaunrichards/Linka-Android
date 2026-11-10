@@ -38,3 +38,7 @@
 .chat-status[data-kind="warning"]{color:#f4cf8b}
 .chat-status[data-kind="error"]{color:#ffc0b4}
 @media(max-width:760px){.chat-workspace{padding:13px}.chat-message{max-width:100%}.chat-toolbar{align-items:flex-start}}
+
+.chat-workspace input[type="file"]{padding:8px;background:#091726;color:#dce8f2}
+.chat-attachment{display:block;width:max-content;max-width:100%;margin:7px 0;padding:7px 10px;border:1px solid #36566c;border-radius:8px;background:#0b2232;color:#9be8db;font:inherit;font-size:11px;text-align:left;overflow-wrap:anywhere}
+.chat-attachment:disabled{opacity:.6;cursor:wait}

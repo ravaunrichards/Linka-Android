@@ -49,6 +49,10 @@ fun LinkaAccountPanel(
     var profile by remember { mutableStateOf<LinkaAccountProfile?>(null) }
     var devices by remember { mutableStateOf<List<LinkaAccountDevice>>(emptyList()) }
     var deviceToRevoke by remember { mutableStateOf<LinkaAccountDevice?>(null) }
+    var wallet by remember { mutableStateOf<LinkaWalletSnapshot?>(null) }
+    var walletEvents by remember { mutableStateOf<List<LinkaWalletLedgerEvent>>(emptyList()) }
+    var walletCursor by remember { mutableStateOf<LinkaWalletCursor?>(null) }
+    var walletMessage by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var createMode by rememberSaveable { mutableStateOf(false) }
@@ -74,6 +78,10 @@ fun LinkaAccountPanel(
     LaunchedEffect(profile) {
         if (profile == null) {
             devices = emptyList()
+            wallet = null
+            walletEvents = emptyList()
+            walletCursor = null
+            walletMessage = null
         } else {
             loading = true
             runCatching { accountClient.listAccountDevices() }
@@ -81,6 +89,19 @@ fun LinkaAccountPanel(
                 .onFailure { error ->
                     message = error.message ?: "Unable to load LINKA devices."
                 }
+            runCatching {
+                val snapshot = accountClient.getWalletSnapshot()
+                val page = accountClient.listWalletLedgerEvents(limit = 20)
+                wallet = snapshot
+                walletEvents = page.events
+                walletCursor = page.nextCursor
+                walletMessage = null
+            }.onFailure { error ->
+                wallet = null
+                walletEvents = emptyList()
+                walletCursor = null
+                walletMessage = error.message ?: "LINKA wallet information is not available."
+            }
             loading = false
         }
     }
@@ -209,6 +230,155 @@ fun LinkaAccountPanel(
                 )
                 Text("Device: " + profile!!.deviceId.take(8).uppercase(), style = MaterialTheme.typography.labelSmall)
                 Text("Session expires: " + profile!!.expiresAt, style = MaterialTheme.typography.labelSmall)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    "LINKA CREDITS",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text("Account balance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        loading = true
+                                        runCatching {
+                                            val snapshot = accountClient.getWalletSnapshot()
+                                            val page = accountClient.listWalletLedgerEvents(limit = 20)
+                                            wallet = snapshot
+                                            walletEvents = page.events
+                                            walletCursor = page.nextCursor
+                                            walletMessage = null
+                                        }.onFailure { error ->
+                                            walletMessage = error.message ?: "Unable to refresh LINKA wallet."
+                                        }
+                                        loading = false
+                                    }
+                                },
+                                enabled = !loading
+                            ) { Text("Refresh") }
+                        }
+                        if (wallet != null) {
+                            val balance = wallet!!
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text("Purchased", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(balance.purchased.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text("Promotional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(balance.promotional.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text("Sponsored", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(balance.sponsored.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text("Total credits", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(balance.total.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Text("Recent wallet activity", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            if (walletEvents.isEmpty()) {
+                                Text(
+                                    "No wallet activity has been recorded for this account.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                walletEvents.forEach { event ->
+                                    val debit = event.eventType in setOf(
+                                        "CALL_USAGE", "MESSAGE_USAGE", "NUMBER_RENTAL", "NUMBER_RENEWAL"
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            event.eventType.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            (if (debit) "−" else "+") + event.amountCreditUnits +
+                                                " credits • " + event.creditSource,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            event.createdAt,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            if (walletCursor != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            loading = true
+                                            runCatching {
+                                                val page = accountClient.listWalletLedgerEvents(
+                                                    limit = 20,
+                                                    cursor = walletCursor
+                                                )
+                                                walletEvents = walletEvents + page.events
+                                                walletCursor = page.nextCursor
+                                            }.onFailure { error ->
+                                                walletMessage = error.message ?: "Unable to load more wallet activity."
+                                            }
+                                            loading = false
+                                        }
+                                    },
+                                    enabled = !loading
+                                ) { Text("Load more activity") }
+                            }
+                        } else {
+                            Text(
+                                walletMessage ?: "Wallet information is loading.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            "Wallet balances are read-only here. Purchases, refunds and credit changes require verified server-side payment events.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

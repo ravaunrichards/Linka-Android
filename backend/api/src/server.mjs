@@ -253,6 +253,7 @@ async function handleRequest(req, res) {
           emailVerification: "not_implemented",
           walletHttpApi: "not_implemented",
           internalMessaging: postgresStore ? "device_encryption_required" : "database_required",
+          internalMessageReceipts: postgresStore ? "per_device_delivered_read" : "database_required",
           encryptedAttachmentStorage: "not_implemented"
         },
         limitations: [
@@ -266,7 +267,8 @@ async function handleRequest(req, res) {
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
           "Device encryption keys use ECDH P-256 and per-device message-key envelopes; private keys remain on clients.",
           "The backend validates current device-key coverage and stores wrapped content keys but cannot independently audit client cryptographic implementation.",
-          "Encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
+          "Encrypted attachment upload/storage is not implemented; delivery and read acknowledgements are persisted per recipient device.",
+          "The E2EE client implementation has automated browser and Android emulator tests but has not undergone an independent cryptographic audit."
         ]
       });
       return;

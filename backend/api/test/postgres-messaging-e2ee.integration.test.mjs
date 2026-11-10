@@ -265,6 +265,68 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
       assert.equal(outsider.status, 404);
     });
 
+    await t.test("records per-device delivery and read receipts without exposing them to recipients", async () => {
+      const delivered = await request(
+        devices[2],
+        `/v1/conversations/${conversationId}/receipts`,
+        "POST",
+        { messageIds: [sentMessageId], state: "delivered" }
+      );
+      assert.equal(delivered.status, 200);
+      assert.equal(delivered.body.state, "delivered");
+      assert.equal(delivered.body.acknowledged, 1);
+      assert.deepEqual(delivered.body.messageIds, [sentMessageId]);
+
+      const read = await request(
+        devices[2],
+        `/v1/conversations/${conversationId}/receipts`,
+        "POST",
+        { messageIds: [sentMessageId], state: "read" }
+      );
+      assert.equal(read.status, 200);
+      assert.equal(read.body.state, "read");
+      assert.equal(read.body.acknowledged, 1);
+
+      const senderHistory = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/messages`
+      );
+      const senderMessage = senderHistory.body.messages[0];
+      assert.deepEqual(senderMessage.receiptSummary, {
+        recipientDevices: 1,
+        deliveredDevices: 1,
+        readDevices: 1
+      });
+
+      const recipientHistory = await request(
+        devices[2],
+        `/v1/conversations/${conversationId}/messages`
+      );
+      assert.equal(
+        Object.hasOwn(recipientHistory.body.messages[0], "receiptSummary"),
+        false,
+        "recipient devices must not receive sender-only aggregate receipt metadata"
+      );
+
+      const senderCannotAcknowledgeTheirOwnMessage = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/receipts`,
+        "POST",
+        { messageIds: [sentMessageId], state: "read" }
+      );
+      assert.equal(senderCannotAcknowledgeTheirOwnMessage.status, 200);
+      assert.equal(senderCannotAcknowledgeTheirOwnMessage.body.acknowledged, 0);
+
+      const outsider = await request(
+        devices[3],
+        `/v1/conversations/${conversationId}/receipts`,
+        "POST",
+        { messageIds: [sentMessageId], state: "read" }
+      );
+      assert.equal(outsider.status, 404);
+      assert.deepEqual(outsider.body, { error: "conversation_not_found" });
+    });
+
     await t.test("rejects stale envelopes after a device rotates its ECDH key", async () => {
       const rotated = p256PublicKey();
       const response = await request(devices[1], "/v1/me/encryption-key", "PUT", {

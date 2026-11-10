@@ -550,7 +550,7 @@ async function downloadEncryptedAttachment(conversationId, metadata) {
     throw new Error("The decrypted attachment size does not match the encrypted message.");
   }
   const mimeType = typeof metadata.mediaType === "string" &&
-    /^[a-z0-9.+-]+\\/[a-z0-9.+-]+$/i.test(metadata.mediaType)
+    /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(metadata.mediaType)
       ? metadata.mediaType : "application/octet-stream";
   const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
   try {

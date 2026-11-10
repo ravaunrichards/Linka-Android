@@ -49,6 +49,19 @@ API CI tests the allowed-origin preflight, the rejected-origin preflight, origin
 - `POST /v1/destinations/normalize` — rate-limited E.164 syntax normalization; this does not infer country/number type or check provider reachability.
 - `POST /v1/destinations/resolve` — rate-limited numbering-plan validation with country candidates and number type from `libphonenumber-js/max`; provider assignment and reachability remain unchecked.
 
+## Authenticated read-only wallet
+
+When PostgreSQL is configured and the authenticated account has a wallet row:
+
+- `GET /v1/wallet` — returns the authenticated account's purchased, promotional, sponsored and total credit-unit balances plus a wallet version. Account identity is taken from the bearer session, not from query/body parameters.
+- `GET /v1/wallet/ledger?limit=50` — returns the authenticated account's most recent ledger entries, newest first. The page size is 1–100.
+- Optional `before` and `beforeEventId` query parameters continue a cursor page. Both values are required together; the timestamp cursor preserves PostgreSQL microsecond precision.
+- Both endpoints are read-only, require a persisted account session, and are rate-limited. They do not accept client balance writes.
+- New accounts receive an empty wallet row during the account-registration transaction. If an account has no wallet row, the API returns `404 wallet_not_found`.
+- Ledger entries come from the server-side immutable wallet ledger. Purchases, refunds, usage charges and promotional/sponsored credits must be created by trusted server-side events; a client cannot mint or modify credit balances.
+
+The browser account page displays the four balance categories and cursor-paginated activity. It does not provide a purchase or top-up flow. Payment processing, signed provider webhooks, purchase reconciliation, customer-funded credits and provider tariff billing remain unimplemented.
+
 ## Authenticated internal messaging
 
 PostgreSQL-backed account sessions can use the following routes:
@@ -63,7 +76,7 @@ PostgreSQL-backed account sessions can use the following routes:
 
 All messaging routes require a persisted account session and active conversation membership. A device-challenge token without an account session is insufficient. Unknown or inaccessible conversations return the same 404 response to prevent membership enumeration. Requests are rate-limited per account/device and remote address.
 
-**Security boundary:** browser and Android clients encrypt messages locally using ECDH P-256, HKDF-SHA-256 and AES-256-GCM. The backend stores ciphertext and wrapped per-device content keys; it never receives private keys or plaintext. A signed device-key registration prevents an account bearer token alone from silently replacing a device's public encryption key. The server enforces current key coverage but cannot prove that every client correctly implemented the cryptographic protocol. An independent cryptographic audit is still required. Encrypted attachments are deliberately rejected with HTTP 501 until secure upload, ownership validation and object-storage handling are implemented.
+**Security boundary:** browser and Android clients encrypt messages locally using ECDH P-256, HKDF-SHA-256 and AES-256-GCM. The backend stores ciphertext and wrapped per-device content keys; it never receives private keys or plaintext. A signed device-key registration prevents an account bearer token alone from silently replacing a device's public encryption key. The server enforces current key coverage but cannot prove that every client correctly implemented the cryptographic protocol. An independent cryptographic audit is still required. Encrypted attachment ciphertext up to 4 MiB is accepted through the authenticated attachment routes, with per-device wrapped keys and conversation membership checks. The current implementation uses the configured PostgreSQL store; production object storage, backup/retention controls, antivirus/content policy and independent security review remain separate release requirements.
 - `OPTIONS` — CORS preflight for configured cross-origin browser clients.
 
 ## Account authentication

@@ -35,7 +35,7 @@ For a separate browser domain:
 3. Do not include paths, trailing URL routes, wildcards or insecure remote HTTP origins.
 4. Ensure the browser points to the API's HTTPS origin.
 
-The API handles preflight `OPTIONS` requests for `GET` and `POST`, allowing only `Authorization` and `Content-Type` request headers. It returns `Access-Control-Allow-Origin` for the exact allowlisted origin and rejects unlisted cross-origin requests with HTTP 403. Credentialed cookies are not enabled; browser account tokens use explicit bearer authorization.
+The API handles preflight `OPTIONS` requests for `GET`, `POST`, `PUT` and `DELETE`, allowing only `Authorization` and `Content-Type` request headers. PUT is used for signed device encryption-key registration; DELETE is used for owner-authorized device revocation. It returns `Access-Control-Allow-Origin` for the exact allowlisted origin and rejects unlisted cross-origin requests with HTTP 403. Credentialed cookies are not enabled; browser account tokens use explicit bearer authorization.
 
 API CI tests the allowed-origin preflight, the rejected-origin preflight, origin validation, browser account modules and API startup. This verifies repository behavior, not a live Render environment configuration.
 

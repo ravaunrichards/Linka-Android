@@ -120,6 +120,21 @@ async function main() {
     assert.equal(await firstPage.locator("#accountProfileEmail").innerText(), email);
     assert.equal(await firstPage.locator("#accountProfileName").innerText(), displayName);
 
+    await firstPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await firstPage.waitForFunction(() =>
+      document.getElementById("walletStatus")?.textContent?.includes("loaded")
+    , null, { timeout: 15_000 });
+    assert.equal(await firstPage.locator(".wallet-balance-card").count(), 4);
+    assert.equal(await firstPage.locator("#walletBalances").innerText().then(text => text.includes("0")), true);
+    assert.match(
+      await firstPage.locator("#walletLedger").innerText(),
+      /No wallet activity has been recorded/
+    );
+    await firstPage.locator("#walletRefresh").click();
+    await firstPage.waitForFunction(() =>
+      document.getElementById("walletStatus")?.textContent?.includes("loaded")
+    , null, { timeout: 15_000 });
+
     const firstSession = await readOwnProfile(firstPage);
     assert.equal(firstSession.status, 200, "new browser account token should authenticate");
     assert.match(firstSession.token ?? "", /^[A-Za-z0-9_-]{43}$/);
@@ -151,6 +166,11 @@ async function main() {
     await secondPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
     await waitForStatus(secondPage, "Signed in to LINKA on this browser device");
     assert.equal(await secondPage.locator("#accountProfileEmail").innerText(), email);
+    await secondPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await secondPage.waitForFunction(() =>
+      document.getElementById("walletStatus")?.textContent?.includes("loaded")
+    , null, { timeout: 15_000 });
+    assert.equal(await secondPage.locator(".wallet-balance-card").count(), 4);
 
     const secondSession = await readOwnProfile(secondPage);
     assert.equal(secondSession.status, 200);

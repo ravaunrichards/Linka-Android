@@ -167,7 +167,8 @@ function safeErrorCode(error) {
     "invalid_conversation_members", "conversation_member_not_found", "invalid_page_limit",
     "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
     "invalid_message_attachments", "message_attachments_unavailable",
-    "invalid_message_query", "invalid_message_cursor", "conversation_not_found"
+    "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
+    "invalid_wallet_query", "invalid_wallet_cursor", "wallet_not_found"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -247,7 +248,7 @@ async function handleRequest(req, res) {
           persistentAccountSessions: postgresStore ? "available" : "database_required",
           passwordRecovery: "not_implemented",
           emailVerification: "not_implemented",
-          walletHttpApi: "not_implemented",
+          walletHttpApi: postgresStore ? "read_only" : "not_configured",
           internalMessaging: postgresStore ? "available" : "database_required",
           encryptedAttachmentStorage: "not_implemented"
         },
@@ -258,7 +259,8 @@ async function handleRequest(req, res) {
           "Device challenge sessions and signaling queues remain in-memory and expire.",
           "Account sessions are persisted when PostgreSQL is configured.",
           "Password recovery and email verification require an email delivery provider that is not configured.",
-          "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented.",
+          "Wallet HTTP endpoints expose authenticated read-only balances and ledger history; client balance writes are not accepted.",
+          "Wallet ledger writes remain server-authoritative and require trusted payment/provider events.",
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
           "Message key distribution, encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
         ]
@@ -438,6 +440,52 @@ async function handleRequest(req, res) {
         runtime.revokeToken(session.token);
       }
       response(res, 200, { status: "signed_out" });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/wallet") {
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`wallet-read:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const wallet = await postgresStore.getWalletSnapshot(session.accountId);
+      if (!wallet) {
+        response(res, 404, { error: "wallet_not_found" });
+        return;
+      }
+      response(res, 200, { wallet });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/wallet/ledger") {
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`wallet-ledger-read:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+      const before = url.searchParams.get("before");
+      const beforeEventId = url.searchParams.get("beforeEventId");
+      const page = await postgresStore.listWalletLedgerEvents({
+        accountId: session.accountId,
+        limit,
+        before,
+        beforeEventId
+      });
+      response(res, 200, page);
       return;
     }
 

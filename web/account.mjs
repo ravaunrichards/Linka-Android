@@ -104,7 +104,9 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
       database_not_configured: "The LINKA account service is not available on this server.",
       account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured.",
       device_not_found: "That device could not be found in this LINKA account.",
-      invalid_device_management: "LINKA could not validate this device-management request."
+      invalid_device_management: "LINKA could not validate this device-management request.",
+      wallet_not_found: "A LINKA wallet has not been provisioned for this account yet.",
+      invalid_wallet_cursor: "Wallet activity pagination expired. Refresh the activity list."
     };
     const error = new Error(messages[code] || "LINKA request failed (" + code + ").");
     error.status = response.status;
@@ -114,6 +116,128 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
   return payload;
 }
 
+let walletSession = null;
+let walletCursor = null;
+let walletLoadSequence = 0;
+let walletLoading = false;
+
+function setWalletStatus(message, kind = "info") {
+  const status = document.getElementById("walletStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.kind = kind;
+}
+
+function renderWalletBalances(wallet) {
+  const container = document.getElementById("walletBalances");
+  if (!container) return;
+  container.replaceChildren();
+  const values = [
+    ["Purchased", wallet.purchased],
+    ["Promotional", wallet.promotional],
+    ["Sponsored", wallet.sponsored],
+    ["Total", wallet.total, true]
+  ];
+  for (const [label, amount, isTotal] of values) {
+    const card = document.createElement("div");
+    card.className = "wallet-balance-card" + (isTotal ? " total" : "");
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const value = document.createElement("strong");
+    value.textContent = Number(amount).toLocaleString();
+    card.append(caption, value);
+    container.append(card);
+  }
+}
+
+function renderWalletEvents(events, append = false) {
+  const container = document.getElementById("walletLedger");
+  if (!container) return;
+  if (!append) container.replaceChildren();
+  if (events.length === 0 && !append) {
+    const empty = document.createElement("p");
+    empty.className = "wallet-ledger-empty";
+    empty.textContent = "No wallet activity has been recorded for this account.";
+    container.append(empty);
+    return;
+  }
+  for (const event of events) {
+    const row = document.createElement("div");
+    row.className = "wallet-ledger-row";
+    const details = document.createElement("div");
+    const heading = document.createElement("div");
+    heading.className = "wallet-ledger-title";
+    heading.textContent = String(event.eventType || "wallet activity")
+      .replaceAll("_", " ").toLowerCase();
+    const meta = document.createElement("div");
+    meta.className = "wallet-ledger-meta";
+    const time = event.createdAt ? new Date(event.createdAt).toLocaleString() : "Time unavailable";
+    meta.textContent = String(event.creditSource || "credit") + " · " + time;
+    details.append(heading, meta);
+    const amount = document.createElement("div");
+    amount.className = "wallet-ledger-amount";
+    const isDebit = ["CALL_USAGE", "MESSAGE_USAGE", "NUMBER_RENTAL", "NUMBER_RENEWAL"]
+      .includes(event.eventType);
+    amount.textContent = (isDebit ? "−" : "+") +
+      Number(event.amountCreditUnits).toLocaleString() + " credits";
+    row.append(details, amount);
+    container.append(row);
+  }
+}
+
+async function loadWallet({ reset = true } = {}) {
+  if (!walletSession || walletLoading) return;
+  const activeSession = walletSession;
+  const sequence = ++walletLoadSequence;
+  walletLoading = true;
+  const refresh = document.getElementById("walletRefresh");
+  const more = document.getElementById("walletLoadMore");
+  if (refresh) refresh.disabled = true;
+  if (more) more.disabled = true;
+  if (reset) {
+    walletCursor = null;
+    setWalletStatus("Refreshing your account balance…");
+  } else {
+    setWalletStatus("Loading more activity…");
+  }
+
+  try {
+    if (reset) {
+      const snapshot = await apiRequest(activeSession.origin, "/v1/wallet", {
+        token: activeSession.token
+      });
+      if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+      renderWalletBalances(snapshot.wallet);
+    }
+
+    const query = new URLSearchParams({ limit: "10" });
+    if (!reset && walletCursor) {
+      query.set("before", walletCursor.before);
+      query.set("beforeEventId", walletCursor.beforeEventId);
+    }
+    const page = await apiRequest(
+      activeSession.origin,
+      "/v1/wallet/ledger?" + query.toString(),
+      { token: activeSession.token }
+    );
+    if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+    renderWalletEvents(page.events || [], !reset);
+    walletCursor = page.nextCursor || null;
+    if (more) more.hidden = walletCursor === null;
+    setWalletStatus("Balances and wallet activity loaded from your authenticated LINKA account.", "success");
+  } catch (error) {
+    if (walletSession !== activeSession || sequence !== walletLoadSequence) return;
+    setWalletStatus(error.message || "Unable to load wallet information.", "error");
+    if (more) more.hidden = walletCursor === null;
+  } finally {
+    if (sequence === walletLoadSequence) {
+      walletLoading = false;
+      if (refresh) refresh.disabled = false;
+      if (more) more.disabled = false;
+    }
+  }
+}
+
 function showStatus(message, kind = "info") {
   const element = document.getElementById("accountStatus");
   element.textContent = message;
@@ -121,7 +245,7 @@ function showStatus(message, kind = "info") {
 }
 
 function setBusy(busy) {
-  for (const id of ["accountRegister", "accountLogin", "accountLogout", "accountRecovery", "accountDevicesRefresh", "chatCreateConversation", "chatSendMessage", "chatRefreshConversations"]) {
+  for (const id of ["accountRegister", "accountLogin", "accountLogout", "accountRecovery", "accountDevicesRefresh", "walletRefresh", "walletLoadMore", "chatCreateConversation", "chatSendMessage", "chatRefreshConversations"]) {
     const button = document.getElementById(id);
     if (button) button.disabled = busy;
   }
@@ -221,8 +345,10 @@ async function revokeBrowserDevice(deviceId) {
   }
 }
 
-function showProfile(profile) {
+function showProfile(profile, origin, token) {
   currentAccountProfile = profile;
+  walletSession = origin && token ? { origin, token } : null;
+  if (walletSession) void loadWallet({ reset: true });
   document.getElementById("accountSignedOut").hidden = true;
   document.getElementById("accountSignedIn").hidden = false;
   document.getElementById("accountProfileName").textContent =
@@ -237,6 +363,18 @@ function showProfile(profile) {
 }
 
 function showSignedOut() {
+  walletSession = null;
+  walletCursor = null;
+  walletLoadSequence += 1;
+  walletLoading = false;
+  const walletBalances = document.getElementById("walletBalances");
+  if (walletBalances) walletBalances.replaceChildren();
+  const walletLedger = document.getElementById("walletLedger");
+  if (walletLedger) walletLedger.replaceChildren();
+  const walletStatus = document.getElementById("walletStatus");
+  if (walletStatus) walletStatus.textContent = "Sign in to view your LINKA wallet.";
+  const walletMore = document.getElementById("walletLoadMore");
+  if (walletMore) walletMore.hidden = true;
   currentAccountProfile = null;
   browserMessagingIdentity = null;
   activeConversationMembers = [];
@@ -312,7 +450,7 @@ async function authenticate(mode) {
     sessionStorage.setItem(SESSION_KEY, response.accessToken);
     document.getElementById("accountPassword").value = "";
     const profile = await apiRequest(origin, "/v1/me", { token: response.accessToken });
-    showProfile(profile);
+    showProfile(profile, origin, response.accessToken);
     await initializeMessagingPanel(origin, response.accessToken);
     await refreshAccountDevices(origin, response.accessToken);
     showStatus(
@@ -336,7 +474,7 @@ async function restoreAccountSession() {
       document.getElementById("accountApiOrigin").value || location.origin
     );
     const profile = await apiRequest(origin, "/v1/me", { token });
-    showProfile(profile);
+    showProfile(profile, origin, token);
     await initializeMessagingPanel(origin, token);
     await refreshAccountDevices(origin, token);
     showStatus("Your LINKA account is active in this browser tab.", "success");
@@ -761,6 +899,8 @@ function initializeAccountPage() {
   document.getElementById("accountLogin").addEventListener("click", () => authenticate("login"));
   document.getElementById("accountLogout").addEventListener("click", logout);
   document.getElementById("accountRecovery").addEventListener("click", requestRecovery);
+  document.getElementById("walletRefresh")?.addEventListener("click", () => loadWallet({ reset: true }));
+  document.getElementById("walletLoadMore")?.addEventListener("click", () => loadWallet({ reset: false }));
   document.getElementById("accountDevicesRefresh")?.addEventListener("click", async () => {
     setBusy(true);
     try {

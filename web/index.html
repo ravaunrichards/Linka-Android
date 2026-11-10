@@ -105,6 +105,21 @@
             <p id="accountProfileDevice"></p>
             <p id="accountProfileVerification"></p>
             <p id="accountProfileExpiry"></p>
+            <section class="wallet-panel" id="walletPanel" aria-labelledby="walletHeading" aria-live="polite">
+              <div class="wallet-panel-heading">
+                <div>
+                  <div class="eyebrow">ACCOUNT BALANCE</div>
+                  <h3 id="walletHeading">LINKA credits</h3>
+                </div>
+                <button class="button secondary wallet-refresh" id="walletRefresh" type="button">Refresh</button>
+              </div>
+              <p class="wallet-status" id="walletStatus">Loading your account balance…</p>
+              <div class="wallet-balance-grid" id="walletBalances"></div>
+              <div class="wallet-ledger-heading"><strong>Recent activity</strong><span>Credit units · latest first</span></div>
+              <div class="wallet-ledger" id="walletLedger"></div>
+              <button class="button secondary" id="walletLoadMore" type="button" hidden>Load more activity</button>
+              <p class="account-help">Balances and activity are read-only. Credit purchases, refunds and usage adjustments require trusted server-side payment/provider events.</p>
+            </section>
             <section class="account-device-panel" id="accountDevicesPanel" aria-labelledby="accountDevicesHeading">
               <div class="account-device-heading">
                 <div>

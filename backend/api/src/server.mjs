@@ -161,7 +161,8 @@ function safeErrorCode(error) {
     "invalid_display_name", "invalid_password", "invalid_registration",
     "invalid_login", "email_already_registered", "device_already_linked",
     "device_identity_mismatch", "device_identity_conflict", "device_revoked",
-    "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
+    "invalid_device_identity", "invalid_device_platform", "invalid_device_management",
+    "device_not_found", "invalid_credentials",
     "authentication_store_unavailable", "account_recovery_unavailable",
     "email_verification_unavailable", "invalid_e164", "invalid_destination_number",
     "account_auth_required", "invalid_conversation", "invalid_conversation_kind",
@@ -433,6 +434,40 @@ async function handleRequest(req, res) {
           expiresAt: session.expiresAt
         });
       }
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/me/devices") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`account-devices-list:${session.accountId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const devices = await postgresStore.listAccountDevices({
+        accountId: session.accountId,
+        currentDeviceId: session.deviceId
+      });
+      response(res, 200, { devices });
+      return;
+    }
+
+    const accountDeviceRoute = /^\\/v1\\/me\\/devices\\/([^/]+)$/.exec(path);
+    if (accountDeviceRoute && req.method === "DELETE") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`account-device-revoke:${session.accountId}:${remote}`, 12, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const revoked = await postgresStore.revokeAccountDevice({
+        accountId: session.accountId,
+        deviceId: accountDeviceRoute[1]
+      });
+      runtime.revokeDeviceSessions(accountDeviceRoute[1]);
+      response(res, 200, revoked);
       return;
     }
 

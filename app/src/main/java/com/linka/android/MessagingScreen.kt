@@ -55,6 +55,7 @@ import com.linka.android.core.identity.LocalDeviceIdentity
 import com.linka.android.messaging.AndroidMessagingKeyManager
 import com.linka.android.messaging.MessagingDevicePublicKey
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 private data class ConversationSummary(
@@ -239,6 +240,20 @@ fun LinkaMessagingScreen(
                     "[Unable to decrypt this message on this Android device]" to false
                 }
             }
+            val attachmentManifest = item.optJSONArray("attachmentManifest") ?: JSONArray()
+            val attachments = (0 until attachmentManifest.length()).mapNotNull { attachmentIndex ->
+                val attachment = attachmentManifest.optJSONObject(attachmentIndex)
+                    ?: return@mapNotNull null
+                val attachmentId = attachment.optString("attachmentId")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                    ?: return@mapNotNull null
+                ConversationAttachment(
+                    attachmentId = attachmentId,
+                    filename = "Encrypted attachment",
+                    mediaType = "application/octet-stream",
+                    sizeBytes = 0
+                )
+            }
             ConversationMessage(
                 id = messageId,
                 sender = if (senderAccountId == currentProfile.accountId) "You" else
@@ -249,7 +264,8 @@ fun LinkaMessagingScreen(
                 receiptDevices = item.optJSONObject("receiptSummary")?.optInt("recipientDevices"),
                 deliveredDevices = item.optJSONObject("receiptSummary")?.optInt("deliveredDevices"),
                 readDevices = item.optJSONObject("receiptSummary")?.optInt("readDevices"),
-                decryptedSuccessfully = decryptedSuccessfully
+                decryptedSuccessfully = decryptedSuccessfully,
+                attachments = attachments
             )
         }.asReversed()
         messages = decoded
@@ -545,6 +561,45 @@ fun LinkaMessagingScreen(
                                     color = MaterialTheme.colorScheme.secondary
                                 )
                             }
+                            message.attachments.forEach { attachment ->
+                                OutlinedButton(
+                                    onClick = {
+                                        val conversationId = selectedConversationId ?: return@OutlinedButton
+                                        scope.launch {
+                                            loading = true
+                                            runCatching {
+                                                val remote = accountClient.downloadEncryptedAttachment(
+                                                    conversationId = conversationId,
+                                                    attachmentId = attachment.attachmentId
+                                                )
+                                                val envelope = remote.optJSONObject("keyEnvelope")
+                                                    ?: throw IllegalStateException("This device has no attachment key envelope.")
+                                                val bytes = keyManager.decryptAttachment(
+                                                    ciphertextBase64 = remote.getString("ciphertextBase64"),
+                                                    encryptionVersion = remote.getString("encryptionVersion"),
+                                                    conversationId = conversationId,
+                                                    keyEnvelope = envelope
+                                                )
+                                                val filename = "LINKA-attachment-${attachment.attachmentId.take(8)}.bin"
+                                                pendingAttachmentSave = PendingAttachmentSave(
+                                                    bytes = bytes,
+                                                    filename = filename,
+                                                    mediaType = "application/octet-stream"
+                                                )
+                                                attachmentSaver.launch(filename)
+                                                status = "Attachment decrypted on this device. Choose where to save it."
+                                            }.onFailure { error ->
+                                                pendingAttachmentSave = null
+                                                status = error.message ?: "Could not download and decrypt this attachment."
+                                            }
+                                            loading = false
+                                        }
+                                    },
+                                    enabled = !loading
+                                ) {
+                                    Text("Download encrypted attachment")
+                                }
+                            }
                         }
                     }
                 }
@@ -567,13 +622,46 @@ fun LinkaMessagingScreen(
                                 minLines = 2,
                                 maxLines = 5
                             )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = { attachmentPicker.launch(arrayOf("*/*")) },
+                                    enabled = !loading
+                                ) {
+                                    Text("Attach file (4 MiB max)")
+                                }
+                                if (selectedAttachmentName != null) {
+                                    Text(
+                                        "${selectedAttachmentName} · ${selectedAttachmentSize ?: 0} bytes",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    OutlinedButton(
+                                        onClick = {
+                                            selectedAttachmentUri = null
+                                            selectedAttachmentName = null
+                                            selectedAttachmentSize = null
+                                        },
+                                        enabled = !loading
+                                    ) {
+                                        Text("Remove")
+                                    }
+                                }
+                            }
                             Button(
                                 onClick = {
                                     val conversationId = selectedConversationId ?: return@Button
                                     val currentProfile = profile ?: return@Button
+                                    val attachmentUri = selectedAttachmentUri
                                     scope.launch {
                                         loading = true
-                                        runCatching {
+                                        var uploadedAttachmentId: String? = null
+                                        try {
                                             val directory = accountClient.listConversationEncryptionDevices(conversationId)
                                             val missing = directory.filter {
                                                 it.algorithm != AndroidMessagingKeyManager.ALGORITHM ||
@@ -583,23 +671,55 @@ fun LinkaMessagingScreen(
                                             require(missing.isEmpty()) {
                                                 "Sending is blocked until all ${missing.size} device(s) register ECDH keys."
                                             }
+                                            val caption = draft.ifBlank { "Shared an encrypted attachment" }
+                                            if (attachmentUri != null) {
+                                                val sourceBytes = withContext(Dispatchers.IO) {
+                                                    readEncryptedAttachmentSource(context, attachmentUri)
+                                                }
+                                                val encryptedAttachment = keyManager.encryptAttachmentForDevices(
+                                                    plaintext = sourceBytes,
+                                                    conversationId = conversationId,
+                                                    devices = directory
+                                                )
+                                                val uploaded = accountClient.uploadEncryptedAttachment(
+                                                    conversationId = conversationId,
+                                                    body = encryptedAttachment
+                                                )
+                                                uploadedAttachmentId = uploaded.optString("attachmentId")
+                                                    .takeIf { it.isNotBlank() && it != "null" }
+                                                    ?: throw IllegalStateException("LINKA did not return an attachment ID.")
+                                            }
                                             val payload = keyManager.encryptForDevices(
-                                                plaintext = draft,
+                                                plaintext = caption,
                                                 conversationId = conversationId,
                                                 senderAccountId = currentProfile.accountId,
                                                 devices = directory
                                             )
+                                            if (uploadedAttachmentId != null) {
+                                                payload.put(
+                                                    "attachmentManifest",
+                                                    JSONArray().put(JSONObject().put("attachmentId", uploadedAttachmentId))
+                                                )
+                                            }
                                             accountClient.sendEncryptedMessage(conversationId, payload)
                                             draft = ""
+                                            selectedAttachmentUri = null
+                                            selectedAttachmentName = null
+                                            selectedAttachmentSize = null
                                             loadConversation(conversationId, currentProfile)
-                                            status = "Encrypted message sent to ${directory.size} active device(s)."
-                                        }.onFailure { error ->
+                                            status = if (uploadedAttachmentId == null) {
+                                                "Encrypted message sent to ${directory.size} active device(s)."
+                                            } else {
+                                                "Encrypted attachment and message sent to ${directory.size} active device(s)."
+                                            }
+                                        } catch (error: Exception) {
                                             status = error.message ?: "Could not send the encrypted message."
+                                        } finally {
+                                            loading = false
                                         }
-                                        loading = false
                                     }
                                 },
-                                enabled = !loading && draft.isNotBlank() &&
+                                enabled = !loading && (draft.isNotBlank() || selectedAttachmentUri != null) &&
                                     activeDevices.isNotEmpty() && activeDevices.none {
                                         it.algorithm != AndroidMessagingKeyManager.ALGORITHM ||
                                             it.keyVersion == null || it.publicKeyBase64.isNullOrBlank()
@@ -610,7 +730,7 @@ fun LinkaMessagingScreen(
                                 else {
                                     Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null)
                                     Spacer(Modifier.size(6.dp))
-                                    Text("Encrypt and send")
+                                    Text(if (selectedAttachmentUri != null) "Encrypt and send attachment" else "Encrypt and send")
                                 }
                             }
                         }
@@ -621,7 +741,7 @@ fun LinkaMessagingScreen(
 
         item {
             Text(
-                "Encrypted attachments, key transparency and Android account key recovery are not enabled yet. Delivery/read receipts are recorded per recipient device. Android 12 or later is required for hardware-backed ECDH key agreement.",
+                "Attachments are encrypted on this device and can be decrypted only by active devices with matching LINKA keys. File names are not shared with the server. Key transparency and account key recovery still require separate security review. Android 12 or later is required for hardware-backed ECDH key agreement.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

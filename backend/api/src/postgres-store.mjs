@@ -773,7 +773,7 @@ export function createPostgresStore({
       fail("invalid_message_attachments");
     }
     const ciphertext = Buffer.from(input.ciphertextBase64, "base64");
-    if (ciphertext.length < 28 || ciphertext.length > 4 * 1024 * 1024 + 28 ||
+    if (ciphertext.length !== plaintextSizeBytes + 28 ||
         ciphertext.toString("base64") !== input.ciphertextBase64) {
       fail("invalid_message_attachments");
     }

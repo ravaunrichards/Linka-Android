@@ -5,7 +5,9 @@ import {
   signLinkaDeviceChallenge
 } from "./auth-crypto.mjs";
 import {
+  decryptAttachmentForDevice,
   decryptMessageForDevice,
+  encryptAttachmentForDevices,
   encryptMessageForDevices,
   generateBrowserEncryptionIdentity
 } from "./messaging-crypto.mjs";
@@ -409,7 +411,7 @@ async function loadSelectedConversation() {
     const body = document.createElement("p");
     if (message.encryptionVersion === "LINKA-E2EE-2" && message.keyEnvelope && browserMessagingIdentity) {
       try {
-        body.textContent = await decryptMessageForDevice({
+        const decrypted = await decryptMessageForDevice({
           ciphertext: message.ciphertext,
           encryptionVersion: message.encryptionVersion,
           conversationId,
@@ -418,6 +420,34 @@ async function loadSelectedConversation() {
           privateKey: browserMessagingIdentity.privateKey,
           keyEnvelope: message.keyEnvelope
         });
+        let parsed = null;
+        try { parsed = JSON.parse(decrypted); } catch { /* Legacy text body remains supported. */ }
+        if (parsed && typeof parsed.text === "string" && Array.isArray(parsed.attachments)) {
+          body.textContent = parsed.text;
+          for (const attachment of parsed.attachments) {
+            if (!attachment || typeof attachment.attachmentId !== "string" ||
+                typeof attachment.filename !== "string" ||
+                !Number.isSafeInteger(attachment.sizeBytes)) continue;
+            const download = document.createElement("button");
+            download.type = "button";
+            download.className = "chat-attachment";
+            download.textContent = "Download " + attachment.filename + " (" +
+              attachment.sizeBytes.toLocaleString() + " bytes)";
+            download.addEventListener("click", async () => {
+              download.disabled = true;
+              try {
+                await downloadEncryptedAttachment(conversationId, attachment);
+              } catch (error) {
+                chatStatus(error.message || "Could not decrypt this attachment.", "error");
+              } finally {
+                download.disabled = false;
+              }
+            });
+            article.append(download);
+          }
+        } else {
+          body.textContent = decrypted;
+        }
         if (message.senderAccountId !== currentAccountProfile.accountId && message.messageId) {
           readableMessageIds.push(message.messageId);
         }
@@ -490,12 +520,64 @@ async function createConversationFromForm() {
   chatStatus("Conversation ready. Every active device must register its ECDH key before messages can be sent.", "success");
 }
 
+function safeAttachmentName(value) {
+  const cleaned = String(value || "linka-attachment")
+    .replace(/[\\/:*?"<>|\\u0000-\\u001f]/g, "_")
+    .slice(0, 180);
+  return cleaned || "linka-attachment";
+}
+
+async function downloadEncryptedAttachment(conversationId, metadata) {
+  const { token, origin } = activeApiSession();
+  if (!browserMessagingIdentity) throw new Error("This browser device has no messaging decryption key.");
+  const response = await apiRequest(
+    origin,
+    "/v1/conversations/" + encodeURIComponent(conversationId) +
+      "/attachments/" + encodeURIComponent(metadata.attachmentId),
+    { token }
+  );
+  const attachment = response.attachment;
+  const bytes = await decryptAttachmentForDevice({
+    ciphertextBase64: attachment.ciphertextBase64,
+    encryptionVersion: attachment.encryptionVersion,
+    conversationId,
+    deviceId: currentAccountProfile.deviceId,
+    privateKey: browserMessagingIdentity.privateKey,
+    keyEnvelope: attachment.keyEnvelope
+  });
+  if (bytes.length !== metadata.sizeBytes ||
+      bytes.length !== attachment.plaintextSizeBytes) {
+    throw new Error("The decrypted attachment size does not match the encrypted message.");
+  }
+  const mimeType = typeof metadata.mediaType === "string" &&
+    /^[a-z0-9.+-]+\\/[a-z0-9.+-]+$/i.test(metadata.mediaType)
+      ? metadata.mediaType : "application/octet-stream";
+  const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  try {
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = safeAttachmentName(metadata.filename);
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 async function sendEncryptedMessage() {
   const { token, origin } = activeApiSession();
   const conversationId = document.getElementById("chatConversationSelect").value;
   if (!conversationId) throw new Error("Select a conversation first.");
   const input = document.getElementById("chatMessageDraft");
   const plaintext = input.value;
+  const attachmentInput = document.getElementById("chatAttachmentInput");
+  const file = attachmentInput?.files?.[0] || null;
+  if (!plaintext.trim() && !file) throw new Error("Write a message or select an attachment.");
+  if (file && (file.size < 1 || file.size > 4 * 1024 * 1024)) {
+    throw new Error("Choose a file between 1 byte and 4 MiB.");
+  }
   const devicesResponse = await apiRequest(
     origin,
     "/v1/conversations/" + encodeURIComponent(conversationId) + "/encryption-devices",
@@ -508,8 +590,33 @@ async function sendEncryptedMessage() {
   if (missing.length > 0) {
     throw new Error("Sending is blocked until all " + missing.length + " unregistered device(s) sign in and register encryption keys.");
   }
+
+  const attachmentMetadata = [];
+  const attachmentManifest = [];
+  if (file) {
+    chatStatus("Encrypting the selected attachment on this device…");
+    const encryptedAttachment = await encryptAttachmentForDevices({
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      conversationId,
+      devices
+    });
+    const uploaded = await apiRequest(
+      origin,
+      "/v1/conversations/" + encodeURIComponent(conversationId) + "/attachments",
+      { method: "POST", token, body: encryptedAttachment }
+    );
+    const attachmentId = uploaded.attachment.attachmentId;
+    attachmentManifest.push({ attachmentId });
+    attachmentMetadata.push({
+      attachmentId,
+      filename: safeAttachmentName(file.name),
+      mediaType: file.type || "application/octet-stream",
+      sizeBytes: file.size
+    });
+  }
+
   const encrypted = await encryptMessageForDevices({
-    plaintext,
+    plaintext: JSON.stringify({ text: plaintext, attachments: attachmentMetadata }),
     conversationId,
     senderAccountId: currentAccountProfile.accountId,
     devices
@@ -520,12 +627,14 @@ async function sendEncryptedMessage() {
     {
       method: "POST",
       token,
-      body: encrypted
+      body: { ...encrypted, attachmentManifest }
     }
   );
   input.value = "";
+  if (attachmentInput) attachmentInput.value = "";
   await loadSelectedConversation();
-  chatStatus("Encrypted message sent to " + devices.length + " active device(s).", "success");
+  chatStatus("Encrypted message sent to " + devices.length + " active device(s)" +
+    (file ? " with an encrypted attachment." : "."), "success");
 }
 
 async function initializeMessagingPanel(origin, token) {

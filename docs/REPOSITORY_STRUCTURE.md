@@ -6,8 +6,8 @@
 - Default branch: `main`
 - Product: LINKA — independent Android-first international calling and communications platform.
 - Active implementation branch for encrypted messaging: `feature/messaging-device-e2ee`
-- Structure inventory commit: `b2b99f420781b9b767ca0e3dd4f35cd7541c9e88`
-- Recursive Git tree: 168 entries; not truncated.
+- Structure inventory commit: `bfaea9fedcc925a64af8f49d537e45275af8b187`
+- Recursive Git tree: 172 entries; not truncated.
 - This is an existing application repository. Preserve the current Gradle root and package layout; do not create a second repository or an artificial duplicate tree.
 
 ## Current repository tree
@@ -146,13 +146,13 @@ The original planning layout used `android/`, `web-preview/` and root `tests/` n
 | Android dialer/phone UI | `PhoneHubScreen.kt` and phone hub components | Native phone hub currently hands carrier dialing to Android system `ACTION_DIAL`; not a replacement default dialer |
 | Android contacts | Phone hub/system contact handoffs | Full in-app contact management/sync is not yet a verified complete capability |
 | Android telecom | Android manifest and phone handoff integration | Full Telecom/Core-Telecom/default-dialer integration remains a release task |
-| Android messaging/security | `MessagingScreen.kt`, `messaging/` | Device-key E2EE implementation and tests on PR #20 |
+| Android messaging/security | `MessagingScreen.kt`, `messaging/`, `LinkaAccountPanel.kt` | Device-key E2EE, encrypted attachments, per-device receipts and account device list/revoke controls on PR #20 |
 | Backend API/authentication | `backend/api/src/server.mjs`, `account-auth.mjs` | API routing and signed-device/account authentication |
 | Backend signaling/calls | `backend/api/src/runtime.mjs`, server routes | Call-control signaling queue; does not relay voice media |
-| Backend device management | `postgres-store.mjs`, database schema/migrations | Device/account/session/key records and authorization |
+| Backend device management | `postgres-store.mjs`, `server.mjs`, `backend/api/test/device-management-store.test.mjs`, `backend/api/test/postgres-device-management.integration.test.mjs` | Owner-scoped device inventory and revocation; revokes sessions, disables relay consent and retires active ECDH keys |
 | Backend notifications | Current API and Android messaging/call notification code | Dedicated production push/delivery service is not yet verified |
 | Web preview | `web/` | Browser companion; not yet a full web telephone client |
-| Tests | Android `test/`, Android `androidTest/`, backend `test/` and E2E scripts | Tests remain beside the owning module to preserve clear dependency boundaries |
+| Tests | Android `test/`, Android `androidTest/`, backend `test/` and E2E scripts | Includes Android client tests and PostgreSQL-backed account-device revocation integration tests; tests remain beside the owning module |
 | Deployment | `docs/RENDER_API_SERVICE.md`, `deployment/README.md` | Runbook only; live Render configuration is not verified by repository CI |
 | Documentation | `docs/` and root governance files | Product, architecture, tests, security, release gates and recovery checkpoints |
 

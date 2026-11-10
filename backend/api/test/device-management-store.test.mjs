@@ -110,7 +110,7 @@ test("rejects invalid account/device identifiers before database access", async 
   await assert.rejects(store.listAccountDevices({ accountId: "bad" }), { code: "invalid_account_id" });
   await assert.rejects(
     store.revokeAccountDevice({ accountId: ACCOUNT, deviceId: "bad" }),
-    { code: "invalid_device_id" }
+    { code: "invalid_account_id" }
   );
   assert.equal(pool.calls.length, 0);
 });
@@ -136,8 +136,8 @@ test("revokes a lost device, all its sessions and active messaging keys atomical
   assert.ok(queries.some(call => call.sql.includes("UPDATE linka_private.auth_sessions SET revoked_at = now()")));
   assert.ok(queries.some(call => call.sql.includes("UPDATE linka_private.device_encryption_keys SET retired_at = now()")));
   assert.equal(queries.at(-1).sql, "COMMIT");
-  for (const query of queries.filter(call => queryTouchesAccount(query))) {
-    assert.ok(query.values.includes(ACCOUNT));
+  for (const call of queries.filter(item => queryTouchesAccount(item))) {
+    assert.ok(call.values.includes(ACCOUNT));
   }
 });
 

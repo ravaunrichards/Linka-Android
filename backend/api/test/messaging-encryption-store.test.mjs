@@ -56,7 +56,8 @@ function envelope(recipientDeviceId, recipientKeyVersion, publicKeyDer = ecdhPub
 }
 
 function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
-  conversationDevices = null, historyMember = true } = {}) {
+  conversationDevices = null, historyMember = true, receiptMember = true,
+  receiptRows = null } = {}) {
   const calls = [];
   const pool = {
     calls,
@@ -141,6 +142,16 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
             public_key_fingerprint: null
           }
         ]) : [] };
+      }
+      if (sql.includes("FROM linka_private.conversation_members") && sql.includes("left_at IS NULL")) {
+        return { rows: receiptMember ? [{ active: true }] : [] };
+      }
+      if (sql.includes("UPDATE linka_private.internal_message_device_receipts")) {
+        const ids = values[3] ?? [];
+        return {
+          rows: receiptRows ?? ids.map(message_id => ({ message_id })),
+          rowCount: (receiptRows ?? ids).length
+        };
       }
       throw new Error("unexpected_pool_query");
     },
@@ -375,6 +386,91 @@ test("rejects duplicate and malformed key envelopes before opening a transaction
       keyEnvelopes: [malformed]
     }),
     { code: "invalid_message_key_envelopes" }
+  );
+  assert.equal(pool.calls.length, 0);
+});
+
+test("marks only this active device's incoming messages as delivered or read", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const messageIds = [randomUUID(), randomUUID()];
+  const result = await store.markInternalMessagesReceived({
+    accountId: MEMBER,
+    deviceId: MEMBER_DEVICE,
+    conversationId: CONVERSATION,
+    messageIds,
+    state: "read"
+  });
+  assert.deepEqual(result, {
+    state: "read",
+    acknowledged: 2,
+    messageIds
+  });
+  const update = pool.calls.find(call =>
+    call.sql.includes("UPDATE linka_private.internal_message_device_receipts")
+  );
+  assert.ok(update);
+  assert.deepEqual(update.values, [CONVERSATION, MEMBER, MEMBER_DEVICE, messageIds, "read"]);
+  assert.match(update.sql, /m\.sender_account_id <> \$2::uuid/);
+  assert.match(update.sql, /r\.recipient_device_id = \$3::uuid/);
+  assert.match(update.sql, /r\.recipient_account_id = \$2::uuid/);
+});
+
+test("does not acknowledge messages for a non-member or an account that sent them", async () => {
+  const outsiderPool = fakePool({ receiptMember: false });
+  const outsiderStore = createPostgresStore({ pool: outsiderPool });
+  await assert.rejects(
+    outsiderStore.markInternalMessagesReceived({
+      accountId: OUTSIDER,
+      deviceId: MEMBER_DEVICE,
+      conversationId: CONVERSATION,
+      messageIds: [randomUUID()],
+      state: "read"
+    }),
+    { code: "conversation_not_found", statusCode: 404 }
+  );
+  assert.equal(outsiderPool.calls.some(call =>
+    call.sql.includes("UPDATE linka_private.internal_message_device_receipts")
+  ), false);
+
+  const senderPool = fakePool({ receiptRows: [] });
+  const senderStore = createPostgresStore({ pool: senderPool });
+  const result = await senderStore.markInternalMessagesReceived({
+    accountId: ACTOR,
+    deviceId: SENDER_DEVICE,
+    conversationId: CONVERSATION,
+    messageIds: [randomUUID()],
+    state: "read"
+  });
+  assert.deepEqual(result, {
+    state: "read",
+    acknowledged: 0,
+    messageIds: []
+  });
+});
+
+test("rejects malformed receipt batches before querying PostgreSQL", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  await assert.rejects(
+    store.markInternalMessagesReceived({
+      accountId: MEMBER,
+      deviceId: MEMBER_DEVICE,
+      conversationId: CONVERSATION,
+      messageIds: [randomUUID(), randomUUID()],
+      state: "seen"
+    }),
+    { code: "invalid_message_receipt" }
+  );
+  await assert.rejects(
+    store.markInternalMessagesReceived({
+      accountId: MEMBER,
+      deviceId: MEMBER_DEVICE,
+      conversationId: CONVERSATION,
+      messageIds: [CONVERSATION, CONVERSATION],
+      state: "delivered"
+    }),
+    { code: "invalid_message_receipt" }
   );
   assert.equal(pool.calls.length, 0);
 });

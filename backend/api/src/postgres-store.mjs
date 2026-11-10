@@ -910,7 +910,7 @@ export function createPostgresStore({
         ciphertext.toString("base64") !== input.ciphertext) {
       fail("invalid_message_ciphertext");
     }
-    if (input.encryptionVersion !== "LINKA-E2EE-2") {
+    if (!["LINKA-E2EE-1", "LINKA-E2EE-2"].includes(input.encryptionVersion)) {
       fail("invalid_message_encryption_version");
     }
     const manifest = input.attachmentManifest ?? [];
@@ -922,6 +922,30 @@ export function createPostgresStore({
       return requireUuid(entry.attachmentId, "attachmentManifest[" + index + "].attachmentId");
     });
     if (new Set(attachmentIds).size !== attachmentIds.length) fail("invalid_message_attachments");
+    if (input.encryptionVersion === "LINKA-E2EE-1") {
+      if (attachmentIds.length > 0) {
+        fail("invalid_message_attachments", "Attachments require LINKA-E2EE-2 device key envelopes.");
+      }
+      const messageId = randomUUID();
+      const result = await pool.query(
+        "INSERT INTO linka_private.internal_messages " +
+        "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
+        "SELECT $1::uuid, c.conversation_id, $3::uuid, $4::bytea, $5::text, '[]'::jsonb " +
+        "FROM linka_private.conversations c " +
+        "WHERE c.conversation_id = $2::uuid " +
+        "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
+        "WHERE m.conversation_id = c.conversation_id AND m.account_id = $3::uuid AND m.left_at IS NULL) " +
+        "RETURNING message_id, conversation_id, sender_account_id, " +
+        "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, encryption_version, " +
+        "attachment_manifest, sent_at",
+        [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
+      );
+      if (result.rows.length === 0) {
+        fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+      }
+      return mapInternalMessage(result.rows[0]);
+    }
+
     const keyEnvelopes = normalizeMessageKeyEnvelopes(input.keyEnvelopes);
     const senderDeviceId = requireUuid(input.senderDeviceId, "senderDeviceId");
 

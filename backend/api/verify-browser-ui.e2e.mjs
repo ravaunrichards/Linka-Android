@@ -314,9 +314,15 @@ async function main() {
         senderAccountId,
         devices: directory.devices
       });
-      const target = encrypted.keyEnvelopes.find(item => item.recipientDeviceId === recipientDeviceId);
-      if (!target) throw new Error("Recipient device envelope was not created.");
-      target.wrappedContentKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(48).fill(3)));
+      if (!encrypted.keyEnvelopes.some(item => item.recipientDeviceId === recipientDeviceId)) {
+        throw new Error("Recipient device envelope was not created.");
+      }
+      const tamperedEnvelope = btoa(String.fromCharCode(...new Uint8Array(48).fill(3)));
+      const keyEnvelopes = encrypted.keyEnvelopes.map(item =>
+        item.recipientDeviceId === recipientDeviceId
+          ? { ...item, wrappedContentKeyBase64: tamperedEnvelope }
+          : item
+      );
       const response = await fetch(
         "/v1/conversations/" + encodeURIComponent(conversationId) + "/messages",
         {
@@ -325,7 +331,7 @@ async function main() {
             Authorization: "Bearer " + token,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(encrypted)
+          body: JSON.stringify({ ...encrypted, keyEnvelopes })
         }
       );
       const result = await response.json();

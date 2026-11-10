@@ -869,8 +869,6 @@ export function createPostgresStore({
       "AND m.account_id = $2::uuid AND m.left_at IS NULL " +
       "JOIN linka_private.internal_attachment_key_envelopes e " +
       "ON e.attachment_id = a.attachment_id AND e.recipient_device_id = $3::uuid " +
-      "AND e.recipient_key_version = (SELECT k.key_version FROM linka_private.device_encryption_keys k " +
-      "WHERE k.device_id = e.recipient_device_id AND k.retired_at IS NULL) " +
       "WHERE a.attachment_id = $1::uuid AND a.conversation_id = $4::uuid AND a.message_id IS NOT NULL",
       [attachmentId, accountId, deviceId, conversationId]
     );

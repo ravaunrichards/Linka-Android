@@ -755,6 +755,145 @@ export function createPostgresStore({
     })));
   }
 
+  async function createInternalAttachment(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_message_attachments");
+    const accountId = requireUuid(input.accountId, "accountId");
+    const senderDeviceId = requireUuid(input.senderDeviceId, "senderDeviceId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    if (input.encryptionVersion !== "LINKA-E2EE-2") fail("invalid_message_encryption_version");
+    const plaintextSizeBytes = Number(input.plaintextSizeBytes);
+    if (!Number.isSafeInteger(plaintextSizeBytes) || plaintextSizeBytes < 1 || plaintextSizeBytes > 4 * 1024 * 1024) {
+      fail("invalid_message_attachments");
+    }
+    if (typeof input.ciphertextBase64 !== "string" ||
+        input.ciphertextBase64.length < 40 ||
+        input.ciphertextBase64.length > 5_600_000 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.ciphertextBase64)) {
+      fail("invalid_message_attachments");
+    }
+    const ciphertext = Buffer.from(input.ciphertextBase64, "base64");
+    if (ciphertext.length < 28 || ciphertext.length > 4 * 1024 * 1024 + 28 ||
+        ciphertext.toString("base64") !== input.ciphertextBase64) {
+      fail("invalid_message_attachments");
+    }
+    const keyEnvelopes = normalizeMessageKeyEnvelopes(input.keyEnvelopes);
+    const attachmentId = randomUUID();
+
+    return transaction(async client => {
+      const devices = await client.query(
+        "SELECT d.device_id, d.account_id, k.key_version " +
+        "FROM linka_private.conversation_members m " +
+        "JOIN linka_private.user_devices d ON d.account_id = m.account_id AND d.revoked_at IS NULL " +
+        "LEFT JOIN LATERAL (" +
+        "SELECT key_version FROM linka_private.device_encryption_keys " +
+        "WHERE device_id = d.device_id AND retired_at IS NULL LIMIT 1" +
+        ") k ON TRUE " +
+        "WHERE m.conversation_id = $1::uuid AND m.left_at IS NULL " +
+        "ORDER BY d.device_id FOR SHARE OF m, d",
+        [conversationId]
+      );
+      if (devices.rows.length === 0 ||
+          !devices.rows.some(row => row.account_id === accountId && row.device_id === senderDeviceId)) {
+        fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+      }
+      if (devices.rows.some(row => row.key_version == null)) {
+        fail("conversation_encryption_keys_incomplete",
+          "Every active conversation device must register an encryption key before uploading.", 409);
+      }
+      if (devices.rows.length > 100 || keyEnvelopes.length !== devices.rows.length) {
+        fail("invalid_message_key_envelopes",
+          "A wrapped attachment key is required for every active device.");
+      }
+      const expected = new Map(devices.rows.map(row => [
+        row.device_id,
+        safeInteger(row.key_version, "encryption key version")
+      ]));
+      for (const envelope of keyEnvelopes) {
+        if (!expected.has(envelope.recipientDeviceId)) fail("invalid_message_key_envelopes");
+        if (expected.get(envelope.recipientDeviceId) !== envelope.recipientKeyVersion) {
+          fail("conversation_encryption_key_changed",
+            "A recipient encryption key changed. Refresh the device list and encrypt again.", 409);
+        }
+      }
+      if ([...expected.keys()].some(deviceId =>
+        !keyEnvelopes.some(item => item.recipientDeviceId === deviceId))) {
+        fail("invalid_message_key_envelopes");
+      }
+
+      await client.query(
+        "INSERT INTO linka_private.internal_message_attachments " +
+        "(attachment_id, conversation_id, uploader_account_id, ciphertext, plaintext_size_bytes, encryption_version) " +
+        "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, $5::integer, $6::text)",
+        [attachmentId, conversationId, accountId, ciphertext, plaintextSizeBytes, input.encryptionVersion]
+      );
+      for (const envelope of keyEnvelopes) {
+        await client.query(
+          "INSERT INTO linka_private.internal_attachment_key_envelopes " +
+          "(attachment_id, recipient_device_id, recipient_key_version, ephemeral_public_key_der, " +
+          "hkdf_salt, wrap_nonce, wrapped_attachment_key) " +
+          "VALUES ($1::uuid, $2::uuid, $3::integer, $4::bytea, $5::bytea, $6::bytea, $7::bytea)",
+          [
+            attachmentId, envelope.recipientDeviceId, envelope.recipientKeyVersion,
+            envelope.ephemeralPublicKeyDer, envelope.hkdfSalt, envelope.wrapNonce,
+            envelope.wrappedContentKey
+          ]
+        );
+      }
+      return Object.freeze({
+        attachmentId,
+        plaintextSizeBytes,
+        ciphertextSizeBytes: ciphertext.length,
+        encryptionVersion: input.encryptionVersion
+      });
+    });
+  }
+
+  async function getInternalAttachment(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_message_attachments");
+    const accountId = requireUuid(input.accountId, "accountId");
+    const deviceId = requireUuid(input.deviceId, "deviceId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    const attachmentId = requireUuid(input.attachmentId, "attachmentId");
+    const result = await pool.query(
+      "SELECT replace(encode(a.ciphertext, 'base64'), E'\\n', '') AS ciphertext_base64, " +
+      "a.plaintext_size_bytes, a.encryption_version, " +
+      "e.recipient_device_id, e.recipient_key_version, " +
+      "replace(encode(e.ephemeral_public_key_der, 'base64'), E'\\n', '') AS ephemeral_public_key_base64, " +
+      "replace(encode(e.hkdf_salt, 'base64'), E'\\n', '') AS hkdf_salt_base64, " +
+      "replace(encode(e.wrap_nonce, 'base64'), E'\\n', '') AS wrap_nonce_base64, " +
+      "replace(encode(e.wrapped_attachment_key, 'base64'), E'\\n', '') AS wrapped_attachment_key_base64 " +
+      "FROM linka_private.internal_message_attachments a " +
+      "JOIN linka_private.conversation_members m ON m.conversation_id = a.conversation_id " +
+      "AND m.account_id = $2::uuid AND m.left_at IS NULL " +
+      "JOIN linka_private.internal_attachment_key_envelopes e " +
+      "ON e.attachment_id = a.attachment_id AND e.recipient_device_id = $3::uuid " +
+      "AND e.recipient_key_version = (SELECT k.key_version FROM linka_private.device_encryption_keys k " +
+      "WHERE k.device_id = e.recipient_device_id AND k.retired_at IS NULL) " +
+      "WHERE a.attachment_id = $1::uuid AND a.conversation_id = $4::uuid AND a.message_id IS NOT NULL",
+      [attachmentId, accountId, deviceId, conversationId]
+    );
+    if (result.rows.length === 0) {
+      fail("attachment_not_found", "Attachment was not found or is not available to this device.", 404);
+    }
+    const row = result.rows[0];
+    return Object.freeze({
+      attachmentId,
+      ciphertextBase64: row.ciphertext_base64,
+      plaintextSizeBytes: safeInteger(row.plaintext_size_bytes, "attachment size"),
+      encryptionVersion: row.encryption_version,
+      keyEnvelope: Object.freeze({
+        recipientDeviceId: row.recipient_device_id,
+        recipientKeyVersion: safeInteger(row.recipient_key_version, "recipient encryption key version"),
+        ephemeralPublicKeyBase64: row.ephemeral_public_key_base64,
+        hkdfSaltBase64: row.hkdf_salt_base64,
+        wrapNonceBase64: row.wrap_nonce_base64,
+        wrappedContentKeyBase64: row.wrapped_attachment_key_base64
+      })
+    });
+  }
+
   async function sendInternalMessage(input) {
     assertStoreOpen();
     if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -773,115 +912,135 @@ export function createPostgresStore({
         ciphertext.toString("base64") !== input.ciphertext) {
       fail("invalid_message_ciphertext");
     }
-    if (typeof input.encryptionVersion !== "string" ||
-        !/^[A-Za-z0-9._-]{1,64}$/.test(input.encryptionVersion)) {
+    if (input.encryptionVersion !== "LINKA-E2EE-2") {
       fail("invalid_message_encryption_version");
     }
-    const attachmentManifest = input.attachmentManifest ?? [];
-    if (!Array.isArray(attachmentManifest)) fail("invalid_message_attachments");
-    if (attachmentManifest.length > 0) {
-      fail("message_attachments_unavailable", "Encrypted attachment storage is not implemented yet.", 501);
-    }
+    const manifest = input.attachmentManifest ?? [];
+    if (!Array.isArray(manifest) || manifest.length > 10) fail("invalid_message_attachments");
+    const attachmentIds = manifest.map((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        fail("invalid_message_attachments");
+      }
+      return requireUuid(entry.attachmentId, "attachmentManifest[" + index + "].attachmentId");
+    });
+    if (new Set(attachmentIds).size !== attachmentIds.length) fail("invalid_message_attachments");
+    const keyEnvelopes = normalizeMessageKeyEnvelopes(input.keyEnvelopes);
+    const senderDeviceId = requireUuid(input.senderDeviceId, "senderDeviceId");
 
-    if (input.encryptionVersion === "LINKA-E2EE-2") {
-      const senderDeviceId = requireUuid(input.senderDeviceId, "senderDeviceId");
-      const keyEnvelopes = normalizeMessageKeyEnvelopes(input.keyEnvelopes);
-      return transaction(async client => {
-        const devices = await client.query(
-          "SELECT d.device_id, d.account_id, k.key_version " +
-          "FROM linka_private.conversation_members m " +
-          "JOIN linka_private.user_devices d ON d.account_id = m.account_id AND d.revoked_at IS NULL " +
-          "LEFT JOIN LATERAL (" +
-          "SELECT key_version FROM linka_private.device_encryption_keys " +
-          "WHERE device_id = d.device_id AND retired_at IS NULL LIMIT 1" +
-          ") k ON TRUE " +
-          "WHERE m.conversation_id = $1::uuid AND m.left_at IS NULL " +
-          "ORDER BY d.device_id FOR SHARE OF m, d",
-          [conversationId]
+    return transaction(async client => {
+      const devices = await client.query(
+        "SELECT d.device_id, d.account_id, k.key_version " +
+        "FROM linka_private.conversation_members m " +
+        "JOIN linka_private.user_devices d ON d.account_id = m.account_id AND d.revoked_at IS NULL " +
+        "LEFT JOIN LATERAL (" +
+        "SELECT key_version FROM linka_private.device_encryption_keys " +
+        "WHERE device_id = d.device_id AND retired_at IS NULL LIMIT 1" +
+        ") k ON TRUE " +
+        "WHERE m.conversation_id = $1::uuid AND m.left_at IS NULL " +
+        "ORDER BY d.device_id FOR SHARE OF m, d",
+        [conversationId]
+      );
+      if (devices.rows.length === 0 ||
+          !devices.rows.some(row => row.account_id === accountId && row.device_id === senderDeviceId)) {
+        fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+      }
+      if (devices.rows.some(row => row.key_version == null)) {
+        fail("conversation_encryption_keys_incomplete",
+          "Every active conversation device must register an encryption key before sending.", 409);
+      }
+      if (devices.rows.length > 100 || keyEnvelopes.length !== devices.rows.length) {
+        fail("invalid_message_key_envelopes",
+          "A key envelope is required for every active device in the conversation.");
+      }
+      const expected = new Map(devices.rows.map(row => [row.device_id, safeInteger(row.key_version, "encryption key version")]));
+      for (const envelope of keyEnvelopes) {
+        if (!expected.has(envelope.recipientDeviceId)) {
+          fail("invalid_message_key_envelopes", "An envelope targets a device outside the conversation.");
+        }
+        if (expected.get(envelope.recipientDeviceId) !== envelope.recipientKeyVersion) {
+          fail("conversation_encryption_key_changed",
+            "A recipient encryption key changed. Refresh the device list and encrypt again.", 409);
+        }
+      }
+      if ([...expected.keys()].some(deviceId => !keyEnvelopes.some(item => item.recipientDeviceId === deviceId))) {
+        fail("invalid_message_key_envelopes");
+      }
+
+      if (attachmentIds.length > 0) {
+        const lockedAttachments = await client.query(
+          "SELECT attachment_id FROM linka_private.internal_message_attachments " +
+          "WHERE attachment_id = ANY($1::uuid[]) AND conversation_id = $2::uuid " +
+          "AND uploader_account_id = $3::uuid AND message_id IS NULL FOR UPDATE",
+          [attachmentIds, conversationId, accountId]
         );
-        if (devices.rows.length === 0 ||
-            !devices.rows.some(row => row.account_id === accountId && row.device_id === senderDeviceId)) {
-          fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
+        if (lockedAttachments.rows.length !== attachmentIds.length) {
+          fail("invalid_message_attachments", "An attachment is missing, already sent or belongs to another account.");
         }
-        if (devices.rows.some(row => row.key_version == null)) {
-          fail("conversation_encryption_keys_incomplete",
-            "Every active conversation device must register an encryption key before sending.", 409);
-        }
-        if (devices.rows.length > 100 || keyEnvelopes.length !== devices.rows.length) {
-          fail("invalid_message_key_envelopes",
-            "A key envelope is required for every active device in the conversation.");
-        }
-        const expected = new Map(devices.rows.map(row => [row.device_id, safeInteger(row.key_version, "encryption key version")]));
-        for (const envelope of keyEnvelopes) {
-          if (!expected.has(envelope.recipientDeviceId)) {
-            fail("invalid_message_key_envelopes", "An envelope targets a device outside the conversation.");
+        for (const attachmentId of attachmentIds) {
+          const coverage = await client.query(
+            "SELECT count(*)::integer AS active_device_count, " +
+            "count(*) FILTER (WHERE e.recipient_key_version = active.key_version)::integer AS current_envelope_count " +
+            "FROM (" +
+            "SELECT d.device_id, k.key_version " +
+            "FROM linka_private.conversation_members m " +
+            "JOIN linka_private.user_devices d ON d.account_id = m.account_id AND d.revoked_at IS NULL " +
+            "JOIN linka_private.device_encryption_keys k ON k.device_id = d.device_id AND k.retired_at IS NULL " +
+            "WHERE m.conversation_id = $2::uuid AND m.left_at IS NULL" +
+            ") active " +
+            "LEFT JOIN linka_private.internal_attachment_key_envelopes e " +
+            "ON e.attachment_id = $1::uuid AND e.recipient_device_id = active.device_id",
+            [attachmentId, conversationId]
+          );
+          const row = coverage.rows[0];
+          if (safeInteger(row.active_device_count, "attachment device count") !== devices.rows.length ||
+              safeInteger(row.current_envelope_count, "attachment envelope count") !== devices.rows.length) {
+            fail("conversation_attachment_key_changed",
+              "An active device changed after the attachment was encrypted. Upload it again.", 409);
           }
-          if (expected.get(envelope.recipientDeviceId) !== envelope.recipientKeyVersion) {
-            fail("conversation_encryption_key_changed",
-              "A recipient encryption key changed. Refresh the device list and encrypt again.", 409);
-          }
         }
-        if (keyEnvelopes.some(item => !expected.has(item.recipientDeviceId)) ||
-            [...expected.keys()].some(deviceId => !keyEnvelopes.some(item => item.recipientDeviceId === deviceId))) {
-          fail("invalid_message_key_envelopes",
-            "A key envelope is required for every active device in the conversation.");
-        }
+      }
 
-        const messageId = randomUUID();
-        const inserted = await client.query(
-          "INSERT INTO linka_private.internal_messages " +
-          "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
-          "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, $5::text, '[]'::jsonb) " +
-          "RETURNING message_id, conversation_id, sender_account_id, " +
-          "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, encryption_version, attachment_manifest, sent_at",
-          [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
+      const messageId = randomUUID();
+      const attachmentManifest = attachmentIds.map(attachmentId => ({ attachmentId }));
+      const inserted = await client.query(
+        "INSERT INTO linka_private.internal_messages " +
+        "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
+        "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::bytea, $5::text, $6::jsonb) " +
+        "RETURNING message_id, conversation_id, sender_account_id, " +
+        "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, " +
+        "encryption_version, attachment_manifest, sent_at",
+        [messageId, conversationId, accountId, ciphertext, input.encryptionVersion, JSON.stringify(attachmentManifest)]
+      );
+      for (const envelope of keyEnvelopes) {
+        await client.query(
+          "INSERT INTO linka_private.internal_message_key_envelopes " +
+          "(message_id, recipient_device_id, recipient_key_version, ephemeral_public_key_der, " +
+          "hkdf_salt, wrap_nonce, wrapped_content_key) " +
+          "VALUES ($1::uuid, $2::uuid, $3::integer, $4::bytea, $5::bytea, $6::bytea, $7::bytea)",
+          [messageId, envelope.recipientDeviceId, envelope.recipientKeyVersion,
+            envelope.ephemeralPublicKeyDer, envelope.hkdfSalt, envelope.wrapNonce, envelope.wrappedContentKey]
         );
-        for (const envelope of keyEnvelopes) {
-          await client.query(
-            "INSERT INTO linka_private.internal_message_key_envelopes " +
-            "(message_id, recipient_device_id, recipient_key_version, ephemeral_public_key_der, " +
-            "hkdf_salt, wrap_nonce, wrapped_content_key) " +
-            "VALUES ($1::uuid, $2::uuid, $3::integer, $4::bytea, $5::bytea, $6::bytea, $7::bytea)",
-            [
-              messageId, envelope.recipientDeviceId, envelope.recipientKeyVersion,
-              envelope.ephemeralPublicKeyDer, envelope.hkdfSalt, envelope.wrapNonce,
-              envelope.wrappedContentKey
-            ]
-          );
-        }
-        for (const device of devices.rows) {
-          await client.query(
-            "INSERT INTO linka_private.internal_message_device_receipts " +
-            "(message_id, recipient_device_id, recipient_account_id) " +
-            "VALUES ($1::uuid, $2::uuid, $3::uuid)",
-            [messageId, device.device_id, device.account_id]
-          );
-        }
-        return mapInternalMessage(inserted.rows[0]);
-      });
-    }
-
-    const messageId = randomUUID();
-    const result = await pool.query(
-      "INSERT INTO linka_private.internal_messages " +
-      "(message_id, conversation_id, sender_account_id, ciphertext, encryption_version, attachment_manifest) " +
-      "SELECT $1::uuid, c.conversation_id, $3::uuid, $4::bytea, $5::text, '[]'::jsonb " +
-      "FROM linka_private.conversations c " +
-      "WHERE c.conversation_id = $2::uuid " +
-      "AND EXISTS (SELECT 1 FROM linka_private.conversation_members m " +
-      "WHERE m.conversation_id = c.conversation_id AND m.account_id = $3::uuid AND m.left_at IS NULL) " +
-      "RETURNING message_id, conversation_id, sender_account_id, " +
-      "replace(encode(ciphertext, 'base64'), E'\\n', '') AS ciphertext, encryption_version, " +
-      "attachment_manifest, sent_at",
-      [messageId, conversationId, accountId, ciphertext, input.encryptionVersion]
-    );
-    if (result.rows.length === 0) {
-      fail("conversation_not_found", "Conversation was not found or the account is not an active member.", 404);
-    }
-    return mapInternalMessage(result.rows[0]);
+      }
+      for (const device of devices.rows) {
+        await client.query(
+          "INSERT INTO linka_private.internal_message_device_receipts " +
+          "(message_id, recipient_device_id, recipient_account_id) " +
+          "VALUES ($1::uuid, $2::uuid, $3::uuid)",
+          [messageId, device.device_id, device.account_id]
+        );
+      }
+      if (attachmentIds.length > 0) {
+        await client.query(
+          "UPDATE linka_private.internal_message_attachments SET message_id = $2::uuid " +
+          "WHERE attachment_id = ANY($1::uuid[]) AND message_id IS NULL",
+          [attachmentIds, messageId]
+        );
+      }
+      return mapInternalMessage(inserted.rows[0]);
+    });
   }
 
-  function mapInternalMessage(row, viewerAccountId = null) {
+    function mapInternalMessage(row, viewerAccountId = null) {
     return Object.freeze({
       messageId: row.message_id,
       conversationId: row.conversation_id,
@@ -1047,6 +1206,8 @@ export function createPostgresStore({
     listConversations,
     registerDeviceEncryptionKey,
     listConversationEncryptionDevices,
+    createInternalAttachment,
+    getInternalAttachment,
     sendInternalMessage,
     markInternalMessagesReceived,
     listInternalMessages,
@@ -1062,18 +1223,21 @@ export function createPostgresStore({
         "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
         "WHERE version = $2::text) AS messaging_encryption_migration_ready, " +
         "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
-        "WHERE version = $3::text) AS messaging_receipts_migration_ready",
-        ["0002_cross_account_integrity", "0003_messaging_device_encryption", "0004_messaging_device_receipts"]
+        "WHERE version = $3::text) AS messaging_receipts_migration_ready, " +
+        "EXISTS (SELECT 1 FROM linka_private.schema_migrations " +
+        "WHERE version = $4::text) AS messaging_attachments_migration_ready",
+        ["0002_cross_account_integrity", "0003_messaging_device_encryption", "0004_messaging_device_receipts", "0005_messaging_encrypted_attachments"]
       );
       if (result.rows[0]?.wallet_function_ready !== true ||
           result.rows[0]?.cross_account_migration_ready !== true ||
           result.rows[0]?.messaging_encryption_migration_ready !== true ||
-          result.rows[0]?.messaging_receipts_migration_ready !== true) {
+          result.rows[0]?.messaging_receipts_migration_ready !== true ||
+          result.rows[0]?.messaging_attachments_migration_ready !== true) {
         fail("database_schema_not_ready");
       }
       return Object.freeze({
         status: "ready",
-        schemaVersion: "0004_messaging_device_receipts"
+        schemaVersion: "0005_messaging_encrypted_attachments"
       });
     },
 

@@ -213,6 +213,36 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
     );
 
     let sentMessageId;
+    let uploadedAttachmentId;
+    const attachmentPlaintextSize = 36;
+    const attachmentCiphertext = randomBytes(attachmentPlaintextSize + 28);
+
+    await t.test("uploads ciphertext and creates a recipient-specific attachment key envelope", async () => {
+      const uploaded = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments`,
+        "POST",
+        {
+          ciphertextBase64: attachmentCiphertext.toString("base64"),
+          plaintextSizeBytes: attachmentPlaintextSize,
+          encryptionVersion: "LINKA-E2EE-2",
+          keyEnvelopes: envelopeBody()
+        }
+      );
+      assert.equal(uploaded.status, 201);
+      assert.ok(uploaded.body.attachment.attachmentId);
+      assert.equal(uploaded.body.attachment.plaintextSizeBytes, attachmentPlaintextSize);
+      assert.equal(uploaded.body.attachment.ciphertextSizeBytes, attachmentCiphertext.length);
+      assert.equal(uploaded.body.attachment.encryptionVersion, "LINKA-E2EE-2");
+      assert.equal(Object.hasOwn(uploaded.body.attachment, "ciphertextBase64"), false);
+      uploadedAttachmentId = uploaded.body.attachment.attachmentId;
+
+      const unattached = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments/${uploadedAttachmentId}`
+      );
+      assert.equal(unattached.status, 404);
+    });
     await t.test("requires a current encrypted key envelope for every active device", async () => {
       const missing = await request(
         devices[0],
@@ -234,13 +264,48 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
         {
           ciphertext,
           encryptionVersion: "LINKA-E2EE-2",
-          keyEnvelopes: envelopeBody()
+          keyEnvelopes: envelopeBody(),
+          attachmentManifest: [{ attachmentId: uploadedAttachmentId }]
         }
       );
       assert.equal(sent.status, 201);
       assert.equal(sent.body.message.encryptionVersion, "LINKA-E2EE-2");
       assert.equal(sent.body.message.senderAccountId, accounts[0].accountId);
       sentMessageId = sent.body.message.messageId;
+      assert.deepEqual(sent.body.message.attachmentManifest, [
+        { attachmentId: uploadedAttachmentId }
+      ]);
+    });
+
+    await t.test("returns encrypted attachment bytes with only the requesting device's key envelope", async () => {
+      for (const device of devices.slice(0, 3)) {
+        const downloaded = await request(
+          device,
+          `/v1/conversations/${conversationId}/attachments/${uploadedAttachmentId}`
+        );
+        assert.equal(downloaded.status, 200);
+        assert.equal(downloaded.body.attachment.attachmentId, uploadedAttachmentId);
+        assert.equal(downloaded.body.attachment.encryptionVersion, "LINKA-E2EE-2");
+        assert.equal(downloaded.body.attachment.plaintextSizeBytes, attachmentPlaintextSize);
+        assert.equal(
+          downloaded.body.attachment.keyEnvelope.recipientDeviceId,
+          device.deviceId
+        );
+        assert.equal(
+          downloaded.body.attachment.keyEnvelope.recipientKeyVersion,
+          device.keyVersion
+        );
+        assert.equal(
+          Buffer.from(downloaded.body.attachment.ciphertextBase64, "base64").length,
+          attachmentCiphertext.length
+        );
+      }
+      const outsider = await request(
+        devices[3],
+        `/v1/conversations/${conversationId}/attachments/${uploadedAttachmentId}`
+      );
+      assert.equal(outsider.status, 404);
+      assert.deepEqual(outsider.body, { error: "attachment_not_found" });
     });
 
     await t.test("returns only the envelope for the authenticated device", async () => {

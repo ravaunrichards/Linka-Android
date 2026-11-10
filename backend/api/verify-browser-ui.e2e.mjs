@@ -124,6 +124,23 @@ async function main() {
     await waitForStatus(firstPage, "account created and this browser device linked successfully");
     assert.equal(await firstPage.locator("#accountProfileEmail").innerText(), email);
     assert.equal(await firstPage.locator("#accountProfileName").innerText(), displayName);
+    await firstPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await firstPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
+    assert.equal(await firstPage.locator(".wallet-balance-card").count(), 4);
+    assert.match(
+      await firstPage.locator("#walletLedger").innerText(),
+      /No wallet activity has been recorded/
+    );
+    await firstPage.locator("#walletRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
     await firstPage.locator("#accountDevicesPanel").waitFor({ state: "visible" });
     await firstPage.waitForFunction(
       () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 1,
@@ -162,6 +179,13 @@ async function main() {
     await secondPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
     await waitForStatus(secondPage, "Signed in to LINKA on this browser device");
     assert.equal(await secondPage.locator("#accountProfileEmail").innerText(), email);
+    await secondPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await secondPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
+    assert.equal(await secondPage.locator(".wallet-balance-card").count(), 4);
 
     const secondSession = await readOwnProfile(secondPage);
     assert.equal(secondSession.status, 200);

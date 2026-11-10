@@ -497,7 +497,7 @@ test("deletes only the uploader's own unsent encrypted attachment and its key en
     call.sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments")
   );
   assert.deepEqual(lock.values, [MESSAGE, CONVERSATION, ACTOR]);
-  assert.match(lock.sql, /uploader_account_id = \\$3::uuid/);
+  assert.ok(lock.sql.includes("uploader_account_id = $3::uuid"));
   assert.match(lock.sql, /message_id IS NULL FOR UPDATE/);
   const envelopeDelete = pool.calls.find(call =>
     call.sql.includes("DELETE FROM linka_private.internal_attachment_key_envelopes")

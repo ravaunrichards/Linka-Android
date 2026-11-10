@@ -70,6 +70,37 @@ class AndroidMessagingKeyManagerTest {
     }
 
     @Test
+    fun registrationKeepsTheSameDevicePublicKeyAcrossRepeatedAppRestores() {
+        val first = manager.createRegistrationBody()
+        val second = manager.createRegistrationBody()
+        assertEquals(first.getString("publicKeyBase64"), second.getString("publicKeyBase64"))
+
+        val publicKey = Base64.decode(first.getString("publicKeyBase64"), Base64.NO_WRAP)
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(publicKey)
+            .joinToString("") { byte -> "%02X".format(byte) }
+        val statement = listOf(
+            "LINKA-MESSAGING-KEY-V1",
+            identity.deviceId,
+            AndroidMessagingKeyManager.ALGORITHM,
+            fingerprint
+        ).joinToString("\n").toByteArray(StandardCharsets.UTF_8)
+        assertTrue(
+            LocalDeviceIdentity.verify(
+                identity.publicKeyBase64,
+                statement,
+                Base64.decode(first.getString("signatureBase64"), Base64.NO_WRAP)
+            )
+        )
+        assertTrue(
+            LocalDeviceIdentity.verify(
+                identity.publicKeyBase64,
+                statement,
+                Base64.decode(second.getString("signatureBase64"), Base64.NO_WRAP)
+            )
+        )
+    }
+
+    @Test
     fun encryptsAndDecryptsE2ee2MessageUsingItsDeviceEnvelope() {
         val registration = manager.createRegistrationBody()
         val recipient = MessagingDevicePublicKey(

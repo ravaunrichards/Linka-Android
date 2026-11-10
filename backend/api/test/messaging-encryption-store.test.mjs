@@ -172,7 +172,7 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
       if (sql.includes("FROM linka_private.internal_message_attachments a")) {
         return { rows: attachmentDownloadRows ?? [{
           ciphertext_base64: base64(Buffer.alloc(64, 7)),
-          plaintext_size_bytes: 32,
+          plaintext_size_bytes: 36,
           encryption_version: "LINKA-E2EE-2",
           recipient_device_id: MEMBER_DEVICE,
           recipient_key_version: 1,
@@ -433,11 +433,11 @@ test("stores encrypted attachment bytes with one wrapped attachment key for ever
     senderDeviceId: SENDER_DEVICE,
     conversationId: CONVERSATION,
     ciphertextBase64: ciphertext,
-    plaintextSizeBytes: 32,
+    plaintextSizeBytes: 36,
     encryptionVersion: "LINKA-E2EE-2",
     keyEnvelopes
   });
-  assert.equal(attachment.plaintextSizeBytes, 32);
+  assert.equal(attachment.plaintextSizeBytes, 36);
   assert.equal(attachment.ciphertextSizeBytes, 64);
   assert.equal(attachment.encryptionVersion, "LINKA-E2EE-2");
   assert.ok(attachment.attachmentId);

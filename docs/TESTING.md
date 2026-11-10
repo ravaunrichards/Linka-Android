@@ -139,3 +139,20 @@ The account HTTP integration test verifies:
 The ordinary API CI run **42617603655** on 2026-11-09 reports 63 passed, 0 failed and 2 PostgreSQL-only tests skipped because `DATABASE_URL` is absent.
 
 These tests verify account registration/login and persistent account/device/session integration in a disposable CI database. They do not verify production database hosting, email verification, password-reset delivery, public wallet endpoints, payment processing or live carrier services.
+
+## Native phone favourites — Android emulator acceptance
+
+Android CI runs `gradle :app:connectedDebugAndroidTest` on an API 35 Google APIs emulator. `PhoneFavoritesStoreTest` exercises the actual Android Keystore and app-private SharedPreferences:
+
+1. Save and reload multiple favourites across separate store instances.
+2. Verify that the AES key exists in Android Keystore and its encoded key bytes are not exportable.
+3. Verify the preferences contain only the IV and ciphertext entries; display names and phone numbers are not stored as plaintext.
+4. Modify ciphertext and verify AES-GCM authentication fails closed and clears the unreadable payload.
+5. Remove the Keystore key and verify orphaned ciphertext is cleared instead of returned.
+6. Remove one encrypted field and verify the incomplete record is cleared.
+7. Save an updated list and verify removed favourites remain removed after reopening.
+8. Verify favourite dial intents use ACTION_DIAL with the tel: scheme and favourite message intents use ACTION_SENDTO with the smsto: scheme; invalid numbers must not produce an intent.
+
+The JVM codec tests separately validate number/name normalization, JSON round-trip, malformed payload handling, duplicate replacement and the 50-entry limit.
+
+The emulator tests prove Android Keystore-backed storage behavior in the emulator environment. They do not replace handset-specific checks of the ACTION_DIAL and ACTION_SENDTO system-app handoffs, actual carrier calls/SMS, SIM availability or manufacturer-specific behavior. Perform the physical phone handoff checklist before marking handset acceptance complete.

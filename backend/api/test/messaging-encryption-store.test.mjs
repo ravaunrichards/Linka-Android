@@ -58,7 +58,7 @@ function envelope(recipientDeviceId, recipientKeyVersion, publicKeyDer = ecdhPub
 
 function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
   conversationDevices = null, historyMember = true, receiptMember = true,
-  receiptRows = null } = {}) {
+  receiptRows = null, attachmentRows = null, attachmentDownloadRows = null } = {}) {
   const calls = [];
   const pool = {
     calls,
@@ -107,7 +107,7 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
               sender_account_id: values[2],
               ciphertext: Buffer.from(values[3]).toString("base64"),
               encryption_version: values[4],
-              attachment_manifest: [],
+              attachment_manifest: typeof values[5] === "string" ? JSON.parse(values[5]) : [],
               sent_at: CREATED_AT
             }], rowCount: 1 };
           }
@@ -116,6 +116,21 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
           }
           if (sql.includes("INSERT INTO linka_private.internal_message_device_receipts")) {
             return { rows: [], rowCount: 1 };
+          }
+          if (sql.includes("INSERT INTO linka_private.internal_message_attachments")) {
+            return { rows: [], rowCount: 1 };
+          }
+          if (sql.includes("INSERT INTO linka_private.internal_attachment_key_envelopes")) {
+            return { rows: [], rowCount: 1 };
+          }
+          if (sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments")) {
+            return { rows: attachmentRows ?? values[0].map(attachment_id => ({ attachment_id })) };
+          }
+          if (sql.includes("SELECT count(*)::integer AS active_device_count")) {
+            return { rows: [{ active_device_count: 3, current_envelope_count: 3 }] };
+          }
+          if (sql.includes("UPDATE linka_private.internal_message_attachments")) {
+            return { rows: [], rowCount: values[0].length };
           }
           throw new Error("unexpected_transaction_query");
         },
@@ -153,6 +168,19 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
           rows: receiptRows ?? ids.map(message_id => ({ message_id })),
           rowCount: (receiptRows ?? ids).length
         };
+      }
+      if (sql.includes("FROM linka_private.internal_message_attachments a")) {
+        return { rows: attachmentDownloadRows ?? [{
+          ciphertext_base64: base64(Buffer.alloc(64, 7)),
+          plaintext_size_bytes: 32,
+          encryption_version: "LINKA-E2EE-2",
+          recipient_device_id: MEMBER_DEVICE,
+          recipient_key_version: 1,
+          ephemeral_public_key_base64: base64(ecdhPublicKey()),
+          hkdf_salt_base64: base64(Buffer.alloc(16, 1)),
+          wrap_nonce_base64: base64(Buffer.alloc(12, 2)),
+          wrapped_attachment_key_base64: base64(Buffer.alloc(48, 3))
+        }] };
       }
       throw new Error("unexpected_pool_query");
     },
@@ -389,6 +417,102 @@ test("rejects duplicate and malformed key envelopes before opening a transaction
     { code: "invalid_message_key_envelopes" }
   );
   assert.equal(pool.calls.length, 0);
+});
+
+test("stores encrypted attachment bytes with one wrapped attachment key for every current conversation device", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const ciphertext = base64(Buffer.alloc(64, 7));
+  const keyEnvelopes = [
+    envelope(SENDER_DEVICE, 1),
+    envelope(SECOND_DEVICE, 2),
+    envelope(MEMBER_DEVICE, 1)
+  ];
+  const attachment = await store.createInternalAttachment({
+    accountId: ACTOR,
+    senderDeviceId: SENDER_DEVICE,
+    conversationId: CONVERSATION,
+    ciphertextBase64: ciphertext,
+    plaintextSizeBytes: 32,
+    encryptionVersion: "LINKA-E2EE-2",
+    keyEnvelopes
+  });
+  assert.equal(attachment.plaintextSizeBytes, 32);
+  assert.equal(attachment.ciphertextSizeBytes, 64);
+  assert.equal(attachment.encryptionVersion, "LINKA-E2EE-2");
+  assert.ok(attachment.attachmentId);
+  assert.deepEqual(
+    pool.calls.filter(call => call.sql.includes("INSERT INTO linka_private.internal_attachment_key_envelopes")).map(call => call.values[1]),
+    [SENDER_DEVICE, SECOND_DEVICE, MEMBER_DEVICE]
+  );
+});
+
+test("rejects oversized, non-canonical or non-E2EE attachment payloads before database writes", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const common = {
+    accountId: ACTOR,
+    senderDeviceId: SENDER_DEVICE,
+    conversationId: CONVERSATION,
+    plaintextSizeBytes: 32,
+    encryptionVersion: "LINKA-E2EE-2",
+    keyEnvelopes: [envelope(SENDER_DEVICE, 1), envelope(SECOND_DEVICE, 2), envelope(MEMBER_DEVICE, 1)]
+  };
+  await assert.rejects(
+    store.createInternalAttachment({ ...common, ciphertextBase64: "not-base64" }),
+    { code: "invalid_message_attachments" }
+  );
+  await assert.rejects(
+    store.createInternalAttachment({ ...common, ciphertextBase64: base64(Buffer.alloc(64)), plaintextSizeBytes: 4 * 1024 * 1024 + 1 }),
+    { code: "invalid_message_attachments" }
+  );
+  await assert.rejects(
+    store.createInternalAttachment({ ...common, ciphertextBase64: base64(Buffer.alloc(64)), encryptionVersion: "LINKA-E2EE-1" }),
+    { code: "invalid_message_encryption_version" }
+  );
+  assert.equal(pool.calls.length, 0);
+});
+
+test("returns encrypted attachment data and only the envelope for the requesting device", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const result = await store.getInternalAttachment({
+    accountId: MEMBER,
+    deviceId: MEMBER_DEVICE,
+    conversationId: CONVERSATION,
+    attachmentId: MESSAGE
+  });
+  assert.equal(result.attachmentId, MESSAGE);
+  assert.equal(result.encryptionVersion, "LINKA-E2EE-2");
+  assert.equal(result.keyEnvelope.recipientDeviceId, MEMBER_DEVICE);
+  assert.equal(result.keyEnvelope.recipientKeyVersion, 1);
+  assert.equal(result.ciphertextBase64, base64(Buffer.alloc(64, 7)));
+  assert.match(pool.calls[0].sql, /m\.account_id = \$2::uuid/);
+  assert.match(pool.calls[0].sql, /e\.recipient_device_id = \$3::uuid/);
+  assert.match(pool.calls[0].sql, /a\.message_id IS NOT NULL/);
+});
+
+test("links only the sender's previously uploaded encrypted attachments to a message", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const attachmentId = "00000000-0000-4000-8000-000000000041";
+  const message = await store.sendInternalMessage({
+    accountId: ACTOR,
+    senderDeviceId: SENDER_DEVICE,
+    conversationId: CONVERSATION,
+    ciphertext: base64(Buffer.from("encrypted text body")),
+    encryptionVersion: "LINKA-E2EE-2",
+    keyEnvelopes: [
+      envelope(SENDER_DEVICE, 1),
+      envelope(SECOND_DEVICE, 2),
+      envelope(MEMBER_DEVICE, 1)
+    ],
+    attachmentManifest: [{ attachmentId }]
+  });
+  assert.deepEqual(message.attachmentManifest, [{ attachmentId }]);
+  const lock = pool.calls.find(call => call.sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments"));
+  assert.deepEqual(lock.values, [[attachmentId], CONVERSATION, ACTOR]);
+  assert.ok(pool.calls.some(call => call.sql.includes("UPDATE linka_private.internal_message_attachments SET message_id")));
 });
 
 test("marks only this active device's incoming messages as delivered or read", async () => {

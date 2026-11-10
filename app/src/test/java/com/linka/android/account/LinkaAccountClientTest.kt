@@ -132,6 +132,77 @@ class LinkaAccountClientTest {
     }
 
     @Test
+    fun listsAccountDevicesUsingTheCurrentAccountToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val devices = org.json.JSONArray()
+            .put(
+                JSONObject()
+                    .put("deviceId", "device-current")
+                    .put("platform", "android")
+                    .put("deviceName", "Current phone")
+                    .put("createdAt", "2026-11-10T10:00:00.000Z")
+                    .put("lastSeenAt", "2026-11-10T11:00:00.000Z")
+                    .put("status", "active")
+                    .put("activeSessionCount", 1)
+                    .put("current", true)
+            )
+            .put(
+                JSONObject()
+                    .put("deviceId", "device-old")
+                    .put("platform", "web")
+                    .put("deviceName", "Old browser")
+                    .put("createdAt", "2026-11-09T10:00:00.000Z")
+                    .put("lastSeenAt", JSONObject.NULL)
+                    .put("revokedAt", JSONObject.NULL)
+                    .put("status", "active")
+                    .put("activeSessionCount", 1)
+                    .put("current", false)
+            )
+        val transport = FakeTransport(JSONObject().put("devices", devices))
+        val client = client(store, transport)
+
+        val result = client.listAccountDevices()
+
+        assertEquals(2, result.size)
+        assertEquals("Current phone", result[0].deviceName)
+        assertTrue(result[0].current)
+        assertEquals("active", result[1].status)
+        assertEquals("Old browser", result[1].deviceName)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertEquals("/v1/me/devices", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun revokesOnlyTheSelectedDeviceAfterUsingAccountAuthentication() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(JSONObject().put("status", "revoked"))
+        val client = client(store, transport)
+
+        val response = client.revokeAccountDevice("device-to-revoke")
+
+        assertEquals("revoked", response.getString("status"))
+        val call = transport.calls.single()
+        assertEquals("DELETE", call.method)
+        assertEquals("/v1/me/devices/device-to-revoke", call.path)
+        assertNull(call.body)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun revokingBlankDeviceIdDoesNotMakeANetworkRequest() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport()
+        val client = client(store, transport)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { client.revokeAccountDevice("  ") }
+        }
+        assertTrue(transport.calls.isEmpty())
+    }
+
+    @Test
     fun restoreSessionWithoutTokenDoesNotMakeNetworkRequest() = runBlocking {
         val store = FakeTokenStore(token = null)
         val transport = FakeTransport()

@@ -125,9 +125,12 @@
               </div>
               <label class="account-label" for="chatMessageDraft">Message</label>
               <textarea id="chatMessageDraft" rows="3" maxlength="6000" placeholder="Write an encrypted message…"></textarea>
+              <label class="account-label" for="chatAttachmentInput">Encrypted attachment — up to 4 MiB</label>
+              <input id="chatAttachmentInput" type="file" aria-describedby="chatAttachmentHelp">
+              <p class="account-help" id="chatAttachmentHelp">Files are encrypted in this browser. LINKA stores only ciphertext and a separate wrapped key for each active device.</p>
               <button class="button primary" id="chatSendMessage" type="button">Encrypt and send</button>
               <p class="chat-status" id="chatStatus" role="status" aria-live="polite">Messaging keys are registered for this browser after sign-in.</p>
-              <p class="account-help">Attachments, delivery/read receipts and Android chat UI are not enabled yet. Every active device in the conversation must register its encryption key before sending.</p>
+              <p class="account-help">Browser encrypted text and file attachments (up to 4 MiB) are supported. Per-device delivery/read receipts are recorded. Native Android attachment picker/download remains unfinished. Every active device must register its encryption key before sending.</p>
             </section>
           </article>
           <article class="notice" id="accountNotice">

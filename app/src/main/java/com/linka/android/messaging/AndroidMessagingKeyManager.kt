@@ -214,6 +214,152 @@ internal class AndroidMessagingKeyManager(
         }
     }
 
+    fun encryptAttachmentForDevices(
+        plaintext: ByteArray,
+        conversationId: String,
+        devices: List<MessagingDevicePublicKey>
+    ): JSONObject {
+        ensureSupported()
+        require(plaintext.isNotEmpty() && plaintext.size <= MAX_ATTACHMENT_BYTES) {
+            "Choose an attachment between 1 byte and 4 MiB."
+        }
+        require(conversationId.isNotBlank())
+        require(devices.isNotEmpty() && devices.size <= MAX_DEVICES)
+        require(devices.map { it.deviceId }.distinct().size == devices.size) {
+            "The conversation contains duplicate device identities."
+        }
+        devices.forEach { device ->
+            require(device.algorithm == ALGORITHM && (device.keyVersion ?: 0) > 0 &&
+                device.deviceId.isNotBlank() && !device.publicKeyBase64.isNullOrBlank()) {
+                "Every active conversation device must register an ECDH P-256 key before uploading."
+            }
+        }
+
+        val attachmentKey = randomBytes(CONTENT_KEY_BYTES)
+        try {
+            val nonce = randomBytes(GCM_NONCE_BYTES)
+            val cipher = Cipher.getInstance(AES_GCM)
+            cipher.init(
+                Cipher.ENCRYPT_MODE,
+                SecretKeySpec(attachmentKey, AES),
+                GCMParameterSpec(GCM_TAG_BITS, nonce)
+            )
+            cipher.updateAAD(attachmentMessageInfo(conversationId))
+            val encrypted = cipher.doFinal(plaintext)
+            val packed = ByteArray(nonce.size + encrypted.size)
+            System.arraycopy(nonce, 0, packed, 0, nonce.size)
+            System.arraycopy(encrypted, 0, packed, nonce.size, encrypted.size)
+
+            val envelopes = JSONArray()
+            devices.forEach { device ->
+                val recipientPublic = parseP256PublicKey(decodeBase64(device.publicKeyBase64!!))
+                val ephemeralPair = generateEphemeralPair()
+                val salt = randomBytes(HKDF_SALT_BYTES)
+                val wrapNonce = randomBytes(GCM_NONCE_BYTES)
+                val info = attachmentEnvelopeInfo(conversationId, device.deviceId, device.keyVersion!!)
+                val sharedSecret = deriveSharedSecret(ephemeralPair.private, recipientPublic)
+                val wrappingKey = hkdfSha256(sharedSecret, salt, info, CONTENT_KEY_BYTES)
+                sharedSecret.fill(0)
+                try {
+                    val wrapCipher = Cipher.getInstance(AES_GCM)
+                    wrapCipher.init(
+                        Cipher.ENCRYPT_MODE,
+                        SecretKeySpec(wrappingKey, AES),
+                        GCMParameterSpec(GCM_TAG_BITS, wrapNonce)
+                    )
+                    wrapCipher.updateAAD(info)
+                    val wrapped = wrapCipher.doFinal(attachmentKey)
+                    envelopes.put(
+                        JSONObject()
+                            .put("recipientDeviceId", device.deviceId)
+                            .put("recipientKeyVersion", device.keyVersion)
+                            .put("ephemeralPublicKeyBase64", encodeBase64(ephemeralPair.public.encoded))
+                            .put("hkdfSaltBase64", encodeBase64(salt))
+                            .put("wrapNonceBase64", encodeBase64(wrapNonce))
+                            .put("wrappedContentKeyBase64", encodeBase64(wrapped))
+                    )
+                } finally {
+                    wrappingKey.fill(0)
+                }
+            }
+
+            return JSONObject()
+                .put("ciphertextBase64", encodeBase64(packed))
+                .put("plaintextSizeBytes", plaintext.size)
+                .put("encryptionVersion", ENCRYPTION_VERSION)
+                .put("keyEnvelopes", envelopes)
+        } finally {
+            attachmentKey.fill(0)
+        }
+    }
+
+    fun decryptAttachment(
+        ciphertextBase64: String,
+        encryptionVersion: String,
+        conversationId: String,
+        keyEnvelope: JSONObject
+    ): ByteArray {
+        ensureSupported()
+        require(encryptionVersion == ENCRYPTION_VERSION) {
+            "This attachment uses an unsupported encryption version."
+        }
+        require(keyEnvelope.optString("recipientDeviceId") == deviceIdentity.deviceId) {
+            "No attachment-key envelope exists for this Android device."
+        }
+        val keyVersion = keyEnvelope.optInt("recipientKeyVersion", -1)
+        require(keyVersion > 0) { "The attachment-key envelope has an invalid key version." }
+        val packed = decodeBase64(ciphertextBase64)
+        require(packed.size in 29..(MAX_ATTACHMENT_BYTES + GCM_NONCE_BYTES + GCM_TAG_BYTES)) {
+            "Encrypted attachment has an invalid size."
+        }
+
+        val ephemeralPublic = parseP256PublicKey(
+            decodeBase64(keyEnvelope.getString("ephemeralPublicKeyBase64"))
+        )
+        val salt = decodeBase64(keyEnvelope.getString("hkdfSaltBase64"))
+        val wrapNonce = decodeBase64(keyEnvelope.getString("wrapNonceBase64"))
+        val wrappedKey = decodeBase64(keyEnvelope.getString("wrappedContentKeyBase64"))
+        require(salt.size == HKDF_SALT_BYTES && wrapNonce.size == GCM_NONCE_BYTES &&
+            wrappedKey.size == CONTENT_KEY_BYTES + GCM_TAG_BYTES) {
+            "Encrypted attachment-key envelope has an invalid size."
+        }
+
+        val pair = getOrCreateKeyPair()
+        val info = attachmentEnvelopeInfo(conversationId, deviceIdentity.deviceId, keyVersion)
+        val sharedSecret = deriveSharedSecret(pair.private, ephemeralPublic)
+        val wrappingKey = hkdfSha256(sharedSecret, salt, info, CONTENT_KEY_BYTES)
+        sharedSecret.fill(0)
+        val attachmentKey = try {
+            val unwrap = Cipher.getInstance(AES_GCM)
+            unwrap.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(wrappingKey, AES),
+                GCMParameterSpec(GCM_TAG_BITS, wrapNonce)
+            )
+            unwrap.updateAAD(info)
+            unwrap.doFinal(wrappedKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+        require(attachmentKey.size == CONTENT_KEY_BYTES) { "Invalid attachment content key." }
+        try {
+            val decrypt = Cipher.getInstance(AES_GCM)
+            decrypt.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(attachmentKey, AES),
+                GCMParameterSpec(GCM_TAG_BITS, packed.copyOfRange(0, GCM_NONCE_BYTES))
+            )
+            decrypt.updateAAD(attachmentMessageInfo(conversationId))
+            val plaintext = decrypt.doFinal(packed.copyOfRange(GCM_NONCE_BYTES, packed.size))
+            require(plaintext.isNotEmpty() && plaintext.size <= MAX_ATTACHMENT_BYTES) {
+                "Decrypted attachment exceeds its allowed size."
+            }
+            return plaintext
+        } finally {
+            attachmentKey.fill(0)
+        }
+    }
+
     private fun getOrCreateKeyPair(): KeyPair {
         ensureSupported()
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
@@ -287,6 +433,14 @@ internal class AndroidMessagingKeyManager(
         listOf("LINKA-MESSAGE-V2", conversationId, senderAccountId)
             .joinToString("\n").toByteArray(StandardCharsets.UTF_8)
 
+    private fun attachmentEnvelopeInfo(conversationId: String, deviceId: String, keyVersion: Int): ByteArray =
+        listOf("LINKA-ATTACHMENT-KEY-V1", conversationId, deviceId, keyVersion.toString())
+            .joinToString("\n").toByteArray(StandardCharsets.UTF_8)
+
+    private fun attachmentMessageInfo(conversationId: String): ByteArray =
+        listOf("LINKA-ATTACHMENT-V1", conversationId)
+            .joinToString("\n").toByteArray(StandardCharsets.UTF_8)
+
     private fun ensureSupported() {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             "Android 12 or later is required for Android Keystore-backed E2EE messaging on this device."
@@ -345,5 +499,6 @@ internal class AndroidMessagingKeyManager(
         private const val MAX_MESSAGE_CHARS = 6000
         private const val MAX_DEVICES = 100
         private const val MAX_CIPHERTEXT_BYTES = 12 * 1024
+        private const val MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024
     }
 }

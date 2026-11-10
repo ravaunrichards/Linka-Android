@@ -255,3 +255,162 @@ export async function decryptMessageForDevice({
   );
   return decoder.decode(plaintext);
 }
+
+function attachmentKeyEnvelopeInfo(conversationId, recipientDeviceId, recipientKeyVersion) {
+  return encoder.encode([
+    "LINKA-ATTACHMENT-KEY-V1",
+    conversationId,
+    recipientDeviceId,
+    String(recipientKeyVersion)
+  ].join("\n"));
+}
+
+function attachmentMessageInfo(conversationId) {
+  return encoder.encode(["LINKA-ATTACHMENT-V1", conversationId].join("\n"));
+}
+
+/** Encrypts file bytes in the browser and wraps the file key for every active device. */
+export async function encryptAttachmentForDevices({ bytes, conversationId, devices }) {
+  const plaintext = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (plaintext.length < 1 || plaintext.length > 4 * 1024 * 1024) {
+    throw new TypeError("Encrypted attachments must be between 1 byte and 4 MiB.");
+  }
+  if (typeof conversationId !== "string" || !Array.isArray(devices) ||
+      devices.length < 1 || devices.length > 100) {
+    throw new TypeError("A conversation and valid active device list are required.");
+  }
+  const seen = new Set();
+  for (const device of devices) {
+    if (!device || typeof device.deviceId !== "string" ||
+        !Number.isSafeInteger(device.keyVersion) || device.keyVersion < 1 ||
+        device.algorithm !== "ECDH-P256" || typeof device.publicKeyBase64 !== "string" ||
+        seen.has(device.deviceId)) {
+      throw new Error("Every active device must have a unique registered ECDH P-256 key.");
+    }
+    seen.add(device.deviceId);
+  }
+
+  const contentKeyBytes = randomBytes(32);
+  try {
+    const contentKey = await globalThis.crypto.subtle.importKey(
+      "raw", contentKeyBytes, { name: "AES-GCM" }, true, ["encrypt"]
+    );
+    const nonce = randomBytes(12);
+    const encrypted = new Uint8Array(await globalThis.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce, additionalData: attachmentMessageInfo(conversationId), tagLength: 128 },
+      contentKey,
+      plaintext
+    ));
+    const packed = new Uint8Array(nonce.length + encrypted.length);
+    packed.set(nonce);
+    packed.set(encrypted, nonce.length);
+
+    const keyEnvelopes = [];
+    for (const device of devices) {
+      const recipientPublicKey = await globalThis.crypto.subtle.importKey(
+        "spki",
+        base64ToBytes(device.publicKeyBase64),
+        { name: "ECDH", namedCurve: "P-256" },
+        false,
+        []
+      );
+      const ephemeralPair = await globalThis.crypto.subtle.generateKey(
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        ["deriveBits"]
+      );
+      const ephemeralPublicKeyDer = new Uint8Array(
+        await globalThis.crypto.subtle.exportKey("spki", ephemeralPair.publicKey)
+      );
+      const salt = randomBytes(16);
+      const wrapNonce = randomBytes(12);
+      const info = attachmentKeyEnvelopeInfo(conversationId, device.deviceId, device.keyVersion);
+      const wrappingKey = await deriveWrappingKey(
+        ephemeralPair.privateKey, recipientPublicKey, salt, info
+      );
+      const wrapped = await globalThis.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: wrapNonce, additionalData: info, tagLength: 128 },
+        wrappingKey,
+        contentKeyBytes
+      );
+      keyEnvelopes.push(Object.freeze({
+        recipientDeviceId: device.deviceId,
+        recipientKeyVersion: device.keyVersion,
+        ephemeralPublicKeyBase64: bytesToBase64(ephemeralPublicKeyDer),
+        hkdfSaltBase64: bytesToBase64(salt),
+        wrapNonceBase64: bytesToBase64(wrapNonce),
+        wrappedContentKeyBase64: bytesToBase64(new Uint8Array(wrapped))
+      }));
+    }
+
+    return Object.freeze({
+      ciphertextBase64: bytesToBase64(packed),
+      plaintextSizeBytes: plaintext.length,
+      encryptionVersion: "LINKA-E2EE-2",
+      keyEnvelopes: Object.freeze(keyEnvelopes)
+    });
+  } finally {
+    contentKeyBytes.fill(0);
+  }
+}
+
+/** Decrypts a downloaded encrypted attachment using only this device's envelope. */
+export async function decryptAttachmentForDevice({
+  ciphertextBase64,
+  encryptionVersion,
+  conversationId,
+  deviceId,
+  privateKey,
+  keyEnvelope
+}) {
+  if (encryptionVersion !== "LINKA-E2EE-2" || !keyEnvelope ||
+      keyEnvelope.recipientDeviceId !== deviceId ||
+      !Number.isSafeInteger(keyEnvelope.recipientKeyVersion)) {
+    throw new Error("No supported encrypted attachment key exists for this device.");
+  }
+  const packed = base64ToBytes(ciphertextBase64);
+  if (packed.length < 29 || packed.length > 4 * 1024 * 1024 + 28) {
+    throw new TypeError("Encrypted attachment has an invalid size.");
+  }
+  const ephemeralPublicKey = await globalThis.crypto.subtle.importKey(
+    "spki",
+    base64ToBytes(keyEnvelope.ephemeralPublicKeyBase64),
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    []
+  );
+  const salt = base64ToBytes(keyEnvelope.hkdfSaltBase64);
+  const wrapNonce = base64ToBytes(keyEnvelope.wrapNonceBase64);
+  const wrappedContentKey = base64ToBytes(keyEnvelope.wrappedContentKeyBase64);
+  if (salt.length !== 16 || wrapNonce.length !== 12 || wrappedContentKey.length !== 48) {
+    throw new TypeError("Encrypted attachment key envelope has an invalid size.");
+  }
+  const info = attachmentKeyEnvelopeInfo(
+    conversationId, deviceId, keyEnvelope.recipientKeyVersion
+  );
+  const wrappingKey = await deriveWrappingKey(privateKey, ephemeralPublicKey, salt, info);
+  const keyBytes = new Uint8Array(await globalThis.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: wrapNonce, additionalData: info, tagLength: 128 },
+    wrappingKey,
+    wrappedContentKey
+  ));
+  if (keyBytes.length !== 32) throw new Error("Invalid attachment content key.");
+  try {
+    const contentKey = await globalThis.crypto.subtle.importKey(
+      "raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]
+    );
+    const plaintext = await globalThis.crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: packed.slice(0, 12),
+        additionalData: attachmentMessageInfo(conversationId),
+        tagLength: 128
+      },
+      contentKey,
+      packed.slice(12)
+    );
+    return new Uint8Array(plaintext);
+  } finally {
+    keyBytes.fill(0);
+  }
+}

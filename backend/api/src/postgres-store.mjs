@@ -993,6 +993,40 @@ export function createPostgresStore({
     });
   }
 
+  async function deleteUnsentInternalAttachment(input) {
+    assertStoreOpen();
+    if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_message_attachments");
+    const accountId = requireUuid(input.accountId, "accountId");
+    const conversationId = requireUuid(input.conversationId, "conversationId");
+    const attachmentId = requireUuid(input.attachmentId, "attachmentId");
+
+    return transaction(async client => {
+      const selected = await client.query(
+        "SELECT attachment_id FROM linka_private.internal_message_attachments " +
+        "WHERE attachment_id = $1::uuid AND conversation_id = $2::uuid " +
+        "AND uploader_account_id = $3::uuid AND message_id IS NULL FOR UPDATE",
+        [attachmentId, conversationId, accountId]
+      );
+      if (selected.rows.length === 0) {
+        fail("attachment_not_found", "Only your own unsent attachment can be removed.", 404);
+      }
+      await client.query(
+        "DELETE FROM linka_private.internal_attachment_key_envelopes WHERE attachment_id = $1::uuid",
+        [attachmentId]
+      );
+      const deleted = await client.query(
+        "DELETE FROM linka_private.internal_message_attachments " +
+        "WHERE attachment_id = $1::uuid AND conversation_id = $2::uuid " +
+        "AND uploader_account_id = $3::uuid AND message_id IS NULL RETURNING attachment_id",
+        [attachmentId, conversationId, accountId]
+      );
+      if (deleted.rows.length !== 1) {
+        fail("attachment_not_found", "The attachment was already sent or is no longer available.", 404);
+      }
+      return Object.freeze({ attachmentId, status: "deleted" });
+    });
+  }
+
   async function getInternalAttachment(input) {
     assertStoreOpen();
     if (!input || typeof input !== "object" || Array.isArray(input)) fail("invalid_message_attachments");
@@ -1376,6 +1410,7 @@ export function createPostgresStore({
     listConversationEncryptionDevices,
     createInternalAttachment,
     getInternalAttachment,
+    deleteUnsentInternalAttachment,
     sendInternalMessage,
     markInternalMessagesReceived,
     listInternalMessages,

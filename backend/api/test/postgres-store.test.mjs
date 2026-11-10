@@ -89,7 +89,9 @@ test("does not report readiness until device-encryption migration 0003 is record
   const store = createPostgresStore({ pool });
   await assert.rejects(store.checkReady(), { code: "database_schema_not_ready" });
   assert.deepEqual(pool.calls[0].values, [
-    "0002_cross_account_integrity", "0003_messaging_device_encryption"
+    "0002_cross_account_integrity",
+    "0003_messaging_device_encryption",
+    "0004_messaging_device_receipts"
   ]);
   await store.close();
 });

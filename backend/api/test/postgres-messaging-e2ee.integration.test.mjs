@@ -243,6 +243,48 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
       );
       assert.equal(unattached.status, 404);
     });
+    await t.test("only the uploader can remove an unsent encrypted attachment", async () => {
+      const temporary = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments`,
+        "POST",
+        {
+          ciphertextBase64: randomBytes(36 + 28).toString("base64"),
+          plaintextSizeBytes: 36,
+          encryptionVersion: "LINKA-E2EE-2",
+          keyEnvelopes: envelopeBody()
+        }
+      );
+      assert.equal(temporary.status, 201);
+      const temporaryAttachmentId = temporary.body.attachment.attachmentId;
+
+      const outsiderDelete = await request(
+        devices[3],
+        `/v1/conversations/${conversationId}/attachments/${temporaryAttachmentId}`,
+        "DELETE"
+      );
+      assert.equal(outsiderDelete.status, 404);
+      assert.deepEqual(outsiderDelete.body, { error: "attachment_not_found" });
+
+      const ownerDelete = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments/${temporaryAttachmentId}`,
+        "DELETE"
+      );
+      assert.equal(ownerDelete.status, 200);
+      assert.deepEqual(ownerDelete.body, {
+        attachmentId: temporaryAttachmentId,
+        status: "deleted"
+      });
+
+      const repeatedDelete = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments/${temporaryAttachmentId}`,
+        "DELETE"
+      );
+      assert.equal(repeatedDelete.status, 404);
+    });
+
     await t.test("requires a current encrypted key envelope for every active device", async () => {
       const missing = await request(
         devices[0],
@@ -275,6 +317,14 @@ test("HTTP messaging registers device keys and returns each E2EE key envelope on
       assert.deepEqual(sent.body.message.attachmentManifest, [
         { attachmentId: uploadedAttachmentId }
       ]);
+
+      const cannotDeleteLinked = await request(
+        devices[0],
+        `/v1/conversations/${conversationId}/attachments/${uploadedAttachmentId}`,
+        "DELETE"
+      );
+      assert.equal(cannotDeleteLinked.status, 404);
+      assert.deepEqual(cannotDeleteLinked.body, { error: "attachment_not_found" });
     });
 
     await t.test("returns encrypted attachment bytes with only the requesting device's key envelope", async () => {

@@ -230,6 +230,39 @@ R013 remains partial: secure attachment storage, delivery/read receipts, key tra
 
 ---
 
+## Latest continuation checkpoint — 2026-11-10, LINKA R013 receipts
+
+**Project:** LINKA Android and browser calling platform  
+**Repository:** `ravaunrichards/Linka-Android`  
+**Integrated main:** `d5649057b2379cd0f25386878019cbca3ba6897e`  
+**Current R013 draft:** [PR #20](https://github.com/ravaunrichards/Linka-Android/pull/20), branch `feature/messaging-device-e2ee`  
+**Latest R013 branch head:** `aab531e678234431da79ee2cbd1667d416449588`  
+**Verified product score:** 50% complete / 50% remaining; no increase is credited for unverified receipt changes.  
+**Previous verified checkpoint:** 50%. **Progress since that checkpoint:** no new verified score.
+
+### Changes recovered on PR #20 after the earlier passing head
+
+- Migration 0004 adds per-recipient-device delivered/read timestamps.
+- The send transaction creates receipt rows for each active recipient device covered by a valid E2EE key envelope.
+- Authenticated `POST /v1/conversations/:conversationId/receipts` supports `delivered` and `read`, enforces account/device ownership, and does not let senders acknowledge their own messages.
+- Only the sender receives aggregate delivered/read counts; recipients do not receive sender-only receipt summaries.
+- Browser and Android clients record delivery after retrieving incoming messages and record read only when local decryption succeeds.
+- Android Compose Messages displays sender-side receipt counts.
+- API capability metadata and API docs now describe receipts as implemented; encrypted attachment storage remains unavailable.
+- Browser E2E adds a negative test using a deliberately corrupted recipient key envelope. Expected result: delivery count becomes 1 while read count remains 0.
+- API CI now syntax-checks `web/messaging-crypto.mjs`.
+
+### Verification boundary
+
+- Earlier E2EE head `bc639c8e27bacf97ecbed64969998a58045d2fba`: API, PostgreSQL/browser E2EE and Android build/JVM workflows passed as documented in the preceding checkpoint.
+- The latest receipt changes up to `aab531e678234431da79ee2cbd1667d416449588` have **no newer API, PostgreSQL/browser or Android workflow result**. The repository's Android workflow includes an API 35 instrumentation job, but the last observed successful Android job predates that step and did not execute it.
+- The local container could not clone the public repository because DNS/network resolution for `github.com` was unavailable; local compilation was therefore not possible.
+- PR #20 remains **draft and unmerged**. No production service, payment provider, telecom provider or physical handset was changed.
+
+**R013 remains PARTIAL.** Outstanding: current-head CI, encrypted attachment storage, key transparency/recovery, offline message sync, independent cryptographic audit, and physical-device acceptance. The 50% product score is unchanged until the new branch head passes the required checks.
+
+---
+
 ## Easy, medium and hard work remaining
 
 ### Easy
@@ -314,7 +347,7 @@ Verify the separately hosted HTTPS browser origin and explicit CORS allowlist on
 | R010 | Free-first availability, provider tariffs, service eligibility and destination usage estimates | Medium | Trusted provider routes, funding/allowance information and active tariff feed | Pure route policy, E.164 helper and tariff validation/quote domains exist | backend/api/src/domain/route-options.mjs, rate-catalog.mjs and tests | Unit tests cover free-first, quote consent, effective rates and rounding; no live provider feed | PARTIAL / Provider/API/client integration remains |
 | R011 | Server-authoritative wallet, immutable ledger, idempotent atomic credit/refund operations and user-facing history | Medium | PostgreSQL; authenticated account sessions; trusted payment/provider events for writes | Atomic immutable ledger and wallet schema/function were already verified; authenticated customer reads and web history UI were missing | Draft PR #19: `postgres-store.mjs` account-scoped balance/ledger reads; `server.mjs` GET `/v1/wallet` and GET `/v1/wallet/ledger`; `web/account.mjs`, `web/index.html`, `web/styles.css`; integration and browser tests | API CI 42709104246 PASS; PostgreSQL CI 42708962443 PASS, 119/119 tests, including live HTTP account-scope, pagination and Chromium/Firefox wallet UI E2E | PARTIAL / Read-only backend and web UI verified on draft PR; trusted provider/payment writes, reconciliation, tariff/currency mapping, Android UI and production activation remain |
 | R012 | Real payment methods, signed provider webhooks, refunds, disputes and settlement reconciliation | Hard | Payment provider onboarding, merchant approval and secrets | No payment integration | Tables/design only; no processor adapter | No sandbox/live payment test or webhook verification | BLOCKED / External payment onboarding |
-| R013 | Internal encrypted one-to-one/group messaging, attachments and cross-device history | Medium | Account sessions, PostgreSQL, client-side key management and secure attachment storage | Message tables existed; authenticated messaging API and durable store absent | Draft PR #20: migration 0003 device ECDH keys/key envelopes; signed device-key registration and conversation key directory; require per-active-device envelopes for LINKA-E2EE-2; browser WebCrypto ECDH/HKDF/AES-GCM chat UI; Android Keystore ECDH/AES-GCM manager, account APIs and Compose Messages destination | API CI 42721184672 PASS (122 tests: 117 passed, 0 failed, 5 PostgreSQL-only skipped); PostgreSQL CI 42721184608 PASS (134/134, 0 failed/skipped, migrations twice, live E2EE HTTP integration, Chromium and Firefox browser multi-device chat E2E); Android CI 42721184643 PASS (debug APK and JVM unit tests) | PARTIAL / Backend plus browser encrypted text messaging and three-browser-device decryption verified; Android E2EE implementation compiles but native Keystore runtime is not yet verified; secure attachments, delivery/read receipts, local offline messaging, key transparency/recovery and independent crypto audit remain |
+| R013 | Internal encrypted one-to-one/group messaging, attachments and cross-device history | Medium | Account sessions, PostgreSQL, client-side key lifecycle and secure attachment storage | Message tables and authenticated storage/API existed; end-to-end client/key lifecycle was incomplete | Draft PR #20, branch `feature/messaging-device-e2ee`: migrations 0003/0004; device-signed ECDH-P256 public-key registration; key envelopes for every active device; browser and Android E2EE-2 send/decrypt clients; account-scoped message history; per-device delivered/read receipts; sender-only receipt summary; read acknowledgement only after successful decryption | Earlier verified head `bc639c8e27bacf97ecbed64969998a58045d2fba`: API CI 42721184672 PASS (122 tests; 117 passed, 0 failed, 5 skipped); PostgreSQL CI 42721184608 PASS (134/134; migration/idempotency, live E2EE HTTP and Chromium/Firefox multi-device decryption); Android CI 42721184643 PASS (APK + JVM tests). Latest receipt and decryption-gating changes through `aab531e678234431da79ee2cbd1667d416449588` have no new CI result yet | PARTIAL / Browser and backend E2EE verified at the earlier head; Android implementation and emulator instrumentation added, but native Keystore workflow has not run on the latest head; receipt migration/API/read-after-decrypt regression is implemented but not yet CI-verified; encrypted attachments, key transparency/recovery, offline history and independent crypto audit remain |
 | R014 | External SMS/MMS with delivery reports, rates and explicit paid-send consent | Hard | SMS/MMS provider, sender registration and country coverage | Android system SMS handoff only | External message schema/design only | No provider delivery receipt or end-to-end send test | BLOCKED / External provider |
 | R015 | LINKA-to-LINKA internet audio/video calls on Android and supported browsers with WebRTC/TURN media | Hard | WebRTC clients, signaling integration, TURN and network test | Ephemeral signaling API exists; media relay/client not verified | backend/api/src/runtime.mjs and signaling routes; no operational media path | API signaling CI only; no audible/video call test | PARTIAL / Major implementation remaining |
 | R016 | Full account-based browser product: number management, call UI, messaging, wallet and settings | Medium | R007-R015 backend/service capabilities | Browser companion and account shell exist | web/* and backend/api/verify-browser-ui.e2e.mjs | Chromium + Firefox account lifecycle in PostgreSQL CI 42680769129 | PARTIAL / Full telephone-client work remains |
@@ -328,12 +361,12 @@ Verify the separately hosted HTTPS browser origin and explicit CORS allowlist on
 
 **EASY**
 - R021: verify actual ACTION_DIAL/ACTION_SENDTO system app launches on a physical Android handset; emulator intent-builder and Keystore behavior are already verified on PR #18.
-- Confirm Android E2EE key registration, message send and decrypt on an API 31+ emulator/device; current Android CI builds the new code and runs JVM tests, not Android Keystore instrumentation.
+- R013: run the newly wired Android API 35 Keystore E2EE instrumentation job and current API/PostgreSQL receipt tests on PR #20's latest head. The current head has no new workflow result yet.
 
 **MEDIUM**
 - R010: wire trusted server-side provider/rate/allowance data into route options and quote API; keep routes unavailable where no verified data exists.
 - R011: connect trusted payment/provider events and reconciliation to server-authoritative ledger writes, add tariff/currency presentation and Android wallet UI; read-only API and web panel are verified on draft PR #19.
-- R013: implement encrypted attachment upload/storage and delivery/read receipts; add Android Keystore instrumentation and device-level multi-client encryption/decryption tests; add key transparency/recovery and commission an independent cryptographic review.
+- R013: implement encrypted attachment upload/storage, key transparency/recovery, offline message synchronization and Android cross-device field acceptance; commission an independent cryptographic review. Delivery/read receipt implementation is on PR #20 but remains unverified by CI on its latest head.
 - R016: complete actual browser telephone-client areas beyond account registration/sign-in.
 
 **HARD / EXTERNAL DEPENDENCIES**
@@ -348,7 +381,7 @@ Verify the separately hosted HTTPS browser origin and explicit CORS allowlist on
 
 ### Exact next action
 
-R008 is verified. R011 read-only API and web wallet panel are verified on draft PR #19; R021 emulator Keystore/intent-builder checks are verified on draft PR #18. Next continue R013 device-key registration/distribution and the messaging client UI without claiming E2EE until key lifecycle and cross-device tests pass. Keep external provider/payment writes disabled until real provider data, credentials and reconciliation are verified.
+Run the current PR #20 head `aab531e678234431da79ee2cbd1667d416449588` through API CI, PostgreSQL/browser CI and Android API 35 Keystore instrumentation. Fix any failures before crediting receipt or native Android encryption progress. Then continue encrypted attachment storage and recovery/key-transparency work. Keep provider/payment writes disabled until real provider data, credentials and reconciliation are verified.
 
 ### Latest confirmed action
 

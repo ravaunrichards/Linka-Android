@@ -543,6 +543,20 @@ class LinkaAccountClient internal constructor(
             )
     }
 
+    suspend fun deleteUnsentEncryptedAttachment(
+        conversationId: String,
+        attachmentId: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "DELETE",
+            "/v1/conversations/" + encodePathSegment(conversationId) +
+                "/attachments/" + encodePathSegment(attachmentId),
+            null,
+            requireMessagingToken()
+        )
+    }
+
     suspend fun sendEncryptedMessage(conversationId: String, body: JSONObject): JSONObject =
         withContext(Dispatchers.IO) {
             request(

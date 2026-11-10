@@ -58,7 +58,8 @@ function envelope(recipientDeviceId, recipientKeyVersion, publicKeyDer = ecdhPub
 
 function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
   conversationDevices = null, historyMember = true, receiptMember = true,
-  receiptRows = null, attachmentRows = null, attachmentDownloadRows = null } = {}) {
+  receiptRows = null, attachmentRows = null, attachmentDownloadRows = null,
+  attachmentDeleteRows = [{ attachment_id: MESSAGE }] } = {}) {
   const calls = [];
   const pool = {
     calls,
@@ -122,6 +123,16 @@ function fakePool({ deviceExists = true, currentKey = null, latestVersion = 0,
           }
           if (sql.includes("INSERT INTO linka_private.internal_attachment_key_envelopes")) {
             return { rows: [], rowCount: 1 };
+          }
+          if (sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments") &&
+              sql.includes("message_id IS NULL")) {
+            return { rows: attachmentDeleteRows };
+          }
+          if (sql.includes("DELETE FROM linka_private.internal_attachment_key_envelopes")) {
+            return { rows: [], rowCount: 3 };
+          }
+          if (sql.includes("DELETE FROM linka_private.internal_message_attachments")) {
+            return { rows: attachmentDeleteRows, rowCount: attachmentDeleteRows.length };
           }
           if (sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments")) {
             return { rows: attachmentRows ?? values[0].map(attachment_id => ({ attachment_id })) };
@@ -471,6 +482,49 @@ test("rejects oversized, non-canonical or non-E2EE attachment payloads before da
     { code: "invalid_message_encryption_version" }
   );
   assert.equal(pool.calls.length, 0);
+});
+
+test("deletes only the uploader's own unsent encrypted attachment and its key envelopes", async () => {
+  const pool = fakePool();
+  const store = createPostgresStore({ pool });
+  const result = await store.deleteUnsentInternalAttachment({
+    accountId: ACTOR,
+    conversationId: CONVERSATION,
+    attachmentId: MESSAGE
+  });
+  assert.deepEqual(result, { attachmentId: MESSAGE, status: "deleted" });
+  const lock = pool.calls.find(call =>
+    call.sql.includes("SELECT attachment_id FROM linka_private.internal_message_attachments")
+  );
+  assert.deepEqual(lock.values, [MESSAGE, CONVERSATION, ACTOR]);
+  assert.match(lock.sql, /uploader_account_id = \\$3::uuid/);
+  assert.match(lock.sql, /message_id IS NULL FOR UPDATE/);
+  const envelopeDelete = pool.calls.find(call =>
+    call.sql.includes("DELETE FROM linka_private.internal_attachment_key_envelopes")
+  );
+  const attachmentDelete = pool.calls.find(call =>
+    call.sql.includes("DELETE FROM linka_private.internal_message_attachments")
+  );
+  assert.ok(envelopeDelete);
+  assert.ok(attachmentDelete);
+  assert.ok(pool.calls.indexOf(envelopeDelete) < pool.calls.indexOf(attachmentDelete));
+});
+
+test("cannot delete linked or another account's encrypted attachments", async () => {
+  const pool = fakePool({ attachmentDeleteRows: [] });
+  const store = createPostgresStore({ pool });
+  await assert.rejects(
+    store.deleteUnsentInternalAttachment({
+      accountId: MEMBER,
+      conversationId: CONVERSATION,
+      attachmentId: MESSAGE
+    }),
+    { code: "attachment_not_found", statusCode: 404 }
+  );
+  assert.equal(
+    pool.calls.some(call => call.sql.includes("DELETE FROM linka_private.internal_message_attachments")),
+    false
+  );
 });
 
 test("returns encrypted attachment data and only the envelope for the requesting device", async () => {

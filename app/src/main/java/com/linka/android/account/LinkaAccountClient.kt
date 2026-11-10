@@ -31,6 +31,18 @@ data class LinkaAccountProfile(
     val expiresAt: String
 )
 
+data class LinkaAccountDevice(
+    val deviceId: String,
+    val platform: String,
+    val deviceName: String?,
+    val createdAt: String,
+    val lastSeenAt: String?,
+    val revokedAt: String?,
+    val status: String,
+    val activeSessionCount: Int,
+    val current: Boolean
+)
+
 class LinkaAccountException(
     val errorCode: String,
     message: String,
@@ -297,6 +309,46 @@ class LinkaAccountClient internal constructor(
         store.clearToken()
     }
 
+    suspend fun listAccountDevices(): List<LinkaAccountDevice> = withContext(Dispatchers.IO) {
+        val body = request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/me/devices",
+            null,
+            requireAccountToken()
+        )
+        val devices = body.optJSONArray("devices") ?: JSONArray()
+        (0 until devices.length()).mapNotNull { index ->
+            val item = devices.optJSONObject(index) ?: return@mapNotNull null
+            val deviceId = item.optString("deviceId").takeIf { it.isNotBlank() && it != "null" }
+                ?: return@mapNotNull null
+            fun nullableText(key: String): String? =
+                item.optString(key).takeIf { it.isNotBlank() && it != "null" }
+            LinkaAccountDevice(
+                deviceId = deviceId,
+                platform = item.optString("platform"),
+                deviceName = nullableText("deviceName"),
+                createdAt = item.optString("createdAt"),
+                lastSeenAt = nullableText("lastSeenAt"),
+                revokedAt = nullableText("revokedAt"),
+                status = item.optString("status"),
+                activeSessionCount = item.optInt("activeSessionCount", 0),
+                current = item.optBoolean("current", false)
+            )
+        }
+    }
+
+    suspend fun revokeAccountDevice(deviceId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(deviceId.isNotBlank()) { "Choose a LINKA device to revoke." }
+        request(
+            store.getServerUrl(),
+            "DELETE",
+            "/v1/me/devices/" + encodePathSegment(deviceId),
+            null,
+            requireAccountToken()
+        )
+    }
+
     suspend fun registerMessagingEncryptionKey(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         request(
             store.getServerUrl(),
@@ -434,6 +486,13 @@ class LinkaAccountClient internal constructor(
             requireMessagingToken()
         )
     }
+
+    private fun requireAccountToken(): String =
+        store.readToken() ?: throw LinkaAccountException(
+            "unauthorized",
+            "Sign in to your LINKA account before managing devices.",
+            401
+        )
 
     private fun requireMessagingToken(): String =
         store.readToken() ?: throw LinkaAccountException(

@@ -77,6 +77,35 @@ To run locally, install backend dependencies, install both browser engines with 
 
 The PostgreSQL CI workflow installs Chromium and Firefox with the required Linux dependencies and runs the same browser UI lifecycle test in both engines after the existing API/database account end-to-end test. Run 42680769129 verified both engines and all 75 backend/database tests passed.
 
+## Internal encrypted messaging and receipt acceptance
+
+R013 uses account-session-authenticated direct/group conversations and device-bound ECDH P-256 keys. The backend stores opaque ciphertext and per-device wrapped content-key envelopes; private keys and message plaintext remain on clients.
+
+### Automated API and cryptographic tests
+
+- `backend/api/test/messaging-crypto.test.mjs`: non-exportable browser ECDH identity, AES-GCM message confidentiality, per-device key wrapping/unwrapping, wrong-device and wrong-conversation rejection, and tamper detection.
+- `backend/api/test/messaging-encryption-store.test.mjs`: server-side DER/SPKI validation, signed-key proof, key version/reuse/rotation, membership checks, envelope coverage and stale-key rejection.
+- `backend/api/test/postgres-messaging-e2ee.integration.test.mjs`: real PostgreSQL + running HTTP API test for signed device key registration, conversation device directory, per-device envelope persistence/isolation, key rotation and receipt ownership.
+
+### Delivery/read receipt semantics
+
+- A recipient device records `delivered` after it retrieves the incoming encrypted message.
+- It records `read` only after its local client successfully decrypts the ciphertext using the envelope addressed to that device.
+- A failed decrypt, missing envelope or legacy/unsupported encryption version must not create a read acknowledgement.
+- The sender sees recipient-device aggregate counts; recipient clients do not receive sender-only receipt summaries.
+- The PostgreSQL integration test covers delivery/read updates, sender/recipient visibility, own-message rejection and non-member 404 behavior.
+- Browser UI E2E covers a corrupted recipient wrapped-key envelope: delivery should become 1 while read remains 0.
+
+### Android Keystore verification
+
+The Android API 35 emulator job runs `gradle :app:connectedDebugAndroidTest` and executes `AndroidMessagingKeyManagerTest`. It covers signed ECDH-key registration, non-exportable Android Keystore private keys, encryption/decryption round-trip, tampered ciphertext, wrong-device envelope rejection and no-downgrade behavior when any active device lacks a public key. A passing APK build or JVM unit test does not substitute for this instrumentation result.
+
+### Current evidence boundary
+
+The last passing E2EE baseline is `bc639c8e27bacf97ecbed64969998a58045d2fba` (API CI 42721184672; PostgreSQL/browser CI 42721184608; Android build/JVM CI 42721184643). The receipt schema/API, Android receipt UI, read-after-success gating and corrupted-envelope browser regression were committed afterward through draft PR #20 head `aab531e678234431da79ee2cbd1667d416449588`. That latest head has no new workflow result yet. Do not mark receipt or native Android runtime acceptance as verified until current-head PostgreSQL/browser and Android instrumentation jobs pass.
+
+Encrypted attachments, key transparency/recovery, offline synchronization and an independent cryptographic audit remain separate acceptance requirements.
+
 ## Evidence to retain
 For every physical run, retain the commit SHA, APK version, device models, Android and Play services versions, radio/permission state, terrain/environment, exact test steps, observed results, audio/latency metrics and pass/fail. Redact identity authentication codes, private key material, media keys and personal data.
 
@@ -110,3 +139,20 @@ The account HTTP integration test verifies:
 The ordinary API CI run **42617603655** on 2026-11-09 reports 63 passed, 0 failed and 2 PostgreSQL-only tests skipped because `DATABASE_URL` is absent.
 
 These tests verify account registration/login and persistent account/device/session integration in a disposable CI database. They do not verify production database hosting, email verification, password-reset delivery, public wallet endpoints, payment processing or live carrier services.
+
+## Native phone favourites — Android emulator acceptance
+
+Android CI runs `gradle :app:connectedDebugAndroidTest` on an API 35 Google APIs emulator. `PhoneFavoritesStoreTest` exercises the actual Android Keystore and app-private SharedPreferences:
+
+1. Save and reload multiple favourites across separate store instances.
+2. Verify that the AES key exists in Android Keystore and its encoded key bytes are not exportable.
+3. Verify the preferences contain only the IV and ciphertext entries; display names and phone numbers are not stored as plaintext.
+4. Modify ciphertext and verify AES-GCM authentication fails closed and clears the unreadable payload.
+5. Remove the Keystore key and verify orphaned ciphertext is cleared instead of returned.
+6. Remove one encrypted field and verify the incomplete record is cleared.
+7. Save an updated list and verify removed favourites remain removed after reopening.
+8. Verify favourite dial intents use ACTION_DIAL with the tel: scheme and favourite message intents use ACTION_SENDTO with the smsto: scheme; invalid numbers must not produce an intent.
+
+The JVM codec tests separately validate number/name normalization, JSON round-trip, malformed payload handling, duplicate replacement and the 50-entry limit.
+
+The emulator tests prove Android Keystore-backed storage behavior in the emulator environment. They do not replace handset-specific checks of the ACTION_DIAL and ACTION_SENDTO system-app handoffs, actual carrier calls/SMS, SIM availability or manufacturer-specific behavior. Perform the physical phone handoff checklist before marking handset acceptance complete.

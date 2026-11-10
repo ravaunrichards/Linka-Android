@@ -70,6 +70,37 @@ class AndroidMessagingKeyManagerTest {
     }
 
     @Test
+    fun registrationKeepsTheSameDevicePublicKeyAcrossRepeatedAppRestores() {
+        val first = manager.createRegistrationBody()
+        val second = manager.createRegistrationBody()
+        assertEquals(first.getString("publicKeyBase64"), second.getString("publicKeyBase64"))
+
+        val publicKey = Base64.decode(first.getString("publicKeyBase64"), Base64.NO_WRAP)
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(publicKey)
+            .joinToString("") { byte -> "%02X".format(byte) }
+        val statement = listOf(
+            "LINKA-MESSAGING-KEY-V1",
+            identity.deviceId,
+            AndroidMessagingKeyManager.ALGORITHM,
+            fingerprint
+        ).joinToString("\n").toByteArray(StandardCharsets.UTF_8)
+        assertTrue(
+            LocalDeviceIdentity.verify(
+                identity.publicKeyBase64,
+                statement,
+                Base64.decode(first.getString("signatureBase64"), Base64.NO_WRAP)
+            )
+        )
+        assertTrue(
+            LocalDeviceIdentity.verify(
+                identity.publicKeyBase64,
+                statement,
+                Base64.decode(second.getString("signatureBase64"), Base64.NO_WRAP)
+            )
+        )
+    }
+
+    @Test
     fun encryptsAndDecryptsE2ee2MessageUsingItsDeviceEnvelope() {
         val registration = manager.createRegistrationBody()
         val recipient = MessagingDevicePublicKey(
@@ -114,7 +145,7 @@ class AndroidMessagingKeyManagerTest {
     }
 
     @Test
-    fun rejectsTamperedCiphertextAndEnvelopeOrWrongRecipientDevice() {
+    fun rejectsTamperedCiphertextAndWrongRecipientDevice() {
         val registration = manager.createRegistrationBody()
         val recipient = MessagingDevicePublicKey(
             deviceId = identity.deviceId,
@@ -152,6 +183,110 @@ class AndroidMessagingKeyManagerTest {
                 CONVERSATION_ID,
                 ACCOUNT_ID,
                 wrongDeviceEnvelope
+            )
+        }
+    }
+
+    @Test
+    fun encryptsAndDecryptsE2ee2AttachmentUsingItsDeviceEnvelope() {
+        val registration = manager.createRegistrationBody()
+        val recipient = MessagingDevicePublicKey(
+            deviceId = identity.deviceId,
+            accountId = ACCOUNT_ID,
+            keyVersion = 1,
+            algorithm = registration.getString("algorithm"),
+            publicKeyBase64 = registration.getString("publicKeyBase64")
+        )
+        val plaintext = "LINKA encrypted attachment round-trip".toByteArray(StandardCharsets.UTF_8)
+        val encrypted = manager.encryptAttachmentForDevices(
+            plaintext = plaintext,
+            conversationId = CONVERSATION_ID,
+            devices = listOf(recipient)
+        )
+
+        assertEquals(AndroidMessagingKeyManager.ENCRYPTION_VERSION, encrypted.getString("encryptionVersion"))
+        assertEquals(plaintext.size, encrypted.getInt("plaintextSizeBytes"))
+        val ciphertext = Base64.decode(encrypted.getString("ciphertextBase64"), Base64.NO_WRAP)
+        assertEquals(plaintext.size + 28, ciphertext.size)
+        assertFalse(encrypted.getString("ciphertextBase64").contains(Base64.encodeToString(plaintext, Base64.NO_WRAP)))
+
+        val envelopes = encrypted.getJSONArray("keyEnvelopes")
+        assertEquals(1, envelopes.length())
+        val envelope = envelopes.getJSONObject(0)
+        assertEquals(identity.deviceId, envelope.getString("recipientDeviceId"))
+        assertEquals(1, envelope.getInt("recipientKeyVersion"))
+
+        val decrypted = manager.decryptAttachment(
+            ciphertextBase64 = encrypted.getString("ciphertextBase64"),
+            encryptionVersion = encrypted.getString("encryptionVersion"),
+            conversationId = CONVERSATION_ID,
+            keyEnvelope = envelope
+        )
+        assertTrue(plaintext.contentEquals(decrypted))
+    }
+
+    @Test
+    fun rejectsTamperedAttachmentCiphertextAndWrongRecipientDevice() {
+        val registration = manager.createRegistrationBody()
+        val recipient = MessagingDevicePublicKey(
+            deviceId = identity.deviceId,
+            accountId = ACCOUNT_ID,
+            keyVersion = 1,
+            algorithm = registration.getString("algorithm"),
+            publicKeyBase64 = registration.getString("publicKeyBase64")
+        )
+        val encrypted = manager.encryptAttachmentForDevices(
+            plaintext = "Never accept a tampered attachment.".toByteArray(StandardCharsets.UTF_8),
+            conversationId = CONVERSATION_ID,
+            devices = listOf(recipient)
+        )
+        val envelope = encrypted.getJSONArray("keyEnvelopes").getJSONObject(0)
+        val ciphertext = Base64.decode(encrypted.getString("ciphertextBase64"), Base64.NO_WRAP)
+        ciphertext[ciphertext.lastIndex] = (ciphertext.last().toInt() xor 0x01).toByte()
+
+        assertThrows(Exception::class.java) {
+            manager.decryptAttachment(
+                ciphertextBase64 = Base64.encodeToString(ciphertext, Base64.NO_WRAP),
+                encryptionVersion = AndroidMessagingKeyManager.ENCRYPTION_VERSION,
+                conversationId = CONVERSATION_ID,
+                keyEnvelope = envelope
+            )
+        }
+
+        val wrongDeviceEnvelope = JSONObject(envelope.toString())
+            .put("recipientDeviceId", "00000000-0000-4000-8000-000000000099")
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.decryptAttachment(
+                ciphertextBase64 = encrypted.getString("ciphertextBase64"),
+                encryptionVersion = AndroidMessagingKeyManager.ENCRYPTION_VERSION,
+                conversationId = CONVERSATION_ID,
+                keyEnvelope = wrongDeviceEnvelope
+            )
+        }
+    }
+
+    @Test
+    fun rejectsEmptyAndOversizedEncryptedAttachments() {
+        val registration = manager.createRegistrationBody()
+        val recipient = MessagingDevicePublicKey(
+            deviceId = identity.deviceId,
+            accountId = ACCOUNT_ID,
+            keyVersion = 1,
+            algorithm = registration.getString("algorithm"),
+            publicKeyBase64 = registration.getString("publicKeyBase64")
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.encryptAttachmentForDevices(
+                plaintext = byteArrayOf(),
+                conversationId = CONVERSATION_ID,
+                devices = listOf(recipient)
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.encryptAttachmentForDevices(
+                plaintext = ByteArray(4 * 1024 * 1024 + 1),
+                conversationId = CONVERSATION_ID,
+                devices = listOf(recipient)
             )
         }
     }

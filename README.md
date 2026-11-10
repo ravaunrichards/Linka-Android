@@ -2,7 +2,7 @@
 
 LINKA is an independent Android and web communication product planned for Jamaican and international telephone numbers, free and credit-based services, internet calling, supported cellular/SIM/eSIM integration, messaging and nearby offline voice.
 
-**Important implementation status:** The repository contains a substantial Android nearby/offline voice and multi-hop mesh foundation, a Node.js API, PostgreSQL-backed account/device/session authentication, Android and browser registration/sign-in interfaces, and automated CI. It is **not yet** a complete TextNow/2ndLine-style cloud telephone service. Provider-backed numbers, SIP/PSTN calls, integrated SMS/MMS, end-to-end internet media calling, public wallet APIs, payment processing, live provider rates and SIM/eSIM provisioning are not verified as operational.
+**Important implementation status:** The repository contains a substantial Android nearby/offline voice and multi-hop mesh foundation, a Node.js API, PostgreSQL-backed account/device/session authentication, Android and browser registration/sign-in interfaces, and automated CI. It is **not yet** a complete TextNow/2ndLine-style cloud telephone service. Provider-backed numbers, SIP/PSTN calls, integrated SMS/MMS, end-to-end internet media calling, payment processing, live provider rates and SIM/eSIM provisioning are not verified as operational. Authenticated read-only wallet balance and ledger APIs plus a browser balance panel are implemented on the active feature branch; they do not process purchases or fund credits.
 
 ## Start here
 - [Documentation index](docs/INDEX.md)
@@ -38,12 +38,13 @@ LINKA is an independent Android and web communication product planned for Jamaic
 - Direct nearby voice capture/playback using 8 kHz mono audio and G.711 mu-law frames.
 - Multi-peer nearby links, explicit relay consent and multi-hop route discovery/forwarding.
 - End-to-end encrypted routed call-control and voice payloads.
+- Encrypted phone favourites with codec unit tests and Android Keystore instrumentation tests.
 - Automated unit tests for call control/state, audio framing, peer security and routing.
 
 These are source and automated-test capabilities. Physical radio/audio tests and independent security review remain release gates.
 
 ### Android system-app handoffs
-The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
+The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in the system dialer. User-created phone favourites are encrypted locally with AES-GCM and a non-exportable Android Keystore key; selecting a favourite still opens the system dialler or SMS app through ACTION_DIAL/ACTION_SENDTO. SMS composition, contacts and recent-call history are handed to installed Android system apps. These are not LINKA's own integrated carrier calling or SMS/MMS services.
 
 ### Backend and browser companion
 - backend/api contains a Node.js P-256 signed-device challenge API and call-signaling routes.
@@ -57,7 +58,7 @@ The Phone hub uses Android ACTION_DIAL so the user reviews a carrier number in t
 - A PostgreSQL 17 schema and atomic wallet-ledger SQL function are stored under `backend/api/db/`. `backend/api/src/postgres-store.mjs` uses a bounded `pg` connection pool when `DATABASE_URL` is configured.
 - Database CI verifies both migrations, cross-account constraints, account registration/login and multi-device linking over HTTP, durable wallet operations and schema-aware readiness. The latest PostgreSQL run passed 75 tests with zero failures and completed a browser-WebCrypto account lifecycle test against a disposable PostgreSQL database.
 - Email verification and password recovery are not enabled: the API reports `emailVerified: false` and `POST /v1/accounts/recovery` returns `501 account_recovery_unavailable` until an email-delivery provider and secure reset/verification workflow are configured.
-- Wallet operations are server-side only. No public wallet HTTP endpoints, payment processing or customer balance UI exist yet.
+- Authenticated read-only wallet balance and ledger endpoints expose account-scoped credit-unit totals and activity; the browser account page displays those balances. Client balance writes are not accepted, and payment processing, purchase/top-up UI, provider webhook validation and reconciliation are not implemented.
 - Authentication sessions and signaling queues are separate; signaling queues and short-lived device challenge sessions remain in memory. The API carries signaling, not voice audio.
 - The browser companion now includes account registration and sign-in, but remains an account shell rather than a full web telephone client. It cannot access Android Nearby Connections or Android Keystore.
 - E.164 normalization, free-first route selection and provider-fed rate matching have tested domain foundations; live provider tariff import, number inventory, SIP/PSTN calling, payment webhooks and client billing screens are not integrated.

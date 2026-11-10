@@ -21,6 +21,11 @@ BEGIN
         'linka_private.conversations',
         'linka_private.conversation_members',
         'linka_private.internal_messages',
+        'linka_private.device_encryption_keys',
+        'linka_private.internal_message_key_envelopes',
+        'linka_private.internal_message_device_receipts',
+        'linka_private.internal_message_attachments',
+        'linka_private.internal_attachment_key_envelopes',
         'linka_private.external_message_jobs'
     ] LOOP
         IF to_regclass(required_table) IS NULL THEN

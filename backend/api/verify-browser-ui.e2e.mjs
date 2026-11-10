@@ -78,6 +78,11 @@ async function openAccountPage(context) {
   page.on("pageerror", error => browserErrors.push(error.message));
   await page.goto(apiOrigin + "/#account", { waitUntil: "domcontentloaded" });
   await page.locator("#accountEmail").waitFor({ state: "visible", timeout: 15_000 });
+  await page.waitForFunction(
+    expected => document.getElementById("accountApiOrigin")?.value === expected,
+    apiOrigin,
+    { timeout: 15_000 }
+  );
   assert.equal(
     await page.locator("#accountApiOrigin").inputValue(),
     apiOrigin,
@@ -119,6 +124,29 @@ async function main() {
     await waitForStatus(firstPage, "account created and this browser device linked successfully");
     assert.equal(await firstPage.locator("#accountProfileEmail").innerText(), email);
     assert.equal(await firstPage.locator("#accountProfileName").innerText(), displayName);
+    await firstPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await firstPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
+    assert.equal(await firstPage.locator(".wallet-balance-card").count(), 4);
+    assert.match(
+      await firstPage.locator("#walletLedger").innerText(),
+      /No wallet activity has been recorded/
+    );
+    await firstPage.locator("#walletRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
+    await firstPage.locator("#accountDevicesPanel").waitFor({ state: "visible" });
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 1,
+      null,
+      { timeout: 15_000 }
+    );
 
     const firstSession = await readOwnProfile(firstPage);
     assert.equal(firstSession.status, 200, "new browser account token should authenticate");
@@ -151,6 +179,13 @@ async function main() {
     await secondPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
     await waitForStatus(secondPage, "Signed in to LINKA on this browser device");
     assert.equal(await secondPage.locator("#accountProfileEmail").innerText(), email);
+    await secondPage.locator("#walletPanel").waitFor({ state: "visible", timeout: 15_000 });
+    await secondPage.waitForFunction(
+      () => document.getElementById("walletStatus")?.textContent?.includes("loaded"),
+      null,
+      { timeout: 15_000 }
+    );
+    assert.equal(await secondPage.locator(".wallet-balance-card").count(), 4);
 
     const secondSession = await readOwnProfile(secondPage);
     assert.equal(secondSession.status, 200);
@@ -158,6 +193,288 @@ async function main() {
     const secondIdentity = await inspectStoredIdentity(secondPage);
     assert.notEqual(secondIdentity.deviceId, firstIdentity.deviceId, "separate browser contexts must use distinct device identities");
     assert.equal(secondIdentity.privateKeyExtractable, false);
+
+    await firstPage.locator("#accountDevicesRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 2,
+      null,
+      { timeout: 15_000 }
+    );
+    const firstAccountDevices = await firstPage.locator("#accountDevicesList .account-device-row")
+      .evaluateAll(rows => rows.map(row => ({ id: row.dataset.deviceId, status: row.dataset.status })));
+    assert.ok(firstAccountDevices.some(device => device.id === firstIdentity.deviceId && device.status === "active"));
+    assert.ok(firstAccountDevices.some(device => device.id === secondIdentity.deviceId && device.status === "active"));
+
+    // A third isolated browser context is a distinct account/device recipient.
+    const thirdContext = await browser.newContext({
+      viewport: { width: 1280, height: 900 }
+    });
+    contexts.push(thirdContext);
+    const thirdPage = await openAccountPage(thirdContext);
+    const recipientUnique = randomUUID();
+    const recipientEmail = browserName + "-recipient+" + recipientUnique + "@example.test";
+    const recipientPassword = "LINKA-recipient-" + browserName + "-" + recipientUnique;
+    const recipientName = "LINKA " + browserName + " recipient";
+    await thirdPage.locator("#accountEmail").fill(recipientEmail);
+    await thirdPage.locator("#accountDisplayName").fill(recipientName);
+    await thirdPage.locator("#accountPassword").fill(recipientPassword);
+    await thirdPage.locator("#accountRegister").click();
+    await thirdPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
+    await waitForStatus(thirdPage, "account created and this browser device linked successfully");
+    const recipientSession = await readOwnProfile(thirdPage);
+    assert.equal(recipientSession.status, 200);
+    assert.notEqual(recipientSession.profile.accountId, firstSession.profile.accountId);
+
+    const secretMessage = "LINKA E2EE browser integration " + randomUUID();
+    await firstPage.locator("#chatParticipantIds").fill(recipientSession.profile.accountId);
+    await firstPage.locator("#chatCreateConversation").click();
+    await firstPage.waitForFunction(
+      () => document.getElementById("chatStatus")?.textContent?.includes("Conversation ready"),
+      null,
+      { timeout: 15_000 }
+    );
+    const conversationId = await firstPage.locator("#chatConversationSelect").inputValue();
+    assert.match(conversationId, /^[0-9a-f-]{36}$/i);
+    await firstPage.locator("#chatMessageDraft").fill(secretMessage);
+    await firstPage.locator("#chatSendMessage").click();
+    await firstPage.waitForFunction(
+      () => {
+        const status = document.getElementById("chatStatus");
+        return status?.textContent?.startsWith("Encrypted message sent") ||
+          status?.dataset.kind === "error";
+      },
+      null,
+      { timeout: 20_000 }
+    );
+    const sendStatus = await firstPage.evaluate(() => ({
+      kind: document.getElementById("chatStatus")?.dataset.kind,
+      text: document.getElementById("chatStatus")?.textContent
+    }));
+    assert.equal(sendStatus.kind, "success", "Encrypted send failed: " + sendStatus.text);
+    await firstPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+
+    // The same account's second browser device and the recipient account each
+    // receive a different wrapped content-key envelope and decrypt locally.
+    await secondPage.locator("#chatRefreshConversations").click();
+    await secondPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+    await thirdPage.locator("#chatRefreshConversations").click();
+    await thirdPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === text),
+      secretMessage,
+      { timeout: 20_000 }
+    );
+
+    const storedMessage = await firstPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(storedMessage.status, 200);
+    assert.equal(storedMessage.message.encryptionVersion, "LINKA-E2EE-2");
+    assert.equal(storedMessage.message.ciphertext.includes(secretMessage), false);
+    assert.equal(storedMessage.message.keyEnvelope.recipientDeviceId, firstIdentity.deviceId);
+
+    await firstPage.waitForFunction(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      if (!token) return false;
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      if (!response.ok) return false;
+      const payload = await response.json();
+      return payload.messages?.[0]?.receiptSummary?.readDevices === 1;
+    }, { sessionKey: SESSION_KEY, conversationId }, { timeout: 15_000 });
+
+    const receiptView = await firstPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(receiptView.status, 200);
+    assert.deepEqual(receiptView.message.receiptSummary, {
+      recipientDevices: 1,
+      deliveredDevices: 1,
+      readDevices: 1
+    }, "the sender should see the recipient device's delivered/read state");
+
+    const recipientReceiptView = await thirdPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(recipientReceiptView.status, 200);
+    assert.equal(
+      Object.hasOwn(recipientReceiptView.message, "receiptSummary"),
+      false,
+      "recipient clients must not see sender-only aggregate read receipts"
+    );
+
+    const recipientIdentity = await inspectStoredIdentity(thirdPage);
+    const tamperedMessage = await firstPage.evaluate(async ({
+      sessionKey,
+      conversationId,
+      senderAccountId,
+      recipientDeviceId,
+      plaintext
+    }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const directoryResponse = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/encryption-devices",
+        { headers: { Authorization: "Bearer " + token }, cache: "no-store" }
+      );
+      const directory = await directoryResponse.json();
+      if (!directoryResponse.ok) throw new Error("Could not load encryption devices.");
+      const cryptoModule = await import("./messaging-crypto.mjs");
+      const encrypted = await cryptoModule.encryptMessageForDevices({
+        plaintext,
+        conversationId,
+        senderAccountId,
+        devices: directory.devices
+      });
+      if (!encrypted.keyEnvelopes.some(item => item.recipientDeviceId === recipientDeviceId)) {
+        throw new Error("Recipient device envelope was not created.");
+      }
+      const tamperedEnvelope = btoa(String.fromCharCode(...new Uint8Array(48).fill(3)));
+      const keyEnvelopes = encrypted.keyEnvelopes.map(item =>
+        item.recipientDeviceId === recipientDeviceId
+          ? { ...item, wrappedContentKeyBase64: tamperedEnvelope }
+          : item
+      );
+      const response = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/messages",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ ...encrypted, keyEnvelopes })
+        }
+      );
+      const result = await response.json();
+      return { status: response.status, messageId: result.message?.messageId, plaintext };
+    }, {
+      sessionKey: SESSION_KEY,
+      conversationId,
+      senderAccountId: firstSession.profile.accountId,
+      recipientDeviceId: recipientIdentity.deviceId,
+      plaintext: "LINKA deliberately invalid recipient envelope " + randomUUID()
+    });
+    assert.equal(tamperedMessage.status, 201);
+    assert.ok(tamperedMessage.messageId);
+
+    await thirdPage.locator("#chatRefreshConversations").click();
+    await thirdPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === "[Unable to decrypt this message on this device]"),
+      null,
+      { timeout: 20_000 }
+    );
+
+    await firstPage.waitForFunction(async ({ sessionKey, conversationId, messageId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      if (!token) return false;
+      const response = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/messages",
+        { headers: { Authorization: "Bearer " + token }, cache: "no-store" }
+      );
+      if (!response.ok) return false;
+      const payload = await response.json();
+      const message = payload.messages?.find(item => item.messageId === messageId);
+      return message?.receiptSummary?.deliveredDevices === 1 &&
+        message?.receiptSummary?.readDevices === 0;
+    }, {
+      sessionKey: SESSION_KEY,
+      conversationId,
+      messageId: tamperedMessage.messageId
+    }, { timeout: 15_000 });
+
+    const secondOwnDevice = await inspectStoredIdentity(secondPage);
+    const recipientDevice = await inspectStoredIdentity(thirdPage);
+    assert.notEqual(secondOwnDevice.deviceId, firstIdentity.deviceId);
+    assert.notEqual(recipientDevice.deviceId, firstIdentity.deviceId);
+    assert.notEqual(recipientDevice.deviceId, secondOwnDevice.deviceId);
+
+    // A fourth independent browser context signs in to the same account so
+    // the owner can revoke a lost device without revoking either active phone.
+    const revocationContext = await browser.newContext({
+      viewport: { width: 1280, height: 900 }
+    });
+    contexts.push(revocationContext);
+    const revocationPage = await openAccountPage(revocationContext);
+    await revocationPage.locator("#accountEmail").fill(email);
+    await revocationPage.locator("#accountPassword").fill(password);
+    await revocationPage.locator("#accountLogin").click();
+    await revocationPage.locator("#accountSignedIn").waitFor({ state: "visible", timeout: 20_000 });
+    await waitForStatus(revocationPage, "Signed in to LINKA on this browser device");
+    const revocationIdentity = await inspectStoredIdentity(revocationPage);
+    assert.notEqual(revocationIdentity.deviceId, firstIdentity.deviceId);
+    assert.notEqual(revocationIdentity.deviceId, secondIdentity.deviceId);
+
+    await firstPage.locator("#accountDevicesRefresh").click();
+    await firstPage.waitForFunction(
+      () => document.querySelectorAll("#accountDevicesList .account-device-row").length === 3,
+      null,
+      { timeout: 15_000 }
+    );
+    const dialogDecision = firstPage.waitForEvent("dialog").then(dialog => dialog.accept());
+    await firstPage.locator(
+      '#accountDevicesList [data-device-id="' + revocationIdentity.deviceId + '"] .account-device-revoke'
+    ).click();
+    await dialogDecision;
+    await firstPage.waitForFunction(
+      deviceId => {
+        const row = document.querySelector(
+          '#accountDevicesList [data-device-id="' + deviceId + '"]'
+        );
+        return row?.dataset.status === "revoked";
+      },
+      revocationIdentity.deviceId,
+      { timeout: 15_000 }
+    );
+    await waitForStatus(firstPage, "Device revoked. Its active sessions and messaging key are disabled.");
+    const revokedSessionStatus = await revocationPage.evaluate(async key => {
+      const token = sessionStorage.getItem(key);
+      const response = await fetch("/v1/me", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      return response.status;
+    }, SESSION_KEY);
+    assert.equal(revokedSessionStatus, 401, "revoked browser device must lose its account session");
+
+    const firstAfterRevocation = await readOwnProfile(firstPage);
+    const secondAfterRevocation = await readOwnProfile(secondPage);
+    assert.equal(firstAfterRevocation.status, 200, "revocation must not affect the current browser device");
+    assert.equal(secondAfterRevocation.status, 200, "revocation must not affect another active account device");
+
+    await revocationPage.reload({ waitUntil: "domcontentloaded" });
+    await revocationPage.locator("#accountSignedOut").waitFor({ state: "visible", timeout: 15_000 });
+    assert.equal(await revocationPage.evaluate(key => sessionStorage.getItem(key), SESSION_KEY), null);
 
     await secondPage.locator("#accountLogout").click();
     await secondPage.locator("#accountSignedOut").waitFor({ state: "visible", timeout: 15_000 });

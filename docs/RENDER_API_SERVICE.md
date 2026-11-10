@@ -35,7 +35,7 @@ For a separate browser domain:
 3. Do not include paths, trailing URL routes, wildcards or insecure remote HTTP origins.
 4. Ensure the browser points to the API's HTTPS origin.
 
-The API handles preflight `OPTIONS` requests for `GET` and `POST`, allowing only `Authorization` and `Content-Type` request headers. It returns `Access-Control-Allow-Origin` for the exact allowlisted origin and rejects unlisted cross-origin requests with HTTP 403. Credentialed cookies are not enabled; browser account tokens use explicit bearer authorization.
+The API handles preflight `OPTIONS` requests for `GET`, `POST`, `PUT` and `DELETE`, allowing only `Authorization` and `Content-Type` request headers. PUT is used for signed device encryption-key registration; DELETE is used for owner-authorized device revocation. It returns `Access-Control-Allow-Origin` for the exact allowlisted origin and rejects unlisted cross-origin requests with HTTP 403. Credentialed cookies are not enabled; browser account tokens use explicit bearer authorization.
 
 API CI tests the allowed-origin preflight, the rejected-origin preflight, origin validation, browser account modules and API startup. This verifies repository behavior, not a live Render environment configuration.
 
@@ -49,18 +49,34 @@ API CI tests the allowed-origin preflight, the rejected-origin preflight, origin
 - `POST /v1/destinations/normalize` — rate-limited E.164 syntax normalization; this does not infer country/number type or check provider reachability.
 - `POST /v1/destinations/resolve` — rate-limited numbering-plan validation with country candidates and number type from `libphonenumber-js/max`; provider assignment and reachability remain unchecked.
 
+## Authenticated read-only wallet
+
+When PostgreSQL is configured and the authenticated account has a wallet row:
+
+- `GET /v1/wallet` — returns the authenticated account's purchased, promotional, sponsored and total credit-unit balances plus a wallet version. Account identity is taken from the bearer session, not from query/body parameters.
+- `GET /v1/wallet/ledger?limit=50` — returns the authenticated account's most recent ledger entries, newest first. The page size is 1–100.
+- Optional `before` and `beforeEventId` query parameters continue a cursor page. Both values are required together; the timestamp cursor preserves PostgreSQL microsecond precision.
+- Both endpoints are read-only, require a persisted account session, and are rate-limited. They do not accept client balance writes.
+- New accounts receive an empty wallet row during the account-registration transaction. If an account has no wallet row, the API returns `404 wallet_not_found`.
+- Ledger entries come from the server-side immutable wallet ledger. Purchases, refunds, usage charges and promotional/sponsored credits must be created by trusted server-side events; a client cannot mint or modify credit balances.
+
+The browser account page displays the four balance categories and cursor-paginated activity. It does not provide a purchase or top-up flow. Payment processing, signed provider webhooks, purchase reconciliation, customer-funded credits and provider tariff billing remain unimplemented.
+
 ## Authenticated internal messaging
 
 PostgreSQL-backed account sessions can use the following routes:
 
 - `GET /v1/conversations?limit=50` — list the signed-in account's active direct and group conversations, member display names, and latest-message metadata.
 - `POST /v1/conversations` — create or reuse a direct conversation, or create a group. The request supplies `kind` (`direct` or `group`) and recipient `participantAccountIds`; the server adds the authenticated account as a member. Direct conversations are reused for the same active two-account pair. Group conversations allow up to 50 total members.
-- `POST /v1/conversations/:conversationId/messages` — send base64-encoded opaque ciphertext and an `encryptionVersion`. The sender account ID is taken from the authenticated session, never from the request body. Payload ciphertext is limited to 12 KiB.
-- `GET /v1/conversations/:conversationId/messages?limit=50` — retrieve the newest messages for a conversation. Results include sender account IDs, ciphertext, encryption version and server timestamps.
+- `PUT /v1/me/encryption-key` — register the authenticated device's ECDH P-256 public key. Registration requires an ECDSA signature by that device's existing LINKA signing identity; key rotations are versioned.
+- `GET /v1/conversations/:conversationId/encryption-devices` — list active member devices and their current public encryption keys. Non-members receive the same 404 response as an unknown conversation.
+- `POST /v1/conversations/:conversationId/messages` — send base64-encoded ciphertext and `LINKA-E2EE-2` key envelopes. The server requires one current wrapped content-key envelope for every active device and rejects missing or stale keys. The sender account and device are taken from the authenticated session, never the request body. Ciphertext is limited to 12 KiB.
+- `GET /v1/conversations/:conversationId/messages?limit=50` — retrieve the newest messages. The response includes only the message-key envelope addressed to the authenticated device. Aggregate receipt counts are visible to the sender, not recipients.
+- `POST /v1/conversations/:conversationId/receipts` — acknowledge up to 100 message IDs as `delivered` or `read`. Receipt rows are scoped to the authenticated device and account. A read acknowledgement also records delivery.
 
-All messaging routes require a persisted account session and active conversation membership. A device-challenge token without an account session is insufficient. Unknown or inaccessible conversations return the same 404 response to prevent membership enumeration. Requests are rate-limited per account and remote address.
+All messaging routes require a persisted account session and active conversation membership. A device-challenge token without an account session is insufficient. Unknown or inaccessible conversations return the same 404 response to prevent membership enumeration. Requests are rate-limited per account/device and remote address.
 
-**Security boundary:** the API stores message payloads as opaque ciphertext bytes and never decrypts them. That does not independently prove that a client encrypted the payload correctly. Client key registration/distribution and audited end-to-end encryption are still required. Encrypted attachments are deliberately rejected with HTTP 501 until a secure upload, ownership validation and object-storage path exist. Delivery/read receipts, message edit/delete and client UI integration are also not complete.
+**Security boundary:** browser and Android clients encrypt messages locally using ECDH P-256, HKDF-SHA-256 and AES-256-GCM. The backend stores ciphertext and wrapped per-device content keys; it never receives private keys or plaintext. A signed device-key registration prevents an account bearer token alone from silently replacing a device's public encryption key. The server enforces current key coverage but cannot prove that every client correctly implemented the cryptographic protocol. An independent cryptographic audit is still required. Encrypted attachment ciphertext up to 4 MiB is accepted through the authenticated attachment routes, with per-device wrapped keys and conversation membership checks. The current implementation uses the configured PostgreSQL store; production object storage, backup/retention controls, antivirus/content policy and independent security review remain separate release requirements.
 - `OPTIONS` — CORS preflight for configured cross-origin browser clients.
 
 ## Account authentication

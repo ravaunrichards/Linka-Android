@@ -175,7 +175,7 @@ test("HTTP internal messaging uses persisted account sessions and enforces conve
       assert.deepEqual(send.body, { error: "conversation_not_found" });
     });
 
-    await t.test("rejects invalid members, unsupported attachments and bad ciphertext", async () => {
+    await t.test("rejects invalid members, legacy attachment manifests and bad ciphertext", async () => {
       const self = await request(accounts[0], "/v1/conversations", "POST", {
         kind: "direct",
         participantAccountIds: [accounts[0].accountId]
@@ -186,10 +186,10 @@ test("HTTP internal messaging uses persisted account sessions and enforces conve
       const attachment = await request(accounts[0], `/v1/conversations/${conversationId}/messages`, "POST", {
         ciphertext: Buffer.from("encrypted").toString("base64"),
         encryptionVersion: "LINKA-E2EE-1",
-        attachmentManifest: [{ assetId: randomUUID() }]
+        attachmentManifest: [{ attachmentId: randomUUID() }]
       });
-      assert.equal(attachment.status, 501);
-      assert.equal(attachment.body.error, "message_attachments_unavailable");
+      assert.equal(attachment.status, 400);
+      assert.equal(attachment.body.error, "invalid_message_attachments");
 
       const invalid = await request(accounts[0], `/v1/conversations/${conversationId}/messages`, "POST", {
         ciphertext: "plaintext-not-base64",

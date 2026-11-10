@@ -8,7 +8,9 @@ import android.util.Base64
 import com.linka.android.core.identity.LocalDeviceIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import com.linka.android.messaging.MessagingDevicePublicKey
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -27,6 +29,46 @@ data class LinkaAccountProfile(
     val deviceId: String,
     val deviceFingerprint: String,
     val expiresAt: String
+)
+
+data class LinkaAccountDevice(
+    val deviceId: String,
+    val platform: String,
+    val deviceName: String?,
+    val createdAt: String,
+    val lastSeenAt: String?,
+    val revokedAt: String?,
+    val status: String,
+    val activeSessionCount: Int,
+    val current: Boolean
+)
+
+data class LinkaWalletSnapshot(
+    val purchased: Long,
+    val promotional: Long,
+    val sponsored: Long,
+    val total: Long,
+    val version: Long
+)
+
+data class LinkaWalletLedgerEvent(
+    val eventId: String,
+    val eventType: String,
+    val creditSource: String,
+    val amountCreditUnits: Long,
+    val referenceId: String?,
+    val reversesEventId: String?,
+    val createdAt: String
+)
+
+data class LinkaWalletCursor(
+    val before: String,
+    val beforeEventId: String
+)
+
+data class LinkaWalletLedgerPage(
+    val events: List<LinkaWalletLedgerEvent>,
+    val nextCursor: LinkaWalletCursor?
 )
 
 class LinkaAccountException(
@@ -155,7 +197,7 @@ private class HttpUrlConnectionAccountTransport : AccountApiTransport {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
-            readTimeout = 15_000
+            readTimeout = 60_000
             useCaches = false
             doInput = true
             setRequestProperty("Accept", "application/json")
@@ -294,6 +336,286 @@ class LinkaAccountClient internal constructor(
         request(store.getServerUrl(), "POST", "/v1/auth/logout", JSONObject(), token)
         store.clearToken()
     }
+
+    suspend fun getWalletSnapshot(): LinkaWalletSnapshot = withContext(Dispatchers.IO) {
+        val wallet = request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/wallet",
+            null,
+            requireAccountToken()
+        ).optJSONObject("wallet")
+            ?: throw LinkaAccountException(
+                "invalid_server_response",
+                "LINKA did not return account wallet balances."
+            )
+        LinkaWalletSnapshot(
+            purchased = wallet.optLong("purchased", -1).also { require(it >= 0L) },
+            promotional = wallet.optLong("promotional", -1).also { require(it >= 0L) },
+            sponsored = wallet.optLong("sponsored", -1).also { require(it >= 0L) },
+            total = wallet.optLong("total", -1).also { require(it >= 0L) },
+            version = wallet.optLong("version", -1).also { require(it >= 0L) }
+        )
+    }
+
+    suspend fun listWalletLedgerEvents(
+        limit: Int = 50,
+        cursor: LinkaWalletCursor? = null
+    ): LinkaWalletLedgerPage = withContext(Dispatchers.IO) {
+        require(limit in 1..100) { "Wallet activity page size must be between 1 and 100." }
+        val path = buildString {
+            append("/v1/wallet/ledger?limit=")
+            append(limit)
+            if (cursor != null) {
+                require(cursor.before.isNotBlank() && cursor.beforeEventId.isNotBlank()) {
+                    "A complete LINKA wallet activity cursor is required."
+                }
+                append("&before=")
+                append(java.net.URLEncoder.encode(cursor.before, StandardCharsets.UTF_8.name()))
+                append("&beforeEventId=")
+                append(java.net.URLEncoder.encode(cursor.beforeEventId, StandardCharsets.UTF_8.name()))
+            }
+        }
+        val body = request(
+            store.getServerUrl(),
+            "GET",
+            path,
+            null,
+            requireAccountToken()
+        )
+        val events = body.optJSONArray("events") ?: JSONArray()
+        val mapped = (0 until events.length()).mapNotNull { index ->
+            val item = events.optJSONObject(index) ?: return@mapNotNull null
+            val eventId = item.optString("eventId").takeIf { it.isNotBlank() && it != "null" }
+                ?: return@mapNotNull null
+            val amount = item.optLong("amountCreditUnits", -1).takeIf { it >= 0L }
+                ?: return@mapNotNull null
+            LinkaWalletLedgerEvent(
+                eventId = eventId,
+                eventType = item.optString("eventType"),
+                creditSource = item.optString("creditSource"),
+                amountCreditUnits = amount,
+                referenceId = item.optString("referenceId").takeIf { it.isNotBlank() && it != "null" },
+                reversesEventId = item.optString("reversesEventId").takeIf { it.isNotBlank() && it != "null" },
+                createdAt = item.optString("createdAt")
+            )
+        }
+        val cursorJson = body.optJSONObject("nextCursor")
+        val nextCursor = if (cursorJson == null) null else LinkaWalletCursor(
+            before = cursorJson.optString("before"),
+            beforeEventId = cursorJson.optString("beforeEventId")
+        ).takeIf { it.before.isNotBlank() && it.beforeEventId.isNotBlank() }
+        LinkaWalletLedgerPage(mapped, nextCursor)
+    }
+
+    suspend fun listAccountDevices(): List<LinkaAccountDevice> = withContext(Dispatchers.IO) {
+        val body = request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/me/devices",
+            null,
+            requireAccountToken()
+        )
+        val devices = body.optJSONArray("devices") ?: JSONArray()
+        (0 until devices.length()).mapNotNull { index ->
+            val item = devices.optJSONObject(index) ?: return@mapNotNull null
+            val deviceId = item.optString("deviceId").takeIf { it.isNotBlank() && it != "null" }
+                ?: return@mapNotNull null
+            fun nullableText(key: String): String? =
+                item.optString(key).takeIf { it.isNotBlank() && it != "null" }
+            LinkaAccountDevice(
+                deviceId = deviceId,
+                platform = item.optString("platform"),
+                deviceName = nullableText("deviceName"),
+                createdAt = item.optString("createdAt"),
+                lastSeenAt = nullableText("lastSeenAt"),
+                revokedAt = nullableText("revokedAt"),
+                status = item.optString("status"),
+                activeSessionCount = item.optInt("activeSessionCount", 0),
+                current = item.optBoolean("current", false)
+            )
+        }
+    }
+
+    suspend fun revokeAccountDevice(deviceId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(deviceId.isNotBlank()) { "Choose a LINKA device to revoke." }
+        request(
+            store.getServerUrl(),
+            "DELETE",
+            "/v1/me/devices/" + encodePathSegment(deviceId),
+            null,
+            requireAccountToken()
+        )
+    }
+
+    suspend fun registerMessagingEncryptionKey(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "PUT",
+            "/v1/me/encryption-key",
+            body,
+            requireMessagingToken()
+        )
+    }
+
+    suspend fun listConversations(): JSONArray = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations?limit=50",
+            null,
+            requireMessagingToken()
+        ).optJSONArray("conversations") ?: JSONArray()
+    }
+
+    suspend fun createConversation(participantAccountIds: List<String>): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("kind", if (participantAccountIds.size == 1) "direct" else "group")
+            .put("participantAccountIds", JSONArray(participantAccountIds))
+        request(
+            store.getServerUrl(),
+            "POST",
+            "/v1/conversations",
+            body,
+            requireMessagingToken()
+        )
+    }
+
+    suspend fun listConversationEncryptionDevices(conversationId: String): List<MessagingDevicePublicKey> =
+        withContext(Dispatchers.IO) {
+            val body = request(
+                store.getServerUrl(),
+                "GET",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/encryption-devices",
+                null,
+                requireMessagingToken()
+            )
+            val devices = body.optJSONArray("devices") ?: JSONArray()
+            (0 until devices.length()).mapNotNull { index ->
+                val item = devices.optJSONObject(index) ?: return@mapNotNull null
+                val version = item.optInt("keyVersion", 0).takeIf { it > 0 }
+                val algorithm = item.optString("algorithm").takeIf { it.isNotBlank() && it != "null" }
+                val publicKey = item.optString("publicKeyBase64").takeIf { it.isNotBlank() && it != "null" }
+                MessagingDevicePublicKey(
+                    deviceId = item.optString("deviceId"),
+                    accountId = item.optString("accountId"),
+                    keyVersion = version,
+                    algorithm = algorithm,
+                    publicKeyBase64 = publicKey
+                )
+            }
+        }
+
+    suspend fun uploadEncryptedAttachment(conversationId: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            require(body.optString("encryptionVersion") == "LINKA-E2EE-2") {
+                "Only LINKA end-to-end encrypted attachments can be uploaded."
+            }
+            val uploaded = request(
+                store.getServerUrl(),
+                "POST",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/attachments",
+                body,
+                requireMessagingToken()
+            ).optJSONObject("attachment")
+                ?: throw LinkaAccountException(
+                    "invalid_server_response",
+                    "LINKA did not return attachment metadata."
+                )
+            uploaded
+        }
+
+    suspend fun downloadEncryptedAttachment(
+        conversationId: String,
+        attachmentId: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations/" + encodePathSegment(conversationId) +
+                "/attachments/" + encodePathSegment(attachmentId),
+            null,
+            requireMessagingToken()
+        ).optJSONObject("attachment")
+            ?: throw LinkaAccountException(
+                "invalid_server_response",
+                "LINKA did not return encrypted attachment data."
+            )
+    }
+
+    suspend fun deleteUnsentEncryptedAttachment(
+        conversationId: String,
+        attachmentId: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "DELETE",
+            "/v1/conversations/" + encodePathSegment(conversationId) +
+                "/attachments/" + encodePathSegment(attachmentId),
+            null,
+            requireMessagingToken()
+        )
+    }
+
+    suspend fun sendEncryptedMessage(conversationId: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            request(
+                store.getServerUrl(),
+                "POST",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/messages",
+                body,
+                requireMessagingToken()
+            )
+        }
+
+    suspend fun listInternalMessages(conversationId: String): JSONArray = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations/" + encodePathSegment(conversationId) + "/messages?limit=100",
+            null,
+            requireMessagingToken()
+        ).optJSONArray("messages") ?: JSONArray()
+    }
+
+    suspend fun acknowledgeInternalMessages(
+        conversationId: String,
+        messageIds: List<String>,
+        state: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(state == "delivered" || state == "read") {
+            "Use a supported LINKA message receipt state."
+        }
+        require(messageIds.isNotEmpty() && messageIds.size <= 100) {
+            "A LINKA receipt batch must contain between 1 and 100 messages."
+        }
+        request(
+            store.getServerUrl(),
+            "POST",
+            "/v1/conversations/" + encodePathSegment(conversationId) + "/receipts",
+            JSONObject()
+                .put("messageIds", JSONArray(messageIds))
+                .put("state", state),
+            requireMessagingToken()
+        )
+    }
+
+    private fun requireAccountToken(): String =
+        store.readToken() ?: throw LinkaAccountException(
+            "unauthorized",
+            "Sign in to your LINKA account before managing devices.",
+            401
+        )
+
+    private fun requireMessagingToken(): String =
+        store.readToken() ?: throw LinkaAccountException(
+            "unauthorized",
+            "Sign in to your LINKA account before opening encrypted messages.",
+            401
+        )
+
+    private fun encodePathSegment(value: String): String =
+        java.net.URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
 
     private fun saveAccountToken(result: JSONObject) {
         val token = result.optString("accessToken")

@@ -204,9 +204,9 @@ test("rejects plaintext-invalid payload formats, unsupported attachments and ove
       accountId: ACTOR, conversationId: CONVERSATION,
       ciphertext: Buffer.from("ciphertext").toString("base64"),
       encryptionVersion: "LINKA-E2EE-1",
-      attachmentManifest: [{ assetId: "unverified" }]
+      attachmentManifest: [{ attachmentId: "00000000-0000-4000-8000-000000000099" }]
     }),
-    { code: "message_attachments_unavailable", statusCode: 501 }
+    { code: "invalid_message_attachments" }
   );
   assert.equal(pool.calls.length, 0);
 });

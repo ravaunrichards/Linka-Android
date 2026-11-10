@@ -42,6 +42,16 @@ The API verifies the scrypt password hash and then links the signing device to t
 - Account sessions expire after 30 days and are rejected if the session, account or device has been revoked/deactivated.
 - Passwords are stored as versioned scrypt hashes with unique random salts; plaintext passwords are never stored.
 
+### Account device management
+
+- `GET /v1/me/devices` lists the authenticated account's registered devices with platform, display name, creation/last-seen timestamps, active session count, active/revoked state and a flag identifying the current device.
+- Device responses deliberately omit signing public keys, fingerprints, bearer tokens and private material.
+- `DELETE /v1/me/devices/:deviceId` revokes a device only when it belongs to the authenticated account. A device belonging to another account is reported as not found.
+- Revocation atomically marks the device revoked, disables its relay consent, revokes all of its persistent account sessions and retires its current messaging ECDH key.
+- Revocation is idempotent. Repeating the request returns the already-revoked state without rewriting the device.
+- Revoked devices can no longer authenticate, appear in active conversation encryption-device directories, receive new message/attachment key envelopes or acknowledge receipts. Content already decrypted or copied by a previously trusted device cannot be remotely erased.
+- The Android account panel lists registered devices and requires explicit confirmation before revoking a different active device. The current device is not offered as a one-tap revoke action in that panel.
+
 ## Not yet available
 
 - `POST /v1/accounts/recovery` returns HTTP 501 `account_recovery_unavailable`. This is explicit; LINKA does not pretend to send a reset email.

@@ -68,7 +68,7 @@ export function createCorsPolicy(configuredOrigins = "") {
       allowed: true,
       headers: {
         "access-control-allow-origin": origin,
-        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
         "access-control-allow-headers": "Authorization, Content-Type",
         "access-control-max-age": "600",
         vary: "Origin"

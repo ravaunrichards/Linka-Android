@@ -26,9 +26,11 @@ test("configured HTTPS browser origins receive narrow CORS headers", () => {
   const cors = createCorsPolicy("https://app.example.test, https://admin.example.test");
   const result = cors(request({ origin: "https://app.example.test" }));
   assert.equal(result.allowed, true);
+  assert.equal(result.headers["access-control-allow-methods"], "GET, POST, PUT, DELETE, OPTIONS");
+  assert.doesNotMatch(result.headers["access-control-allow-methods"], /PATCH|TRACE/);
   assert.deepEqual(result.headers, {
     "access-control-allow-origin": "https://app.example.test",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
     "access-control-allow-headers": "Authorization, Content-Type",
     "access-control-max-age": "600",
     vary: "Origin"

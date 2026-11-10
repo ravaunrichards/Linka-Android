@@ -109,6 +109,264 @@ class LinkaAccountClientTest {
     }
 
     @Test
+    fun acknowledgeInternalMessagesPostsPerDeviceReadReceiptsWithAccountToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(JSONObject().put("acknowledged", 2))
+        val client = client(store, transport)
+
+        val response = client.acknowledgeInternalMessages(
+            conversationId = "conversation-123",
+            messageIds = listOf("message-1", "message-2"),
+            state = "read"
+        )
+
+        assertEquals(2, response.getInt("acknowledged"))
+        val call = transport.calls.single()
+        assertEquals("POST", call.method)
+        assertEquals("/v1/conversations/conversation-123/receipts", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+        val body = JSONObject(call.body ?: error("Receipt body was not sent"))
+        assertEquals("read", body.getString("state"))
+        assertEquals(2, body.getJSONArray("messageIds").length())
+        assertEquals("message-1", body.getJSONArray("messageIds").getString(0))
+    }
+
+    @Test
+    fun listsAccountDevicesUsingTheCurrentAccountToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val devices = org.json.JSONArray()
+            .put(
+                JSONObject()
+                    .put("deviceId", "device-current")
+                    .put("platform", "android")
+                    .put("deviceName", "Current phone")
+                    .put("createdAt", "2026-11-10T10:00:00.000Z")
+                    .put("lastSeenAt", "2026-11-10T11:00:00.000Z")
+                    .put("status", "active")
+                    .put("activeSessionCount", 1)
+                    .put("current", true)
+            )
+            .put(
+                JSONObject()
+                    .put("deviceId", "device-old")
+                    .put("platform", "web")
+                    .put("deviceName", "Old browser")
+                    .put("createdAt", "2026-11-09T10:00:00.000Z")
+                    .put("lastSeenAt", JSONObject.NULL)
+                    .put("revokedAt", JSONObject.NULL)
+                    .put("status", "active")
+                    .put("activeSessionCount", 1)
+                    .put("current", false)
+            )
+        val transport = FakeTransport(JSONObject().put("devices", devices))
+        val client = client(store, transport)
+
+        val result = client.listAccountDevices()
+
+        assertEquals(2, result.size)
+        assertEquals("Current phone", result[0].deviceName)
+        assertTrue(result[0].current)
+        assertEquals("active", result[1].status)
+        assertEquals("Old browser", result[1].deviceName)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertEquals("/v1/me/devices", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun revokesOnlyTheSelectedDeviceAfterUsingAccountAuthentication() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(JSONObject().put("status", "revoked"))
+        val client = client(store, transport)
+
+        val response = client.revokeAccountDevice("device-to-revoke")
+
+        assertEquals("revoked", response.getString("status"))
+        val call = transport.calls.single()
+        assertEquals("DELETE", call.method)
+        assertEquals("/v1/me/devices/device-to-revoke", call.path)
+        assertNull(call.body)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun revokingBlankDeviceIdDoesNotMakeANetworkRequest() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport()
+        val client = client(store, transport)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { client.revokeAccountDevice("  ") }
+        }
+        assertTrue(transport.calls.isEmpty())
+    }
+
+    @Test
+    fun readsSeparateWalletBalancesWithTheAuthenticatedAccountToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(
+            JSONObject().put(
+                "wallet",
+                JSONObject()
+                    .put("purchased", 120)
+                    .put("promotional", 25)
+                    .put("sponsored", 5)
+                    .put("total", 150)
+                    .put("version", 3)
+            )
+        )
+        val client = client(store, transport)
+
+        val wallet = client.getWalletSnapshot()
+
+        assertEquals(120L, wallet.purchased)
+        assertEquals(25L, wallet.promotional)
+        assertEquals(5L, wallet.sponsored)
+        assertEquals(150L, wallet.total)
+        assertEquals(3L, wallet.version)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertEquals("/v1/wallet", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun readsWalletLedgerWithStableCursorPagination() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(
+            JSONObject()
+                .put(
+                    "events",
+                    org.json.JSONArray().put(
+                        JSONObject()
+                            .put("eventId", "event-1")
+                            .put("eventType", "PURCHASE_CONFIRMED")
+                            .put("creditSource", "purchased")
+                            .put("amountCreditUnits", 100)
+                            .put("createdAt", "2026-11-10T10:00:00.000Z")
+                    )
+                )
+                .put(
+                    "nextCursor",
+                    JSONObject()
+                        .put("before", "2026-11-10T10:00:00.000123Z")
+                        .put("beforeEventId", "event-1")
+                )
+        )
+        val client = client(store, transport)
+
+        val page = client.listWalletLedgerEvents(
+            limit = 10,
+            cursor = LinkaWalletCursor("2026-11-10T10:01:00.000123Z", "event-2")
+        )
+
+        assertEquals(1, page.events.size)
+        assertEquals("event-1", page.events.single().eventId)
+        assertEquals(100L, page.events.single().amountCreditUnits)
+        assertEquals("event-1", page.nextCursor?.beforeEventId)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertTrue(call.path.startsWith("/v1/wallet/ledger?limit=10&before="))
+        assertTrue(call.path.contains("beforeEventId=event-2"))
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun rejectsInvalidWalletPageSizesBeforeNetworkRequest() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport()
+        val client = client(store, transport)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { client.listWalletLedgerEvents(limit = 101) }
+        }
+        assertTrue(transport.calls.isEmpty())
+    }
+
+    @Test
+    fun readsAccountWalletBalancesWithTheAuthenticatedToken() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(
+            JSONObject().put(
+                "wallet",
+                JSONObject()
+                    .put("purchased", 250)
+                    .put("promotional", 20)
+                    .put("sponsored", 5)
+                    .put("total", 275)
+                    .put("version", 4)
+            )
+        )
+        val client = client(store, transport)
+
+        val wallet = client.getWalletSnapshot()
+
+        assertEquals(250L, wallet.purchased)
+        assertEquals(20L, wallet.promotional)
+        assertEquals(5L, wallet.sponsored)
+        assertEquals(275L, wallet.total)
+        assertEquals(4L, wallet.version)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertEquals("/v1/wallet", call.path)
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun readsPaginatedWalletActivityWithStableCursor() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport(
+            JSONObject()
+                .put(
+                    "events",
+                    org.json.JSONArray().put(
+                        JSONObject()
+                            .put("eventId", "event-001")
+                            .put("eventType", "PURCHASE_CONFIRMED")
+                            .put("creditSource", "purchased")
+                            .put("amountCreditUnits", 100)
+                            .put("createdAt", "2026-11-10T12:00:00.000Z")
+                    )
+                )
+                .put(
+                    "nextCursor",
+                    JSONObject()
+                        .put("before", "2026-11-10T12:00:00.000123Z")
+                        .put("beforeEventId", "event-001")
+                )
+        )
+        val client = client(store, transport)
+
+        val page = client.listWalletLedgerEvents(
+            limit = 10,
+            cursor = LinkaWalletCursor("2026-11-10T12:01:00.000123Z", "event-002")
+        )
+
+        assertEquals(1, page.events.size)
+        assertEquals("event-001", page.events.single().eventId)
+        assertEquals(100L, page.events.single().amountCreditUnits)
+        assertEquals("event-001", page.nextCursor?.beforeEventId)
+        val call = transport.calls.single()
+        assertEquals("GET", call.method)
+        assertTrue(call.path.startsWith("/v1/wallet/ledger?limit=10&before="))
+        assertTrue(call.path.contains("beforeEventId=event-002"))
+        assertEquals("valid-account-token", call.bearerToken)
+    }
+
+    @Test
+    fun rejectsInvalidWalletPageSizeBeforeNetworkAccess() = runBlocking {
+        val store = FakeTokenStore(token = "valid-account-token")
+        val transport = FakeTransport()
+        val client = client(store, transport)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { client.listWalletLedgerEvents(limit = 101) }
+        }
+        assertTrue(transport.calls.isEmpty())
+    }
+
+    @Test
     fun restoreSessionWithoutTokenDoesNotMakeNetworkRequest() = runBlocking {
         val store = FakeTokenStore(token = null)
         val transport = FakeTransport()
@@ -190,6 +448,7 @@ class LinkaAccountClientTest {
     private data class ApiCall(
         val method: String,
         val path: String,
+        val body: String?,
         val bearerToken: String?
     )
 
@@ -206,7 +465,7 @@ class LinkaAccountClientTest {
             body: JSONObject?,
             bearerToken: String?
         ): JSONObject {
-            calls += ApiCall(method, path, bearerToken)
+            calls += ApiCall(method, path, body?.toString(), bearerToken)
             failure?.let { throw it }
             return JSONObject(response.toString())
         }

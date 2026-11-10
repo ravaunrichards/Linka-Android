@@ -20,7 +20,8 @@ const WEB_ASSETS = new Map([
   ["/styles.css", { file: "styles.css", contentType: "text/css; charset=utf-8" }],
   ["/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }],
   ["/account.mjs", { file: "account.mjs", contentType: "text/javascript; charset=utf-8" }],
-  ["/auth-crypto.mjs", { file: "auth-crypto.mjs", contentType: "text/javascript; charset=utf-8" }]
+  ["/auth-crypto.mjs", { file: "auth-crypto.mjs", contentType: "text/javascript; charset=utf-8" }],
+  ["/messaging-crypto.mjs", { file: "messaging-crypto.mjs", contentType: "text/javascript; charset=utf-8" }]
 ]);
 
 const rateBuckets = new Map();
@@ -78,7 +79,7 @@ function rateLimit(key, limit, windowMs) {
   return true;
 }
 
-async function readJson(req) {
+async function readJson(req, maxBytes = MAX_BODY_BYTES) {
   const contentType = req.headers["content-type"] ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) {
     throw Object.assign(new Error("content_type_must_be_json"), { statusCode: 415 });
@@ -88,7 +89,7 @@ async function readJson(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > maxBytes) {
       throw Object.assign(new Error("request_body_too_large"), { statusCode: 413 });
     }
     chunks.push(chunk);
@@ -160,14 +161,19 @@ function safeErrorCode(error) {
     "invalid_display_name", "invalid_password", "invalid_registration",
     "invalid_login", "email_already_registered", "device_already_linked",
     "device_identity_mismatch", "device_identity_conflict", "device_revoked",
-    "invalid_device_identity", "invalid_device_platform", "invalid_credentials",
+    "invalid_device_identity", "invalid_device_platform", "invalid_device_management",
+    "device_not_found", "invalid_credentials",
     "authentication_store_unavailable", "account_recovery_unavailable",
     "email_verification_unavailable", "invalid_e164", "invalid_destination_number",
     "account_auth_required", "invalid_conversation", "invalid_conversation_kind",
     "invalid_conversation_members", "conversation_member_not_found", "invalid_page_limit",
     "invalid_message", "invalid_message_ciphertext", "invalid_message_encryption_version",
     "invalid_message_attachments", "message_attachments_unavailable",
-    "invalid_message_query", "invalid_message_cursor", "conversation_not_found"
+    "invalid_message_query", "invalid_message_cursor", "conversation_not_found",
+    "invalid_wallet_query", "invalid_wallet_cursor", "wallet_not_found",
+    "invalid_encryption_key", "invalid_encryption_key_proof", "encryption_key_not_found", "conversation_encryption_keys_incomplete",
+    "conversation_encryption_key_changed", "invalid_message_key_envelopes", "encryption_key_version_exhausted",
+    "invalid_message_receipt", "attachment_not_found", "conversation_attachment_key_changed"
   ]);
   if (typeof error.code === "string" && allowed.has(error.code)) return error.code;
   return allowed.has(error.message) ? error.message : "request_failed";
@@ -247,9 +253,10 @@ async function handleRequest(req, res) {
           persistentAccountSessions: postgresStore ? "available" : "database_required",
           passwordRecovery: "not_implemented",
           emailVerification: "not_implemented",
-          walletHttpApi: "not_implemented",
-          internalMessaging: postgresStore ? "available" : "database_required",
-          encryptedAttachmentStorage: "not_implemented"
+          walletHttpApi: postgresStore ? "read_only" : "not_configured",
+          internalMessaging: postgresStore ? "device_encryption_required" : "database_required",
+          internalMessageReceipts: postgresStore ? "per_device_delivered_read" : "database_required",
+          encryptedAttachmentStorage: postgresStore ? "end_to_end_encrypted_4_mib" : "database_required"
         },
         limitations: [
           "This service carries call-control and WebRTC signaling only.",
@@ -258,9 +265,13 @@ async function handleRequest(req, res) {
           "Device challenge sessions and signaling queues remain in-memory and expire.",
           "Account sessions are persisted when PostgreSQL is configured.",
           "Password recovery and email verification require an email delivery provider that is not configured.",
-          "Wallet operations are server-side only; public wallet HTTP endpoints are not implemented.",
+          "Wallet HTTP endpoints expose authenticated read-only balances and ledger history; client balance writes are not accepted.",
+          "Wallet ledger writes remain server-authoritative and require trusted payment/provider events.",
           "Internal messages are stored as opaque client-supplied ciphertext; the API does not decrypt or independently prove end-to-end encryption.",
-          "Message key distribution, encrypted attachment upload/storage, delivery receipts and read receipts are not implemented."
+          "Device encryption keys use ECDH P-256 and per-device message-key envelopes; private keys remain on clients.",
+          "The backend validates current device-key coverage and stores wrapped content keys but cannot independently audit client cryptographic implementation.",
+          "Encrypted attachment blobs up to 4 MiB are stored as ciphertext with per-device wrapped keys; only conversation members with a matching device envelope can retrieve them.",
+          "The E2EE client implementation has automated browser and Android emulator tests but has not undergone an independent cryptographic audit."
         ]
       });
       return;
@@ -428,6 +439,40 @@ async function handleRequest(req, res) {
       return;
     }
 
+    if (req.method === "GET" && path === "/v1/me/devices") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`account-devices-list:${session.accountId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const devices = await postgresStore.listAccountDevices({
+        accountId: session.accountId,
+        currentDeviceId: session.deviceId
+      });
+      response(res, 200, { devices });
+      return;
+    }
+
+    const accountDeviceRoute = /^\/v1\/me\/devices\/([^/]+)$/.exec(path);
+    if (accountDeviceRoute && req.method === "DELETE") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`account-device-revoke:${session.accountId}:${remote}`, 12, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const revoked = await postgresStore.revokeAccountDevice({
+        accountId: session.accountId,
+        deviceId: accountDeviceRoute[1]
+      });
+      runtime.revokeDeviceSessions(accountDeviceRoute[1]);
+      response(res, 200, revoked);
+      return;
+    }
+
     if (req.method === "POST" && path === "/v1/auth/logout") {
       const session = await requireAuth(req, res);
       if (!session) return;
@@ -438,6 +483,113 @@ async function handleRequest(req, res) {
         runtime.revokeToken(session.token);
       }
       response(res, 200, { status: "signed_out" });
+      return;
+    }
+
+    if (req.method === "PUT" && path === "/v1/me/encryption-key") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`encryption-key-register:${session.accountId}:${session.deviceId}:${remote}`, 8, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      if (body.algorithm !== "ECDH-P256") {
+        response(res, 400, { error: "invalid_encryption_key" });
+        return;
+      }
+      if (typeof body.publicKeyBase64 !== "string" ||
+          body.publicKeyBase64.length < 4 ||
+          body.publicKeyBase64.length > 1024 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.publicKeyBase64)) {
+        response(res, 400, { error: "invalid_encryption_key" });
+        return;
+      }
+      const publicKeyDer = Buffer.from(body.publicKeyBase64, "base64");
+      if (publicKeyDer.toString("base64") !== body.publicKeyBase64 ||
+          typeof body.signatureBase64 !== "string" ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.signatureBase64)) {
+        response(res, 400, { error: "invalid_encryption_key_proof" });
+        return;
+      }
+      const proofSignature = Buffer.from(body.signatureBase64, "base64");
+      if (proofSignature.length < 64 || proofSignature.length > 80 ||
+          proofSignature.toString("base64") !== body.signatureBase64) {
+        response(res, 400, { error: "invalid_encryption_key_proof" });
+        return;
+      }
+      const registered = await postgresStore.registerDeviceEncryptionKey({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        algorithm: body.algorithm,
+        publicKeyDer,
+        proofSignature
+      });
+      response(res, registered.reused ? 200 : 201, registered);
+      return;
+    }
+
+    const encryptionDevicesRoute = /^\/v1\/conversations\/([^/]+)\/encryption-devices$/.exec(path);
+    if (encryptionDevicesRoute && req.method === "GET") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`encryption-device-list:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const devices = await postgresStore.listConversationEncryptionDevices({
+        accountId: session.accountId,
+        conversationId: encryptionDevicesRoute[1]
+      });
+      response(res, 200, { devices });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/wallet") {
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`wallet-read:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const wallet = await postgresStore.getWalletSnapshot(session.accountId);
+      if (!wallet) {
+        response(res, 404, { error: "wallet_not_found" });
+        return;
+      }
+      response(res, 200, { wallet });
+      return;
+    }
+
+    if (req.method === "GET" && path === "/v1/wallet/ledger") {
+      if (!postgresStore) {
+        response(res, 503, { error: "database_not_configured" });
+        return;
+      }
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`wallet-ledger-read:${session.accountId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+      const before = url.searchParams.get("before");
+      const beforeEventId = url.searchParams.get("beforeEventId");
+      const page = await postgresStore.listWalletLedgerEvents({
+        accountId: session.accountId,
+        limit,
+        before,
+        beforeEventId
+      });
+      response(res, 200, page);
       return;
     }
 
@@ -473,6 +625,82 @@ async function handleRequest(req, res) {
       return;
     }
 
+    const attachmentCollectionRoute = /^\/v1\/conversations\/([^/]+)\/attachments$/.exec(path);
+    if (attachmentCollectionRoute && req.method === "POST") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-attachment-upload:${session.accountId}:${session.deviceId}:${remote}`, 12, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req, 6 * 1024 * 1024);
+      const attachment = await postgresStore.createInternalAttachment({
+        accountId: session.accountId,
+        senderDeviceId: session.deviceId,
+        conversationId: attachmentCollectionRoute[1],
+        ciphertextBase64: body.ciphertextBase64,
+        plaintextSizeBytes: body.plaintextSizeBytes,
+        encryptionVersion: body.encryptionVersion,
+        keyEnvelopes: body.keyEnvelopes
+      });
+      response(res, 201, { attachment });
+      return;
+    }
+
+    const attachmentItemRoute = /^\/v1\/conversations\/([^/]+)\/attachments\/([^/]+)$/.exec(path);
+    if (attachmentItemRoute && (req.method === "GET" || req.method === "DELETE")) {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (req.method === "DELETE") {
+        if (!rateLimit(`message-attachment-cleanup:${session.accountId}:${session.deviceId}:${remote}`, 12, 60_000)) {
+          response(res, 429, { error: "rate_limited" });
+          return;
+        }
+        const deleted = await postgresStore.deleteUnsentInternalAttachment({
+          accountId: session.accountId,
+          conversationId: attachmentItemRoute[1],
+          attachmentId: attachmentItemRoute[2]
+        });
+        response(res, 200, deleted);
+        return;
+      }
+      if (!rateLimit(`message-attachment-download:${session.accountId}:${session.deviceId}:${remote}`, 60, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const attachment = await postgresStore.getInternalAttachment({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        conversationId: attachmentItemRoute[1],
+        attachmentId: attachmentItemRoute[2]
+      });
+      response(res, 200, { attachment });
+      return;
+    }
+
+    const messageReceiptRoute = /^\/v1\/conversations\/([^/]+)\/receipts$/.exec(path);
+    if (messageReceiptRoute && req.method === "POST") {
+      const session = await requireAccountAuth(req, res);
+      if (!session) return;
+      const remote = req.socket.remoteAddress ?? "unknown";
+      if (!rateLimit(`message-receipts:${session.accountId}:${session.deviceId}:${remote}`, 120, 60_000)) {
+        response(res, 429, { error: "rate_limited" });
+        return;
+      }
+      const body = await readJson(req);
+      const acknowledgement = await postgresStore.markInternalMessagesReceived({
+        accountId: session.accountId,
+        deviceId: session.deviceId,
+        conversationId: messageReceiptRoute[1],
+        messageIds: body.messageIds,
+        state: body.state
+      });
+      response(res, 200, acknowledgement);
+      return;
+    }
+
     const messageRoute = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(path);
     if (messageRoute && req.method === "POST") {
       const session = await requireAccountAuth(req, res);
@@ -485,9 +713,11 @@ async function handleRequest(req, res) {
       const body = await readJson(req);
       const message = await postgresStore.sendInternalMessage({
         accountId: session.accountId,
+        senderDeviceId: session.deviceId,
         conversationId: messageRoute[1],
         ciphertext: body.ciphertext,
         encryptionVersion: body.encryptionVersion,
+        keyEnvelopes: body.keyEnvelopes,
         attachmentManifest: body.attachmentManifest
       });
       response(res, 201, { message });
@@ -506,6 +736,7 @@ async function handleRequest(req, res) {
       const before = url.searchParams.get("before");
       const messages = await postgresStore.listInternalMessages({
         accountId: session.accountId,
+        deviceId: session.deviceId,
         conversationId: messageRoute[1],
         limit,
         before

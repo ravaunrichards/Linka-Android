@@ -43,6 +43,34 @@ data class LinkaAccountDevice(
     val current: Boolean
 )
 
+data class LinkaWalletSnapshot(
+    val purchased: Long,
+    val promotional: Long,
+    val sponsored: Long,
+    val total: Long,
+    val version: Long
+)
+
+data class LinkaWalletLedgerEvent(
+    val eventId: String,
+    val eventType: String,
+    val creditSource: String,
+    val amountCreditUnits: Long,
+    val referenceId: String?,
+    val reversesEventId: String?,
+    val createdAt: String
+)
+
+data class LinkaWalletCursor(
+    val before: String,
+    val beforeEventId: String
+)
+
+data class LinkaWalletLedgerPage(
+    val events: List<LinkaWalletLedgerEvent>,
+    val nextCursor: LinkaWalletCursor?
+)
+
 class LinkaAccountException(
     val errorCode: String,
     message: String,
@@ -307,6 +335,77 @@ class LinkaAccountClient internal constructor(
         val token = store.readToken() ?: return@withContext
         request(store.getServerUrl(), "POST", "/v1/auth/logout", JSONObject(), token)
         store.clearToken()
+    }
+
+    suspend fun getWalletSnapshot(): LinkaWalletSnapshot = withContext(Dispatchers.IO) {
+        val wallet = request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/wallet",
+            null,
+            requireAccountToken()
+        ).optJSONObject("wallet")
+            ?: throw LinkaAccountException(
+                "invalid_server_response",
+                "LINKA did not return account wallet balances."
+            )
+        LinkaWalletSnapshot(
+            purchased = wallet.optLong("purchased", -1).also { require(it >= 0L) },
+            promotional = wallet.optLong("promotional", -1).also { require(it >= 0L) },
+            sponsored = wallet.optLong("sponsored", -1).also { require(it >= 0L) },
+            total = wallet.optLong("total", -1).also { require(it >= 0L) },
+            version = wallet.optLong("version", -1).also { require(it >= 0L) }
+        )
+    }
+
+    suspend fun listWalletLedgerEvents(
+        limit: Int = 50,
+        cursor: LinkaWalletCursor? = null
+    ): LinkaWalletLedgerPage = withContext(Dispatchers.IO) {
+        require(limit in 1..100) { "Wallet activity page size must be between 1 and 100." }
+        val path = buildString {
+            append("/v1/wallet/ledger?limit=")
+            append(limit)
+            if (cursor != null) {
+                require(cursor.before.isNotBlank() && cursor.beforeEventId.isNotBlank()) {
+                    "A complete LINKA wallet activity cursor is required."
+                }
+                append("&before=")
+                append(java.net.URLEncoder.encode(cursor.before, StandardCharsets.UTF_8.name()))
+                append("&beforeEventId=")
+                append(java.net.URLEncoder.encode(cursor.beforeEventId, StandardCharsets.UTF_8.name()))
+            }
+        }
+        val body = request(
+            store.getServerUrl(),
+            "GET",
+            path,
+            null,
+            requireAccountToken()
+        )
+        val events = body.optJSONArray("events") ?: JSONArray()
+        val mapped = (0 until events.length()).mapNotNull { index ->
+            val item = events.optJSONObject(index) ?: return@mapNotNull null
+            val eventId = item.optString("eventId").takeIf { it.isNotBlank() && it != "null" }
+                ?: return@mapNotNull null
+            val amount = item.optLong("amountCreditUnits", -1).takeIf { it >= 0L }
+                ?: return@mapNotNull null
+            LinkaWalletLedgerEvent(
+                eventId = eventId,
+                eventType = item.optString("eventType"),
+                creditSource = item.optString("creditSource"),
+                amountCreditUnits = amount,
+                referenceId = item.optString("referenceId").takeIf { it.isNotBlank() && it != "null" },
+                reversesEventId = item.optString("reversesEventId").takeIf { it.isNotBlank() && it != "null" },
+                createdAt = item.optString("createdAt")
+            )
+        }
+        val cursorJson = body.optJSONObject("nextCursor")
+        val nextCursor = if (cursorJson == null) null else LinkaWalletCursor(
+            before = cursorJson.optString("before"),
+            beforeEventId = cursorJson.optString("beforeEventId")
+        ).takeIf { it.before.isNotBlank() && it.beforeEventId.isNotBlank() }
+        LinkaWalletLedgerPage(mapped, nextCursor)
     }
 
     suspend fun listAccountDevices(): List<LinkaAccountDevice> = withContext(Dispatchers.IO) {

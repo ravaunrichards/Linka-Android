@@ -157,7 +157,7 @@ private class HttpUrlConnectionAccountTransport : AccountApiTransport {
         val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
-            readTimeout = 15_000
+            readTimeout = 60_000
             useCaches = false
             doInput = true
             setRequestProperty("Accept", "application/json")
@@ -354,6 +354,43 @@ class LinkaAccountClient internal constructor(
                 )
             }
         }
+
+    suspend fun uploadEncryptedAttachment(conversationId: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            require(body.optString("encryptionVersion") == "LINKA-E2EE-2") {
+                "Only LINKA end-to-end encrypted attachments can be uploaded."
+            }
+            val uploaded = request(
+                store.getServerUrl(),
+                "POST",
+                "/v1/conversations/" + encodePathSegment(conversationId) + "/attachments",
+                body,
+                requireMessagingToken()
+            ).optJSONObject("attachment")
+                ?: throw LinkaAccountException(
+                    "invalid_server_response",
+                    "LINKA did not return attachment metadata."
+                )
+            uploaded
+        }
+
+    suspend fun downloadEncryptedAttachment(
+        conversationId: String,
+        attachmentId: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            store.getServerUrl(),
+            "GET",
+            "/v1/conversations/" + encodePathSegment(conversationId) +
+                "/attachments/" + encodePathSegment(attachmentId),
+            null,
+            requireMessagingToken()
+        ).optJSONObject("attachment")
+            ?: throw LinkaAccountException(
+                "invalid_server_response",
+                "LINKA did not return encrypted attachment data."
+            )
+    }
 
     suspend fun sendEncryptedMessage(conversationId: String, body: JSONObject): JSONObject =
         withContext(Dispatchers.IO) {

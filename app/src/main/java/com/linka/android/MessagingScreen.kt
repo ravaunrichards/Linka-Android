@@ -1,5 +1,14 @@
 package com.linka.android
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.text.style.TextOverflow
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,6 +65,19 @@ private data class ConversationSummary(
     val lastMessageAt: String?
 )
 
+private data class ConversationAttachment(
+    val attachmentId: String,
+    val filename: String,
+    val mediaType: String,
+    val sizeBytes: Int
+)
+
+private data class PendingAttachmentSave(
+    val bytes: ByteArray,
+    val filename: String,
+    val mediaType: String
+)
+
 private data class ConversationMessage(
     val id: String,
     val sender: String,
@@ -64,8 +86,50 @@ private data class ConversationMessage(
     val receiptDevices: Int? = null,
     val deliveredDevices: Int? = null,
     val readDevices: Int? = null,
-    val decryptedSuccessfully: Boolean = false
+    val decryptedSuccessfully: Boolean = false,
+    val attachments: List<ConversationAttachment> = emptyList()
 )
+
+private const val MAX_ANDROID_ATTACHMENT_BYTES = 4 * 1024 * 1024
+
+private fun attachmentDisplayName(context: android.content.Context, uri: Uri): String {
+    val candidate = context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    }.orEmpty()
+    val safe = candidate.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_")
+        .trim()
+        .take(180)
+    return safe.ifBlank { "linka-attachment" }
+}
+
+private fun attachmentMimeType(context: android.content.Context, uri: Uri): String =
+    context.contentResolver.getType(uri)
+        ?.takeIf { it.matches(Regex("^[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+$")) }
+        ?: "application/octet-stream"
+
+private fun readEncryptedAttachmentSource(context: android.content.Context, uri: Uri): ByteArray {
+    val output = ByteArrayOutputStream()
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        val buffer = ByteArray(16 * 1024)
+        var total = 0
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= MAX_ANDROID_ATTACHMENT_BYTES) { "Choose a file no larger than 4 MiB." }
+            output.write(buffer, 0, count)
+        }
+    } ?: throw IllegalArgumentException("LINKA could not open the selected file.")
+    return output.toByteArray().also {
+        require(it.isNotEmpty()) { "Choose a file that is not empty." }
+    }
+}
 
 @Composable
 fun LinkaMessagingScreen(
@@ -85,8 +149,63 @@ fun LinkaMessagingScreen(
     var messages by remember { mutableStateOf<List<ConversationMessage>>(emptyList()) }
     var participantIds by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
+    var selectedAttachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedAttachmentName by remember { mutableStateOf<String?>(null) }
+    var selectedAttachmentSize by remember { mutableStateOf<Int?>(null) }
+    var pendingAttachmentSave by remember { mutableStateOf<PendingAttachmentSave?>(null) }
     var status by remember { mutableStateOf("Sign in to use encrypted LINKA messaging.") }
     var loading by remember { mutableStateOf(false) }
+
+    val attachmentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            runCatching {
+                val bytes = readEncryptedAttachmentSource(context, uri)
+                selectedAttachmentUri = uri
+                selectedAttachmentName = attachmentDisplayName(context, uri)
+                selectedAttachmentSize = bytes.size
+                status = "Encrypted attachment selected: ${selectedAttachmentName} (${bytes.size} bytes)."
+            }.onFailure { error ->
+                selectedAttachmentUri = null
+                selectedAttachmentName = null
+                selectedAttachmentSize = null
+                status = error.message ?: "Could not read the selected attachment."
+            }
+        }
+    }
+
+    val attachmentSaver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { destination ->
+        val pending = pendingAttachmentSave
+        if (destination != null && pending != null) {
+            scope.launch {
+                loading = true
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(destination, "w")?.use { output ->
+                            output.write(pending.bytes)
+                            output.flush()
+                        } ?: throw IllegalStateException("Android could not create the selected download file.")
+                    }
+                    status = "Decrypted attachment saved as ${pending.filename}."
+                }.onFailure { error ->
+                    status = error.message ?: "Could not save the decrypted attachment."
+                }
+                pendingAttachmentSave = null
+                loading = false
+            }
+        } else {
+            pendingAttachmentSave = null
+        }
+    }
 
     suspend fun loadConversation(conversationId: String, currentProfile: LinkaAccountProfile) {
         val directory = accountClient.listConversationEncryptionDevices(conversationId)

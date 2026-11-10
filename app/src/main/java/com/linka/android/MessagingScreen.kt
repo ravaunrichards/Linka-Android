@@ -60,7 +60,10 @@ private data class ConversationMessage(
     val id: String,
     val sender: String,
     val plaintext: String,
-    val sentAt: String
+    val sentAt: String,
+    val receiptDevices: Int? = null,
+    val deliveredDevices: Int? = null,
+    val readDevices: Int? = null
 )
 
 @Composable
@@ -122,10 +125,25 @@ fun LinkaMessagingScreen(
                     directory.firstOrNull { it.accountId == senderAccountId }?.accountId?.take(8)
                         ?.let { "LINKA member $it" } ?: "LINKA member",
                 plaintext = plaintext,
-                sentAt = item.optString("sentAt")
+                sentAt = item.optString("sentAt"),
+                receiptDevices = item.optJSONObject("receiptSummary")?.optInt("recipientDevices"),
+                deliveredDevices = item.optJSONObject("receiptSummary")?.optInt("deliveredDevices"),
+                readDevices = item.optJSONObject("receiptSummary")?.optInt("readDevices")
             )
         }.asReversed()
         messages = decoded
+        val incomingIds = decoded
+            .filter { it.sender != "You" }
+            .map { it.id }
+            .filter { it.isNotBlank() }
+            .takeLast(100)
+        if (incomingIds.isNotEmpty()) {
+            accountClient.acknowledgeInternalMessages(
+                conversationId = conversationId,
+                messageIds = incomingIds,
+                state = "read"
+            )
+        }
         status = if (missing == 0 && directory.isNotEmpty()) {
             "End-to-end encryption ready on ${directory.size} active device(s). Private keys remain on each device."
         } else {
@@ -389,6 +407,15 @@ fun LinkaMessagingScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (message.sender == "You" && message.receiptDevices != null &&
+                                message.receiptDevices > 0) {
+                                Text(
+                                    "Delivered ${message.deliveredDevices ?: 0}/${message.receiptDevices} · " +
+                                        "Read ${message.readDevices ?: 0}/${message.receiptDevices}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
                         }
                     }
                 }

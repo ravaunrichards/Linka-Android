@@ -248,6 +248,38 @@ async function main() {
     assert.equal(storedMessage.message.ciphertext.includes(secretMessage), false);
     assert.equal(storedMessage.message.keyEnvelope.recipientDeviceId, firstIdentity.deviceId);
 
+    const receiptView = await firstPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(receiptView.status, 200);
+    assert.deepEqual(receiptView.message.receiptSummary, {
+      recipientDevices: 1,
+      deliveredDevices: 1,
+      readDevices: 1
+    }, "the sender should see the recipient device's delivered/read state");
+
+    const recipientReceiptView = await thirdPage.evaluate(async ({ sessionKey, conversationId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const response = await fetch("/v1/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      const payload = await response.json();
+      return { status: response.status, message: payload.messages?.[0] };
+    }, { sessionKey: SESSION_KEY, conversationId });
+    assert.equal(recipientReceiptView.status, 200);
+    assert.equal(
+      Object.hasOwn(recipientReceiptView.message, "receiptSummary"),
+      false,
+      "recipient clients must not see sender-only aggregate read receipts"
+    );
+
     const secondOwnDevice = await inspectStoredIdentity(secondPage);
     const recipientDevice = await inspectStoredIdentity(thirdPage);
     assert.notEqual(secondOwnDevice.deviceId, firstIdentity.deviceId);

@@ -439,3 +439,32 @@ The branch now has a refreshed structure map in `docs/REPOSITORY_STRUCTURE.md` a
 ### Exact next safe engineering task
 
 Continue PR #20's security lifecycle: device-key revocation and key-rotation behavior, then add tests proving revoked/stale devices cannot retrieve new message/attachment envelopes or acknowledge receipts. Do not implement exportable private-key backups; design recovery with explicit user trust and audited cryptographic review. Keep production/provider claims disabled until their independent gates pass.
+
+
+## Continuation checkpoint — 2026-11-10 (latest verified run)
+
+- Active repository: `ravaunrichards/Linka-Android`.
+- Active branch: `feature/messaging-device-e2ee`.
+- Pull request: [#20 — device-key E2EE and encrypted browser chat](https://github.com/ravaunrichards/Linka-Android/pull/20), open and still draft.
+- Source branch head: `272557052b0c83e2cf969806f0359bc344aaf2fd`.
+- Targeted correction: added the three missing `com.linka.android.account` imports for `LinkaWalletSnapshot`, `LinkaWalletLedgerEvent` and `LinkaWalletCursor` in `LinkaAccountPanel.kt`. No main-branch files, databases, production services or signing secrets were changed.
+- Android CI run [42876617951](https://github.com/ravaunrichards/Linka-Android/actions/runs/42876617951): PASS. Debug APK assembly, Android JVM unit tests and API 35 emulator instrumentation passed.
+- Android API 35 instrumentation report: 14 tests, 0 failures, 0 errors, 0 skipped. The report covers Android Keystore non-exportability, signed ECDH device-key registration, E2EE-2 encryption/decryption, missing recipient-key refusal, tamper/wrong-recipient rejection and encrypted phone-favourites storage.
+- LINKA API CI run [42876617631](https://github.com/ravaunrichards/Linka-Android/actions/runs/42876617631): PASS.
+- LINKA PostgreSQL Schema CI run [42876617648](https://github.com/ravaunrichards/Linka-Android/actions/runs/42876617648): PASS.
+- Debug APK artifact: `linka-debug-apk-acad03e48c586c1d28a2dbfe1fe61e68ad898257`, GitHub artifact ID `13792572106`, 17,974,198-byte ZIP, expires 2026-12-10. Extracted APK size: 18,581,593 bytes. APK SHA-256: `6457f3ee57d378fc815cd03120eb2f72ac053b364d586954d02940c2748caa59`.
+- Instrumentation report artifact ID: `13791243571`.
+- The APK is a CI debug build. It is not a production-signed release and does not prove real-carrier, physical-radio, hosted-service or provider functionality.
+
+### Remaining release gates
+
+- Key transparency, device revocation and recovery/key-rotation lifecycle, including tests for revoked devices and stale envelopes.
+- Physical two-phone direct offline voice and multi-device mesh tests; audio quality, range and battery measurements.
+- Production WebRTC media path and TURN/SFU deployment; signaling alone is not media.
+- Carrier number inventory, SIP/PSTN routing, SMS/MMS, tariffs and payment integration only after provider credentials, contracts, coverage, compliance and reconciliation are available.
+- Android Telecom integration/default-dialer role and SIM/eSIM work after the VoIP transport is integrated and device tested.
+- Production Render service, durable database, backups/restore, monitoring and approved workspace/service configuration.
+- User-controlled release signing key and production release validation.
+- Independent cryptographic and telecom/privacy review.
+
+Do not merge draft PR #20 or call LINKA production-ready based only on CI success. Keep provider billing, number provisioning and emergency-call claims disabled until their external dependencies and acceptance tests are complete.

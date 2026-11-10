@@ -648,7 +648,7 @@ async function handleRequest(req, res) {
       return;
     }
 
-    const attachmentItemRoute = /^\\/v1\\/conversations\\/([^/]+)\\/attachments\\/([^/]+)$/.exec(path);
+    const attachmentItemRoute = /^\/v1\/conversations\/([^/]+)\/attachments\/([^/]+)$/.exec(path);
     if (attachmentItemRoute && (req.method === "GET" || req.method === "DELETE")) {
       const session = await requireAccountAuth(req, res);
       if (!session) return;

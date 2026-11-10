@@ -18,6 +18,7 @@ const SESSION_KEY = "linka.account.session.v1";
 let currentAccountProfile = null;
 let browserMessagingIdentity = null;
 let activeConversationMembers = [];
+let accountDevices = [];
 
 function openIdentityDatabase() {
   return new Promise((resolve, reject) => {
@@ -101,7 +102,9 @@ async function apiRequest(origin, path, { method = "GET", body, token } = {}) {
       device_already_linked: "This browser identity is already linked to another account.",
       rate_limited: "Too many attempts. Try again later.",
       database_not_configured: "The LINKA account service is not available on this server.",
-      account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured."
+      account_recovery_unavailable: "Password recovery is not enabled because email delivery is not configured.",
+      device_not_found: "That device could not be found in this LINKA account.",
+      invalid_device_management: "LINKA could not validate this device-management request."
     };
     const error = new Error(messages[code] || "LINKA request failed (" + code + ").");
     error.status = response.status;
@@ -118,9 +121,103 @@ function showStatus(message, kind = "info") {
 }
 
 function setBusy(busy) {
-  for (const id of ["accountRegister", "accountLogin", "accountLogout", "accountRecovery", "chatCreateConversation", "chatSendMessage", "chatRefreshConversations"]) {
+  for (const id of ["accountRegister", "accountLogin", "accountLogout", "accountRecovery", "accountDevicesRefresh", "chatCreateConversation", "chatSendMessage", "chatRefreshConversations"]) {
     const button = document.getElementById(id);
     if (button) button.disabled = busy;
+  }
+  document.querySelectorAll(".account-device-revoke").forEach(button => {
+    button.disabled = busy;
+  });
+}
+
+function renderAccountDevices(devices) {
+  const container = document.getElementById("accountDevicesList");
+  const status = document.getElementById("accountDevicesStatus");
+  if (!container || !status) return;
+  container.replaceChildren();
+  accountDevices = Array.isArray(devices) ? devices : [];
+
+  if (accountDevices.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "account-device-empty";
+    empty.textContent = "No registered devices are currently listed for this account.";
+    container.append(empty);
+    status.textContent = "Device list loaded · 0 devices";
+    return;
+  }
+
+  for (const device of accountDevices) {
+    const row = document.createElement("article");
+    row.className = "account-device-row";
+    row.dataset.deviceId = String(device.deviceId || "");
+    row.dataset.status = String(device.status || "unknown");
+
+    const details = document.createElement("div");
+    details.className = "account-device-details";
+    const name = document.createElement("strong");
+    name.textContent = String(device.deviceName || device.platform || "LINKA device");
+    const identity = document.createElement("span");
+    identity.className = "account-device-meta";
+    identity.textContent = "ID " + String(device.deviceId || "").slice(0, 8).toUpperCase() +
+      (device.current ? " · This device" : "");
+    const state = document.createElement("span");
+    state.className = "account-device-meta account-device-status";
+    state.textContent = "Status: " + String(device.status || "unknown") +
+      " · Active sessions: " + Number(device.activeSessionCount || 0);
+    const seen = document.createElement("span");
+    seen.className = "account-device-meta";
+    seen.textContent = "Last seen: " +
+      (device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : "Not recorded");
+    details.append(name, identity, state, seen);
+    row.append(details);
+
+    if (!device.current && device.status === "active" && device.deviceId) {
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.className = "button secondary account-device-revoke";
+      revoke.dataset.deviceId = device.deviceId;
+      revoke.textContent = "Revoke device";
+      revoke.addEventListener("click", () => revokeBrowserDevice(device.deviceId));
+      row.append(revoke);
+    }
+    container.append(row);
+  }
+  status.textContent = "Device list loaded · " + accountDevices.length + " device(s)";
+}
+
+async function refreshAccountDevices(origin, token) {
+  const session = origin && token ? { origin, token } : activeApiSession();
+  const result = await apiRequest(session.origin, "/v1/me/devices", {
+    token: session.token
+  });
+  renderAccountDevices(result.devices || []);
+  return accountDevices;
+}
+
+async function revokeBrowserDevice(deviceId) {
+  const device = accountDevices.find(item => item.deviceId === deviceId);
+  if (!device || device.current || device.status !== "active") return;
+  const name = device.deviceName || device.platform || "this device";
+  if (!window.confirm(
+    "Revoke " + name + "? This ends its active LINKA sessions, disables its relay permission and retires its current messaging key."
+  )) return;
+
+  setBusy(true);
+  try {
+    const { token, origin } = activeApiSession();
+    await apiRequest(origin, "/v1/me/devices/" + encodeURIComponent(deviceId), {
+      method: "DELETE",
+      token
+    });
+    await refreshAccountDevices(origin, token);
+    showStatus(
+      "Device revoked. Its active sessions and messaging key are disabled. Content already copied by that device cannot be remotely erased.",
+      "success"
+    );
+  } catch (error) {
+    showStatus(error.message || "Unable to revoke this LINKA device.", "error");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -143,6 +240,11 @@ function showSignedOut() {
   currentAccountProfile = null;
   browserMessagingIdentity = null;
   activeConversationMembers = [];
+  accountDevices = [];
+  const accountDevicesList = document.getElementById("accountDevicesList");
+  if (accountDevicesList) accountDevicesList.replaceChildren();
+  const accountDevicesStatus = document.getElementById("accountDevicesStatus");
+  if (accountDevicesStatus) accountDevicesStatus.textContent = "Sign in to view devices registered to this account.";
   const chatList = document.getElementById("chatMessages");
   if (chatList) chatList.replaceChildren();
   document.getElementById("accountSignedOut").hidden = false;
@@ -212,6 +314,7 @@ async function authenticate(mode) {
     const profile = await apiRequest(origin, "/v1/me", { token: response.accessToken });
     showProfile(profile);
     await initializeMessagingPanel(origin, response.accessToken);
+    await refreshAccountDevices(origin, response.accessToken);
     showStatus(
       mode === "register"
         ? "LINKA account created and this browser device linked successfully."
@@ -235,6 +338,7 @@ async function restoreAccountSession() {
     const profile = await apiRequest(origin, "/v1/me", { token });
     showProfile(profile);
     await initializeMessagingPanel(origin, token);
+    await refreshAccountDevices(origin, token);
     showStatus("Your LINKA account is active in this browser tab.", "success");
   } catch (error) {
     if (shouldClearAccountSession(error.status)) {
@@ -657,6 +761,17 @@ function initializeAccountPage() {
   document.getElementById("accountLogin").addEventListener("click", () => authenticate("login"));
   document.getElementById("accountLogout").addEventListener("click", logout);
   document.getElementById("accountRecovery").addEventListener("click", requestRecovery);
+  document.getElementById("accountDevicesRefresh")?.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await refreshAccountDevices();
+      showStatus("LINKA account devices refreshed.", "success");
+    } catch (error) {
+      showStatus(error.message || "Could not refresh LINKA devices.", "error");
+    } finally {
+      setBusy(false);
+    }
+  });
   document.getElementById("chatCreateConversation")?.addEventListener("click", async () => {
     setBusy(true);
     try { await createConversationFromForm(); }

@@ -292,6 +292,80 @@ async function main() {
       "recipient clients must not see sender-only aggregate read receipts"
     );
 
+    const recipientIdentity = await inspectStoredIdentity(thirdPage);
+    const tamperedMessage = await firstPage.evaluate(async ({
+      sessionKey,
+      conversationId,
+      senderAccountId,
+      recipientDeviceId,
+      plaintext
+    }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      const directoryResponse = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/encryption-devices",
+        { headers: { Authorization: "Bearer " + token }, cache: "no-store" }
+      );
+      const directory = await directoryResponse.json();
+      if (!directoryResponse.ok) throw new Error("Could not load encryption devices.");
+      const cryptoModule = await import("./messaging-crypto.mjs");
+      const encrypted = await cryptoModule.encryptMessageForDevices({
+        plaintext,
+        conversationId,
+        senderAccountId,
+        devices: directory.devices
+      });
+      const target = encrypted.keyEnvelopes.find(item => item.recipientDeviceId === recipientDeviceId);
+      if (!target) throw new Error("Recipient device envelope was not created.");
+      target.wrappedContentKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(48).fill(3)));
+      const response = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/messages",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(encrypted)
+        }
+      );
+      const result = await response.json();
+      return { status: response.status, messageId: result.message?.messageId, plaintext };
+    }, {
+      sessionKey: SESSION_KEY,
+      conversationId,
+      senderAccountId: firstSession.profile.accountId,
+      recipientDeviceId: recipientIdentity.deviceId,
+      plaintext: "LINKA deliberately invalid recipient envelope " + randomUUID()
+    });
+    assert.equal(tamperedMessage.status, 201);
+    assert.ok(tamperedMessage.messageId);
+
+    await thirdPage.locator("#chatRefreshConversations").click();
+    await thirdPage.waitForFunction(
+      text => [...document.querySelectorAll("#chatMessages .chat-message p")]
+        .some(element => element.textContent === "[Unable to decrypt this message on this device]"),
+      null,
+      { timeout: 20_000 }
+    );
+
+    await firstPage.waitForFunction(async ({ sessionKey, conversationId, messageId }) => {
+      const token = sessionStorage.getItem(sessionKey);
+      if (!token) return false;
+      const response = await fetch(
+        "/v1/conversations/" + encodeURIComponent(conversationId) + "/messages",
+        { headers: { Authorization: "Bearer " + token }, cache: "no-store" }
+      );
+      if (!response.ok) return false;
+      const payload = await response.json();
+      const message = payload.messages?.find(item => item.messageId === messageId);
+      return message?.receiptSummary?.deliveredDevices === 1 &&
+        message?.receiptSummary?.readDevices === 0;
+    }, {
+      sessionKey: SESSION_KEY,
+      conversationId,
+      messageId: tamperedMessage.messageId
+    }, { timeout: 15_000 });
+
     const secondOwnDevice = await inspectStoredIdentity(secondPage);
     const recipientDevice = await inspectStoredIdentity(thirdPage);
     assert.notEqual(secondOwnDevice.deviceId, firstIdentity.deviceId);

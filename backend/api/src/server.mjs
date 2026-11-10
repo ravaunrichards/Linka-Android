@@ -453,7 +453,7 @@ async function handleRequest(req, res) {
       return;
     }
 
-    const accountDeviceRoute = /^\\/v1\\/me\\/devices\\/([^/]+)$/.exec(path);
+    const accountDeviceRoute = /^\/v1\/me\/devices\/([^/]+)$/.exec(path);
     if (accountDeviceRoute && req.method === "DELETE") {
       const session = await requireAccountAuth(req, res);
       if (!session) return;

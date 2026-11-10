@@ -648,11 +648,24 @@ async function handleRequest(req, res) {
       return;
     }
 
-    const attachmentItemRoute = /^\/v1\/conversations\/([^/]+)\/attachments\/([^/]+)$/.exec(path);
-    if (attachmentItemRoute && req.method === "GET") {
+    const attachmentItemRoute = /^\\/v1\\/conversations\\/([^/]+)\\/attachments\\/([^/]+)$/.exec(path);
+    if (attachmentItemRoute && (req.method === "GET" || req.method === "DELETE")) {
       const session = await requireAccountAuth(req, res);
       if (!session) return;
       const remote = req.socket.remoteAddress ?? "unknown";
+      if (req.method === "DELETE") {
+        if (!rateLimit(`message-attachment-cleanup:${session.accountId}:${session.deviceId}:${remote}`, 12, 60_000)) {
+          response(res, 429, { error: "rate_limited" });
+          return;
+        }
+        const deleted = await postgresStore.deleteUnsentInternalAttachment({
+          accountId: session.accountId,
+          conversationId: attachmentItemRoute[1],
+          attachmentId: attachmentItemRoute[2]
+        });
+        response(res, 200, deleted);
+        return;
+      }
       if (!rateLimit(`message-attachment-download:${session.accountId}:${session.deviceId}:${remote}`, 60, 60_000)) {
         response(res, 429, { error: "rate_limited" });
         return;
